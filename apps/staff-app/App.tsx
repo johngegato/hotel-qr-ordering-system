@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from 'react-native'
 import { supabase } from './lib/supabase'
+import CallQueue from './components/CallQueue'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -245,10 +246,13 @@ export default function App() {
               ))}
             </View>
 
+            {/* Real-time Call Queue */}
+            <CallQueue />
+
             {/* Phase indicator */}
             <View style={styles.phaseNote}>
               <Text style={styles.phaseNoteText}>
-                🏗️ Phase 0 Complete — Foundation established
+                🚀 Phase 1 Active — Real-Time Call Queue Loop
               </Text>
             </View>
           </Animated.View>

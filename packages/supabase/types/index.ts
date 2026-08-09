@@ -40,6 +40,18 @@ export interface GuestSession {
   expires_at: string
 }
 
+export interface RequestItem {
+  id: string
+  hotel_id: string
+  room_id: string
+  request_type: 'CALL_REQUEST' | 'TASK' | string
+  status: 'PENDING' | 'CLAIMED' | 'RESOLVED' | 'CANCELLED'
+  payload: Json
+  created_at: string
+  claimed_at: string | null
+  claimed_by: string | null
+}
+
 // ============================================================
 // Joined / Extended Types (for queries with relations)
 // ============================================================
@@ -50,6 +62,11 @@ export interface RoomWithHotel extends Room {
 
 export interface GuestSessionWithRoom extends GuestSession {
   room: RoomWithHotel
+}
+
+export interface RequestWithRoom extends RequestItem {
+  rooms?: Room | null
+  hotels?: Hotel | null
 }
 
 // ============================================================
@@ -92,12 +109,23 @@ export interface Database {
         Insert: Omit<GuestSession, 'id' | 'created_at'> & { id?: string; created_at?: string }
         Update: Partial<Omit<GuestSession, 'id'>>
       }
+      requests: {
+        Row: RequestItem
+        Insert: Omit<RequestItem, 'id' | 'created_at' | 'claimed_at' | 'claimed_by'> & {
+          id?: string
+          created_at?: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+        }
+        Update: Partial<Omit<RequestItem, 'id'>>
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
     Enums: {
       session_status: 'ACTIVE' | 'EXPIRED' | 'CHECKED_OUT'
       room_type: 'STANDARD' | 'DELUXE' | 'SUITE' | 'PENTHOUSE'
+      request_status: 'PENDING' | 'CLAIMED' | 'RESOLVED' | 'CANCELLED'
     }
   }
 }
