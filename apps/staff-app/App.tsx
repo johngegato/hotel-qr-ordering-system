@@ -12,6 +12,12 @@ import {
 } from 'react-native'
 import { supabase } from './lib/supabase'
 import CallQueue from './components/CallQueue'
+import SpaQueue from './components/SpaQueue'
+import FoodQueue from './components/FoodQueue'
+import TaskQueue from './components/TaskQueue'
+import UserManagement, { StaffUser } from './components/UserManagement'
+import DedicatedCallModule from './components/DedicatedCallModule'
+import RequestHistory from './components/RequestHistory'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -124,8 +130,55 @@ export default function App() {
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [hotelInfo, setHotelInfo] = useState<HotelInfo | null>(null)
   const [roomCount, setRoomCount] = useState<number>(0)
+  const [pendingCalls, setPendingCalls] = useState(0)
+  const [pendingSpa, setPendingSpa] = useState(0)
+  const [pendingFood, setPendingFood] = useState(0)
+  const [pendingTasks, setPendingTasks] = useState(0)
+  const [totalRequests, setTotalRequests] = useState(0)
+  const [resolvedToday, setResolvedToday] = useState(0)
+  const [activeStaffUser, setActiveStaffUser] = useState<StaffUser | null>(null)
   const fadeAnim = React.useRef(new Animated.Value(0)).current
   const slideAnim = React.useRef(new Animated.Value(30)).current
+
+  const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
+
+  const fetchStats = async () => {
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+
+    const [callsRes, spaRes, foodRes, taskRes, totalRes, resolvedRes] = await Promise.all([
+      // Pending call requests
+      supabase.from('requests').select('id', { count: 'exact', head: true })
+        .eq('hotel_id', HOTEL_ID).eq('request_type', 'CALL_REQUEST').eq('status', 'PENDING'),
+      // Pending spa bookings
+      supabase.from('requests').select('id', { count: 'exact', head: true })
+        .eq('hotel_id', HOTEL_ID).eq('request_type', 'SPA_BOOKING')
+        .in('status', ['PENDING', 'PENDING_ON_CALL']),
+      // Pending food orders
+      supabase.from('requests').select('id', { count: 'exact', head: true })
+        .eq('hotel_id', HOTEL_ID).eq('request_type', 'FOOD_ORDER')
+        .in('status', ['PENDING', 'PREPARING']),
+      // Pending room tasks
+      supabase.from('requests').select('id', { count: 'exact', head: true })
+        .eq('hotel_id', HOTEL_ID).eq('request_type', 'TASK')
+        .in('status', ['PENDING', 'CLAIMED']),
+      // Total active requests today
+      supabase.from('requests').select('id', { count: 'exact', head: true })
+        .eq('hotel_id', HOTEL_ID).gte('created_at', todayStart.toISOString()),
+      // Resolved today
+      supabase.from('requests').select('id', { count: 'exact', head: true })
+        .eq('hotel_id', HOTEL_ID)
+        .in('status', ['RESOLVED', 'CONFIRMED', 'DECLINED', 'CLAIMED', 'CANCELLED'])
+        .gte('created_at', todayStart.toISOString()),
+    ])
+
+    setPendingCalls(callsRes.count ?? 0)
+    setPendingSpa(spaRes.count ?? 0)
+    setPendingFood(foodRes.count ?? 0)
+    setPendingTasks(taskRes.count ?? 0)
+    setTotalRequests(totalRes.count ?? 0)
+    setResolvedToday(resolvedRes.count ?? 0)
+  }
 
   const fetchData = async () => {
     setStatus('connecting')
@@ -149,6 +202,9 @@ export default function App() {
       setRoomCount(rooms ?? 0)
       setStatus('connected')
 
+      // Fetch live stats
+      await fetchStats()
+
       // Animate in
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
@@ -161,6 +217,16 @@ export default function App() {
 
   useEffect(() => {
     fetchData()
+
+    // Subscribe to ALL requests changes to keep stats live
+    const channel = supabase
+      .channel('app-stats')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+        fetchStats()
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
   }, [])
 
   return (
@@ -212,9 +278,9 @@ export default function App() {
               <View style={styles.statsRow}>
                 <StatCard icon="🚪" label="Rooms" value={String(roomCount)} />
                 <View style={styles.statsDivider} />
-                <StatCard icon="📋" label="Requests" value="0" />
+                <StatCard icon="📋" label="Requests Today" value={String(totalRequests)} />
                 <View style={styles.statsDivider} />
-                <StatCard icon="✅" label="Resolved Today" value="0" />
+                <StatCard icon="✅" label="Resolved Today" value={String(resolvedToday)} />
               </View>
             </View>
 
@@ -222,10 +288,10 @@ export default function App() {
             <Text style={styles.sectionTitle}>Modules</Text>
             <View style={styles.moduleGrid}>
               {[
-                { icon: '📞', label: 'Call Queue', badge: '0', color: COLORS.gold },
-                { icon: '💆', label: 'Spa Bookings', badge: '0', color: '#a78bfa' },
-                { icon: '🍽️', label: 'Food Orders', badge: '0', color: '#34d399' },
-                { icon: '🛎️', label: 'Room Tasks', badge: '0', color: '#60a5fa' },
+                { icon: '📞', label: 'Call Queue',   badge: String(pendingCalls), color: COLORS.gold },
+                { icon: '💆', label: 'Spa Bookings', badge: String(pendingSpa),   color: '#a78bfa' },
+                { icon: '🍽️', label: 'Food Orders',  badge: String(pendingFood),  color: '#34d399' },
+                { icon: '🛎️', label: 'Room Tasks',   badge: String(pendingTasks), color: '#60a5fa' },
               ].map((mod) => (
                 <TouchableOpacity
                   key={mod.label}
@@ -246,13 +312,33 @@ export default function App() {
               ))}
             </View>
 
-            {/* Real-time Call Queue */}
+            {/* 1. Dedicated Call Requests Module & Real-time Call Queue */}
+            <DedicatedCallModule activeStaffId={activeStaffUser?.id || 'staff-01'} />
             <CallQueue />
+
+            {/* 2. Spa Appointments Queue */}
+            <SpaQueue />
+
+            {/* 3. Room Task Queue */}
+            <TaskQueue />
+
+            {/* 4. Food Orders Queue */}
+            <FoodQueue />
+
+            {/* 5. Staff User Management */}
+            <UserManagement
+              activeUser={activeStaffUser}
+              onSelectUser={setActiveStaffUser}
+            />
+
+            {/* 6. All Request History Logs */}
+            <RequestHistory />
+
 
             {/* Phase indicator */}
             <View style={styles.phaseNote}>
               <Text style={styles.phaseNoteText}>
-                🚀 Phase 1 Active — Real-Time Call Queue Loop
+                🚀 Phase 4 Active — Room Requests & Task Routing Loop
               </Text>
             </View>
           </Animated.View>

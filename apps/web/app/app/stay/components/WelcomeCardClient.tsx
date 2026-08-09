@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import CallFrontDeskModal from './CallFrontDeskModal'
+import ActiveRequestsBanner from './ActiveRequestsBanner'
 
 interface WelcomeCardClientProps {
   roomId: string
   hotelId: string
+  hash?: string
   hotelName: string
   roomNumber: string
   floor: string | null
@@ -16,6 +18,7 @@ interface WelcomeCardClientProps {
 export default function WelcomeCardClient({
   roomId,
   hotelId,
+  hash = 'secret-hash-302',
   hotelName,
   roomNumber,
   floor,
@@ -32,10 +35,10 @@ export default function WelcomeCardClient({
   }
 
   const quickServices = [
-    { icon: '🍽️', label: 'Dining', action: 'link', href: '#' },
-    { icon: '💆', label: 'Spa', action: 'link', href: '#' },
-    { icon: '🛎️', label: 'Requests', action: 'callModal' },
-    { icon: '📞', label: 'Front Desk', action: 'callModal' },
+    { icon: '🍽️', label: 'Dining',     action: 'link',      href: `/app/stay/dining?room=${roomId}&hash=${hash}` },
+    { icon: '💆', label: 'Spa',        action: 'link',      href: `/app/stay/spa?room=${roomId}&hash=${hash}` },
+    { icon: '🛎️', label: 'Requests',  action: 'link',      href: `/app/stay/requests?room=${roomId}&hash=${hash}` },
+    { icon: '📞', label: 'Front Desk', action: 'callModal', href: '#' },
   ]
 
   return (
@@ -58,6 +61,9 @@ export default function WelcomeCardClient({
       />
 
       <div className="relative z-10 w-full max-w-sm mx-auto">
+        {/* Active Requests Realtime Banner */}
+        <ActiveRequestsBanner roomId={roomId} />
+
         {/* Main welcome card */}
         <div className="glass-strong rounded-3xl p-8 text-center animate-fade-up">
           {/* Hotel icon */}

@@ -97,6 +97,7 @@ export default async function StayPage({ searchParams }: StayPageProps) {
     <WelcomeCardClient
       roomId={room.id}
       hotelId={room.hotel_id}
+      hash={hash}
       hotelName={hotelName}
       hotelPhone={hotelPhone}
       roomNumber={room.room_number}

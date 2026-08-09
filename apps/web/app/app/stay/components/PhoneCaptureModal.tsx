@@ -1,0 +1,144 @@
+'use client'
+
+import { useState } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
+import type { Database } from '@hotel-qr/supabase/types'
+
+const supabase = createBrowserClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+interface PhoneCaptureModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onSuccess: (phone: string) => void
+  roomId: string
+  hotelId: string
+}
+
+export const GUEST_PHONE_STORAGE_KEY = 'hotel_guest_phone_number'
+
+export function getStoredGuestPhone(): string | null {
+  if (typeof window === 'undefined') return null
+  return sessionStorage.getItem(GUEST_PHONE_STORAGE_KEY)
+}
+
+export function storeGuestPhone(phone: string): void {
+  if (typeof window === 'undefined') return
+  sessionStorage.setItem(GUEST_PHONE_STORAGE_KEY, phone)
+}
+
+export default function PhoneCaptureModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  roomId,
+  hotelId,
+}: PhoneCaptureModalProps) {
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  if (!isOpen) return null
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const cleaned = phoneNumber.trim()
+    if (!cleaned || cleaned.length < 7) {
+      setErrorMsg('Please enter a valid phone number.')
+      return
+    }
+
+    setSaving(true)
+    setErrorMsg(null)
+
+    try {
+      // 1. Store in client sessionStorage
+      storeGuestPhone(cleaned)
+
+      // 2. Insert/Update guest_sessions in Supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from('guest_sessions')
+        .insert([
+          {
+            room_id: roomId,
+            hotel_id: hotelId,
+            phone_number: cleaned,
+            status: 'ACTIVE',
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          },
+        ])
+
+      if (error) {
+        console.warn('Guest session insert notice:', error.message)
+      }
+
+      onSuccess(cleaned)
+    } catch (err) {
+      console.error('Error saving phone session:', err)
+      // Fallback: succeed anyway with sessionStorage
+      onSuccess(cleaned)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(8px)' }}
+    >
+      <div
+        className="w-full max-w-sm rounded-3xl p-6 space-y-5 text-center animate-fade-up"
+        style={{ background: '#0f172a', border: '1px solid rgba(255, 255, 255, 0.12)' }}
+      >
+        <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl"
+             style={{ background: 'rgba(99, 102, 241, 0.15)', border: '1px solid rgba(99, 102, 241, 0.3)' }}>
+          📱
+        </div>
+
+        <div>
+          <h2 className="text-xl font-bold text-white">Contact Information</h2>
+          <p className="text-slate-400 text-xs mt-1">
+            Please enter your mobile phone number so our staff can notify you about your request status.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <input
+              type="tel"
+              placeholder="+63 917 123 4567"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              className="w-full px-4 py-3.5 rounded-2xl bg-white/5 border border-white/15 text-white text-center text-lg font-semibold placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+              autoFocus
+              required
+            />
+            {errorMsg && <p className="text-red-400 text-xs mt-2">{errorMsg}</p>}
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 rounded-2xl bg-white/5 border border-white/10 text-slate-400 font-semibold text-sm hover:bg-white/10 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !phoneNumber.trim()}
+              className="flex-[2] py-3 rounded-2xl font-bold text-sm text-white transition-all disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+            >
+              {saving ? 'Saving...' : 'Continue & Request'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
