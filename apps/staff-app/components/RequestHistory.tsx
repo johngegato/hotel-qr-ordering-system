@@ -165,7 +165,7 @@ export default function RequestHistory() {
           data={displayedRequests}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ gap: 10, paddingBottom: 20 }}
-          nestedScrollEnabled
+          scrollEnabled={false}
 
           renderItem={({ item }) => {
             const st = getStatusStyle(item.status)

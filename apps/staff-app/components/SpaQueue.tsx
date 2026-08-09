@@ -149,6 +149,7 @@ export default function SpaQueue() {
         <FlatList
           data={requests}
           keyExtractor={(item) => item.id}
+          scrollEnabled={false}
           renderItem={({ item }) => {
             const isProcessing = processingId === item.id
             const isOnCall = item.status === 'PENDING_ON_CALL' || item.payload?.is_on_call

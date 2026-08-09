@@ -153,6 +153,7 @@ export default function CallQueue() {
         <FlatList
           data={requests}
           keyExtractor={(item) => item.id}
+          scrollEnabled={false}
           renderItem={({ item }) => {
             const roomNumber = item.payload?.room_number ?? '302'
             const isClaiming = claimingId === item.id

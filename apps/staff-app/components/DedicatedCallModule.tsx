@@ -161,7 +161,7 @@ export default function DedicatedCallModule({ activeStaffId = 'staff-01' }: Dedi
           data={displayedCalls}
           keyExtractor={item => item.id}
           contentContainerStyle={{ gap: 10, paddingBottom: 10 }}
-          nestedScrollEnabled
+          scrollEnabled={false}
 
           renderItem={({ item }) => {
             const roomNo = item.rooms?.room_number || item.payload?.room_number || 'N/A'
