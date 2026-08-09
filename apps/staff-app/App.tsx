@@ -1,0 +1,540 @@
+import React, { useEffect, useState } from 'react'
+import {
+  StyleSheet,
+  Text,
+  View,
+  ActivityIndicator,
+  SafeAreaView,
+  StatusBar,
+  TouchableOpacity,
+  Animated,
+  Dimensions,
+} from 'react-native'
+import { supabase } from './lib/supabase'
+
+// ─── Types ───────────────────────────────────────────────────
+
+type ConnectionStatus = 'connecting' | 'connected' | 'error'
+
+interface HotelInfo {
+  name: string
+  count: number
+}
+
+// ─── Constants ───────────────────────────────────────────────
+
+const { width } = Dimensions.get('window')
+
+// ─── Colors ──────────────────────────────────────────────────
+
+const COLORS = {
+  bg: '#020617',
+  surface: '#0f172a',
+  surfaceLight: '#1e293b',
+  border: 'rgba(255,255,255,0.08)',
+  gold: '#fbbf24',
+  goldDark: '#d97706',
+  goldMuted: 'rgba(251,191,36,0.12)',
+  green: '#4ade80',
+  greenMuted: 'rgba(74,222,128,0.12)',
+  red: '#f87171',
+  redMuted: 'rgba(248,113,113,0.12)',
+  textPrimary: '#f1f5f9',
+  textSecondary: '#94a3b8',
+  textMuted: '#475569',
+}
+
+// ─── Status Badge ─────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: ConnectionStatus }) {
+  const pulseAnim = React.useRef(new Animated.Value(1)).current
+
+  useEffect(() => {
+    if (status === 'connected') {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.3, duration: 800, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        ])
+      ).start()
+    }
+  }, [status, pulseAnim])
+
+  const configs = {
+    connecting: {
+      label: 'Connecting...',
+      color: COLORS.gold,
+      bg: COLORS.goldMuted,
+      borderColor: 'rgba(251,191,36,0.3)',
+    },
+    connected: {
+      label: '✓ Connected to Supabase',
+      color: COLORS.green,
+      bg: COLORS.greenMuted,
+      borderColor: 'rgba(74,222,128,0.3)',
+    },
+    error: {
+      label: '✕ Connection Failed',
+      color: COLORS.red,
+      bg: COLORS.redMuted,
+      borderColor: 'rgba(248,113,113,0.3)',
+    },
+  }
+
+  const cfg = configs[status]
+
+  return (
+    <View
+      style={[
+        styles.badge,
+        { backgroundColor: cfg.bg, borderColor: cfg.borderColor },
+      ]}
+    >
+      {status === 'connecting' ? (
+        <ActivityIndicator size="small" color={cfg.color} style={{ marginRight: 8 }} />
+      ) : (
+        <Animated.View
+          style={[
+            styles.dot,
+            { backgroundColor: cfg.color, transform: [{ scale: pulseAnim }] },
+          ]}
+        />
+      )}
+      <Text style={[styles.badgeText, { color: cfg.color }]}>{cfg.label}</Text>
+    </View>
+  )
+}
+
+// ─── Stat Card ────────────────────────────────────────────────
+
+function StatCard({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <View style={styles.statCard}>
+      <Text style={styles.statIcon}>{icon}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  )
+}
+
+// ─── Main App ─────────────────────────────────────────────────
+
+export default function App() {
+  const [status, setStatus] = useState<ConnectionStatus>('connecting')
+  const [hotelInfo, setHotelInfo] = useState<HotelInfo | null>(null)
+  const [roomCount, setRoomCount] = useState<number>(0)
+  const fadeAnim = React.useRef(new Animated.Value(0)).current
+  const slideAnim = React.useRef(new Animated.Value(30)).current
+
+  const fetchData = async () => {
+    setStatus('connecting')
+
+    try {
+      // Check hotels
+      const { data: hotels, error: hotelError } = await supabase
+        .from('hotels')
+        .select('id, name')
+        .limit(1)
+        .single()
+
+      if (hotelError) throw hotelError
+
+      // Count rooms
+      const { count: rooms } = await supabase
+        .from('rooms')
+        .select('id', { count: 'exact', head: true })
+
+      setHotelInfo({ name: hotels.name, count: 1 })
+      setRoomCount(rooms ?? 0)
+      setStatus('connected')
+
+      // Animate in
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
+      ]).start()
+    } catch {
+      setStatus('error')
+    }
+  }
+
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <Text style={styles.headerIcon}>🏨</Text>
+            <View>
+              <Text style={styles.headerTitle}>Front Desk</Text>
+              <Text style={styles.headerSubtitle}>Tablet Interface</Text>
+            </View>
+          </View>
+          <StatusBadge status={status} />
+        </View>
+
+        {/* Content */}
+        {status === 'connecting' && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={COLORS.gold} />
+            <Text style={styles.loadingText}>Connecting to Supabase...</Text>
+          </View>
+        )}
+
+        {status === 'connected' && hotelInfo && (
+          <Animated.View
+            style={[
+              styles.content,
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+            ]}
+          >
+            {/* Hotel Card */}
+            <View style={styles.hotelCard}>
+              <View style={styles.hotelCardHeader}>
+                <Text style={styles.hotelCardLabel}>Active Property</Text>
+                <View style={styles.activePill}>
+                  <Text style={styles.activePillText}>LIVE</Text>
+                </View>
+              </View>
+              <Text style={styles.hotelName}>{hotelInfo.name}</Text>
+
+              {/* Divider */}
+              <View style={styles.divider} />
+
+              {/* Stats */}
+              <View style={styles.statsRow}>
+                <StatCard icon="🚪" label="Rooms" value={String(roomCount)} />
+                <View style={styles.statsDivider} />
+                <StatCard icon="📋" label="Requests" value="0" />
+                <View style={styles.statsDivider} />
+                <StatCard icon="✅" label="Resolved Today" value="0" />
+              </View>
+            </View>
+
+            {/* Module Cards */}
+            <Text style={styles.sectionTitle}>Modules</Text>
+            <View style={styles.moduleGrid}>
+              {[
+                { icon: '📞', label: 'Call Queue', badge: '0', color: COLORS.gold },
+                { icon: '💆', label: 'Spa Bookings', badge: '0', color: '#a78bfa' },
+                { icon: '🍽️', label: 'Food Orders', badge: '0', color: '#34d399' },
+                { icon: '🛎️', label: 'Room Tasks', badge: '0', color: '#60a5fa' },
+              ].map((mod) => (
+                <TouchableOpacity
+                  key={mod.label}
+                  style={styles.moduleCard}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.moduleIconBg, { backgroundColor: `${mod.color}15` }]}>
+                    <Text style={styles.moduleIcon}>{mod.icon}</Text>
+                  </View>
+                  <Text style={styles.moduleLabel}>{mod.label}</Text>
+                  <View style={[styles.moduleBadge, { backgroundColor: `${mod.color}20` }]}>
+                    <Text style={[styles.moduleBadgeText, { color: mod.color }]}>
+                      {mod.badge}
+                    </Text>
+                  </View>
+                  <Text style={styles.moduleArrow}>→</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Phase indicator */}
+            <View style={styles.phaseNote}>
+              <Text style={styles.phaseNoteText}>
+                🏗️ Phase 0 Complete — Foundation established
+              </Text>
+            </View>
+          </Animated.View>
+        )}
+
+        {status === 'error' && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorIcon}>⚠️</Text>
+            <Text style={styles.errorTitle}>Connection Failed</Text>
+            <Text style={styles.errorMessage}>
+              Could not connect to Supabase. Please check your{' '}
+              <Text style={styles.errorHighlight}>.env</Text> credentials and try again.
+            </Text>
+            <TouchableOpacity style={styles.retryButton} onPress={fetchData}>
+              <Text style={styles.retryText}>Retry Connection</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </SafeAreaView>
+  )
+}
+
+// ─── Styles ───────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+    padding: 20,
+  },
+
+  // Header
+  header: {
+    marginBottom: 24,
+    gap: 12,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  headerIcon: {
+    fontSize: 40,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+
+  // Badge
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 100,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  badgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  // Loading
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+  },
+
+  // Content
+  content: {
+    flex: 1,
+  },
+
+  // Hotel Card
+  hotelCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 24,
+  },
+  hotelCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  hotelCardLabel: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontWeight: '600',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  activePill: {
+    backgroundColor: COLORS.greenMuted,
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.3)',
+  },
+  activePillText: {
+    color: COLORS.green,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  hotelName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 16,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginBottom: 16,
+  },
+
+  // Stats
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statCard: {
+    alignItems: 'center',
+    flex: 1,
+    gap: 4,
+  },
+  statIcon: {
+    fontSize: 22,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: COLORS.gold,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statsDivider: {
+    width: 1,
+    backgroundColor: COLORS.border,
+    alignSelf: 'stretch',
+  },
+
+  // Modules
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
+  },
+  moduleGrid: {
+    gap: 10,
+  },
+  moduleCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 14,
+  },
+  moduleIconBg: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  moduleIcon: {
+    fontSize: 22,
+  },
+  moduleLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  moduleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 100,
+  },
+  moduleBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  moduleArrow: {
+    fontSize: 16,
+    color: COLORS.textMuted,
+  },
+
+  // Phase note
+  phaseNote: {
+    marginTop: 20,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(251,191,36,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.15)',
+    alignItems: 'center',
+  },
+  phaseNoteText: {
+    color: COLORS.gold,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+
+  // Error
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    gap: 12,
+  },
+  errorIcon: {
+    fontSize: 48,
+    marginBottom: 8,
+  },
+  errorTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  errorHighlight: {
+    color: COLORS.gold,
+    fontWeight: '600',
+  },
+  retryButton: {
+    marginTop: 12,
+    backgroundColor: COLORS.goldMuted,
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.3)',
+  },
+  retryText: {
+    color: COLORS.gold,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+})

@@ -1,0 +1,21 @@
+{
+  "name": "hotel-qr-ordering-system",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter @hotel-qr/web dev",
+    "dev:staff": "pnpm --filter @hotel-qr/staff-app start",
+    "build:web": "pnpm --filter @hotel-qr/web build",
+    "type-check": "pnpm --filter @hotel-qr/web exec tsc --noEmit",
+    "lint": "pnpm --filter @hotel-qr/web lint"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "pnpm": {
+    "allowedBuilds": [
+      "unrs-resolver"
+    ]
+  }
+}
