@@ -170,22 +170,10 @@ function WelcomeCard({ roomNumber, hotelName, floor, roomType }: {
               <a
                 key={item.label}
                 href={item.href}
-                className="group relative flex flex-col items-center gap-2 p-4 rounded-2xl transition-all duration-200"
+                className="group relative flex flex-col items-center gap-2 p-4 rounded-2xl transition-all duration-200 hover:bg-amber-500/10 hover:border-amber-500/30 hover:-translate-y-0.5"
                 style={{
                   background: 'rgba(255,255,255,0.04)',
                   border: '1px solid rgba(255,255,255,0.08)',
-                }}
-                onMouseOver={(e) => {
-                  const el = e.currentTarget
-                  el.style.background = 'rgba(251,191,36,0.08)'
-                  el.style.borderColor = 'rgba(251,191,36,0.2)'
-                  el.style.transform = 'translateY(-2px)'
-                }}
-                onMouseOut={(e) => {
-                  const el = e.currentTarget
-                  el.style.background = 'rgba(255,255,255,0.04)'
-                  el.style.borderColor = 'rgba(255,255,255,0.08)'
-                  el.style.transform = ''
                 }}
               >
                 <span className="text-2xl">{item.icon}</span>

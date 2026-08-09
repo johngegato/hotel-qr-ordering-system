@@ -55,20 +55,10 @@ export default function HomePage() {
           </p>
           <Link
             href="/app/stay?room=00000000-0000-0000-0000-000000000101&hash=secret-hash-302"
-            className="block w-full text-center py-3 px-6 rounded-xl font-semibold text-sm transition-all duration-200"
+            className="block w-full text-center py-3 px-6 rounded-xl font-semibold text-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-amber-500/20"
             style={{
               background: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)',
               color: '#0f172a',
-            }}
-            onMouseOver={(e) => {
-              const el = e.currentTarget
-              el.style.transform = 'translateY(-1px)'
-              el.style.boxShadow = '0 8px 24px rgba(251, 191, 36, 0.3)'
-            }}
-            onMouseOut={(e) => {
-              const el = e.currentTarget
-              el.style.transform = ''
-              el.style.boxShadow = ''
             }}
           >
             Enter Room 302 →
