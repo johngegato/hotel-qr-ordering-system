@@ -36,3 +36,5 @@ After the web app is running, visit:
 ```
 http://localhost:3000/app/stay?room=00000000-0000-0000-0000-000000000101&hash=secret-hash-302
 ```
+  run the server "pnpm dev:web" AND run the staff app "pnpm dev:staff" IN DIFFERENT TERMINAL
+  
