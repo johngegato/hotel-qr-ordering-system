@@ -19,6 +19,7 @@ import TaskQueue from './components/TaskQueue'
 import UserManagement, { StaffUser } from './components/UserManagement'
 import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
+import IncomingRequestAlert, { type IncomingRequest } from './components/IncomingRequestAlert'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -138,6 +139,7 @@ export default function App() {
   const [totalRequests, setTotalRequests] = useState(0)
   const [resolvedToday, setResolvedToday] = useState(0)
   const [activeStaffUser, setActiveStaffUser] = useState<StaffUser | null>(null)
+  const [incomingAlert, setIncomingAlert] = useState<IncomingRequest | null>(null)
   const fadeAnim = React.useRef(new Animated.Value(0)).current
   const slideAnim = React.useRef(new Animated.Value(30)).current
 
@@ -222,8 +224,12 @@ export default function App() {
     // Subscribe to ALL requests changes to keep stats live
     const channel = supabase
       .channel('app-stats')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
         fetchStats()
+        // Fire aggressive alert on every new PENDING request
+        if (payload.eventType === 'INSERT' && (payload.new as any)?.status === 'PENDING') {
+          setIncomingAlert(payload.new as IncomingRequest)
+        }
       })
       .subscribe()
 
@@ -233,6 +239,12 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+
+      {/* ⚠️ Aggressive incoming request alert */}
+      <IncomingRequestAlert
+        request={incomingAlert}
+        onDismiss={() => setIncomingAlert(null)}
+      />
 
       <ScrollView
         style={styles.scrollContainer}
