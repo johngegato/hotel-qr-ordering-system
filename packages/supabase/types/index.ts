@@ -16,6 +16,7 @@ export interface Hotel {
   address: string | null
   phone: string | null
   logo_url: string | null
+  color_scheme: string | null
   created_at: string
 }
 

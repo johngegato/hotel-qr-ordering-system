@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@hotel-qr/supabase/types'
@@ -32,7 +32,7 @@ interface ActiveRequest {
   status: 'PENDING' | 'CLAIMED' | 'RESOLVED'
 }
 
-export default function GuestRequestsPage() {
+function GuestRequestsContent() {
   const searchParams = useSearchParams()
   const roomId = searchParams.get('room')
 
@@ -377,5 +377,13 @@ export default function GuestRequestsPage() {
         hotelId={HOTEL_ID}
       />
     </main>
+  )
+}
+
+export default function GuestRequestsPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>Loading Requests…</div>}>
+      <GuestRequestsContent />
+    </Suspense>
   )
 }

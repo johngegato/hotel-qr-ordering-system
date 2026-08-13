@@ -7,6 +7,8 @@ export const metadata: Metadata = {
   description: 'Your personal in-room concierge is ready.',
 }
 
+import { GuestThemeProvider } from './components/GuestThemeProvider'
+
 // ─── Types ───────────────────────────────────────────────────
 
 interface StayPageProps {
@@ -67,7 +69,7 @@ export default async function StayPage({ searchParams }: StayPageProps) {
 
   const { data, error } = await supabase
     .from('rooms')
-    .select('id, room_number, floor, room_type, is_active, hotel_id, hotels(name, phone)')
+    .select('id, room_number, floor, room_type, is_active, hotel_id, hotels(name, phone, logo_url, color_scheme)')
     .eq('id', roomId)
     .eq('qr_auth_hash', hash)
     .eq('is_active', true)
@@ -80,7 +82,7 @@ export default async function StayPage({ searchParams }: StayPageProps) {
     room_type: string;
     is_active: boolean;
     hotel_id: string;
-    hotels: { name: string; phone: string | null } | { name: string; phone: string | null }[] | null;
+    hotels: { name: string; phone: string | null; logo_url: string | null; color_scheme: string | null } | { name: string; phone: string | null; logo_url: string | null; color_scheme: string | null }[] | null;
   } | null
 
   if (error || !room) {
@@ -92,18 +94,24 @@ export default async function StayPage({ searchParams }: StayPageProps) {
   const hotelData = room.hotels && !Array.isArray(room.hotels) ? room.hotels : null
   const hotelName = hotelData?.name ?? 'Grand Hotel'
   const hotelPhone = hotelData?.phone ?? '+18005550100'
+  const hotelLogo = hotelData?.logo_url ?? null
+  const colorScheme = hotelData?.color_scheme ?? 'gold'
 
   return (
-    <WelcomeCardClient
-      roomId={room.id}
-      hotelId={room.hotel_id}
-      hash={hash}
-      hotelName={hotelName}
-      hotelPhone={hotelPhone}
-      roomNumber={room.room_number}
-      floor={room.floor}
-      roomType={room.room_type}
-    />
+    <GuestThemeProvider colorScheme={colorScheme}>
+      <WelcomeCardClient
+        roomId={room.id}
+        hotelId={room.hotel_id}
+        hash={hash}
+        hotelName={hotelName}
+        hotelPhone={hotelPhone}
+        hotelLogo={hotelLogo}
+        colorScheme={colorScheme}
+        roomNumber={room.room_number}
+        floor={room.floor}
+        roomType={room.room_type}
+      />
+    </GuestThemeProvider>
   )
 }
 

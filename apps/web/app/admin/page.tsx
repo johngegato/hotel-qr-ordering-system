@@ -21,6 +21,13 @@ interface AdminStats {
 
 const MODULES = [
   {
+    title: '⚙️ Hotel Settings & Branding',
+    route: '/admin/settings',
+    description: 'Configure property name, direct phone call number, logo graphic & guest web app color scheme.',
+    color: '#fbbf24',
+    badge: 'Branding & Theme',
+  },
+  {
     title: '📊 Executive Analytics',
     route: '/admin/analytics',
     description: 'Live KPI cards, revenue breakdown (F&B vs. Spa), request volume metrics & CSV reporting.',
@@ -160,6 +167,12 @@ export default function AdminDashboardPage() {
           </div>
 
           <div style={{ display: 'flex', gap: 12 }}>
+            <a
+              href="/admin/settings"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fbbf24', textDecoration: 'none', borderRadius: 12, padding: '10px 18px', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              ⚙️ Hotel Settings
+            </a>
             <a
               href="/admin/analytics"
               style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', textDecoration: 'none', borderRadius: 12, padding: '10px 18px', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}

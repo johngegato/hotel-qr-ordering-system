@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import PhoneCaptureModal, { getStoredGuestPhone } from './PhoneCaptureModal'
+import { useGuestTheme } from './GuestThemeProvider'
 
 interface CallFrontDeskModalProps {
   isOpen: boolean
@@ -21,6 +22,7 @@ export default function CallFrontDeskModal({
   hotelPhone = '+18005550100',
   roomNumber,
 }: CallFrontDeskModalProps) {
+  const theme = useGuestTheme()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [requestId, setRequestId] = useState<string | null>(null)
   const [status, setStatus] = useState<'IDLE' | 'PENDING' | 'CLAIMED' | 'FAILED'>('IDLE')
@@ -131,8 +133,8 @@ export default function CallFrontDeskModal({
             <div
               className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl pulse-gold"
               style={{
-                background: 'linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(217,119,6,0.15) 100%)',
-                border: '1px solid rgba(251,191,36,0.3)',
+                background: `linear-gradient(135deg, ${theme.badgeBg} 0%, rgba(0,0,0,0.4) 100%)`,
+                border: `1px solid ${theme.badgeBorder}`,
               }}
             >
               📞
@@ -148,11 +150,11 @@ export default function CallFrontDeskModal({
                 href={`tel:${hotelPhone}`}
                 className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl font-semibold text-sm transition-all duration-200 hover:-translate-y-0.5"
                 style={{
-                  background: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)',
+                  background: theme.gradient,
                   color: '#0f172a',
                 }}
               >
-                <span>📱</span> Direct Phone Call
+                <span>📱</span> Direct Phone Call ({hotelPhone})
               </a>
 
               <button

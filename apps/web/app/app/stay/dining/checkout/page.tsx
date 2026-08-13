@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { CartItem, FulfillmentType, DeliveryPreference, ArrivalTime, FoodOrderPayload } from '@hotel-qr/supabase/types'
@@ -19,7 +19,7 @@ const ARRIVAL_OPTIONS: { value: ArrivalTime; label: string }[] = [
   { value: 'IN_60_MINS', label: 'In 60 minutes' },
 ]
 
-export default function CheckoutPage() {
+function CheckoutContent() {
   const searchParams = useSearchParams()
   const router       = useRouter()
   const roomId       = searchParams.get('room') ?? ''
@@ -293,4 +293,12 @@ const labelStyle: React.CSSProperties = {
 }
 const smallBtnStyle: React.CSSProperties = {
   width: 28, height: 28, borderRadius: '50%', border: '1px solid rgba(249,115,22,0.4)', background: 'rgba(249,115,22,0.08)', color: '#f97316', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>Loading Checkout…</div>}>
+      <CheckoutContent />
+    </Suspense>
+  )
 }

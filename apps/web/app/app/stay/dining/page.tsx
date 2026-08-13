@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { Suspense, useEffect, useRef, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { CatalogItem, CartItem, DietaryTag } from '@hotel-qr/supabase/types'
@@ -37,7 +37,7 @@ function saveCart(cart: CartItem[]) {
   localStorage.setItem(CART_KEY, JSON.stringify(cart))
 }
 
-export default function GuestDiningPage() {
+function GuestDiningContent() {
   const searchParams  = useSearchParams()
   const router        = useRouter()
   const roomId        = searchParams.get('room') ?? ''
@@ -265,4 +265,12 @@ export default function GuestDiningPage() {
 
 const qtyBtnStyle: React.CSSProperties = {
   width: 32, height: 32, borderRadius: '50%', border: '1px solid rgba(249,115,22,0.5)', background: 'rgba(249,115,22,0.1)', color: '#f97316', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 300,
+}
+
+export default function GuestDiningPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>Loading Menu…</div>}>
+      <GuestDiningContent />
+    </Suspense>
+  )
 }

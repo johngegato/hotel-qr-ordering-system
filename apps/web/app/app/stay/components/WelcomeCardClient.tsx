@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import CallFrontDeskModal from './CallFrontDeskModal'
 import ActiveRequestsBanner from './ActiveRequestsBanner'
+import { useGuestTheme } from './GuestThemeProvider'
 
 interface WelcomeCardClientProps {
   roomId: string
@@ -13,6 +14,8 @@ interface WelcomeCardClientProps {
   floor: string | null
   roomType: string
   hotelPhone?: string | null
+  hotelLogo?: string | null
+  colorScheme?: string | null
 }
 
 export default function WelcomeCardClient({
@@ -24,8 +27,10 @@ export default function WelcomeCardClient({
   floor,
   roomType,
   hotelPhone = '+18005550100',
+  hotelLogo,
 }: WelcomeCardClientProps) {
   const [isCallModalOpen, setIsCallModalOpen] = useState(false)
+  const theme = useGuestTheme()
 
   const roomTypeLabels: Record<string, string> = {
     STANDARD: 'Standard Room',
@@ -43,10 +48,10 @@ export default function WelcomeCardClient({
 
   return (
     <main className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden px-6">
-      {/* Animated background orbs */}
-      <div className="bg-orb bg-orb-1" />
-      <div className="bg-orb bg-orb-2" />
-      <div className="bg-orb bg-orb-3" />
+      {/* Animated background orbs using dynamic theme orb gradients */}
+      <div className="bg-orb bg-orb-1" style={{ background: theme.orbGradient, opacity: 0.2 }} />
+      <div className="bg-orb bg-orb-2" style={{ background: theme.orbGradient, opacity: 0.15 }} />
+      <div className="bg-orb bg-orb-3" style={{ background: theme.orbGradient, opacity: 0.12 }} />
 
       {/* Grid overlay */}
       <div
@@ -66,17 +71,33 @@ export default function WelcomeCardClient({
 
         {/* Main welcome card */}
         <div className="glass-strong rounded-3xl p-8 text-center animate-fade-up">
-          {/* Hotel icon */}
+          {/* Hotel logo or icon */}
           <div className="animate-fade-up animate-fade-up-delay-1 mb-6 flex justify-center">
-            <div
-              className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl pulse-gold"
-              style={{
-                background: 'linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(217,119,6,0.15) 100%)',
-                border: '1px solid rgba(251,191,36,0.3)',
-              }}
-            >
-              🏨
-            </div>
+            {hotelLogo ? (
+              <img
+                src={hotelLogo}
+                alt={hotelName}
+                className="w-20 h-20 rounded-2xl object-cover shadow-2xl"
+                style={{
+                  border: `2px solid ${theme.primaryHex}`,
+                  boxShadow: `0 0 20px ${theme.glowRgba}`,
+                }}
+                onError={(e) => {
+                  // Fallback to icon if logo image fails to load
+                  ;(e.target as HTMLElement).style.display = 'none'
+                }}
+              />
+            ) : (
+              <div
+                className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl pulse-gold"
+                style={{
+                  background: `linear-gradient(135deg, ${theme.badgeBg} 0%, rgba(0,0,0,0.4) 100%)`,
+                  border: `1px solid ${theme.badgeBorder}`,
+                }}
+              >
+                🏨
+              </div>
+            )}
           </div>
 
           {/* Welcome text */}
@@ -85,7 +106,15 @@ export default function WelcomeCardClient({
           </p>
 
           <h1 className="animate-fade-up animate-fade-up-delay-2 text-5xl font-bold mb-1">
-            <span className="text-gold-gradient">Room</span>
+            <span
+              style={{
+                background: theme.gradient,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              Room
+            </span>
             <br />
             <span className="text-white">{roomNumber}</span>
           </h1>
@@ -100,14 +129,14 @@ export default function WelcomeCardClient({
             <div
               className="px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2"
               style={{
-                background: 'rgba(34, 197, 94, 0.15)',
-                border: '1px solid rgba(34, 197, 94, 0.3)',
-                color: '#4ade80',
+                background: theme.badgeBg,
+                border: `1px solid ${theme.badgeBorder}`,
+                color: theme.primaryHex,
               }}
             >
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: theme.primaryHex }} />
+                <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: theme.primaryHex }} />
               </span>
               Session Active
             </div>
@@ -132,7 +161,7 @@ export default function WelcomeCardClient({
                   <button
                     key={item.label}
                     onClick={() => setIsCallModalOpen(true)}
-                    className="group relative flex flex-col items-center gap-2 p-4 rounded-2xl transition-all duration-200 hover:bg-amber-500/10 hover:border-amber-500/30 hover:-translate-y-0.5 text-left"
+                    className="group relative flex flex-col items-center gap-2 p-4 rounded-2xl transition-all duration-200 hover:-translate-y-0.5 text-left"
                     style={{
                       background: 'rgba(255,255,255,0.04)',
                       border: '1px solid rgba(255,255,255,0.08)',
@@ -148,7 +177,7 @@ export default function WelcomeCardClient({
                 <a
                   key={item.label}
                   href={item.href}
-                  className="group relative flex flex-col items-center gap-2 p-4 rounded-2xl transition-all duration-200 hover:bg-amber-500/10 hover:border-amber-500/30 hover:-translate-y-0.5"
+                  className="group relative flex flex-col items-center gap-2 p-4 rounded-2xl transition-all duration-200 hover:-translate-y-0.5"
                   style={{
                     background: 'rgba(255,255,255,0.04)',
                     border: '1px solid rgba(255,255,255,0.08)',

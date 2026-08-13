@@ -1,26 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import PhoneCaptureModal, { getStoredGuestPhone } from '../components/PhoneCaptureModal'
-
-interface SpaService {
-  id: string
-  name: string
-  description: string | null
-  price: number
-  duration_mins: number
-  requires_on_call: boolean
-  is_available: boolean
-  image_url: string | null
-}
-
-interface SlotLock {
-  id: string
-  start_time: string
-  status: string
-}
-
 import { useSearchParams } from 'next/navigation'
 
 interface SpaService {
@@ -47,7 +29,7 @@ const FALLBACK_SERVICES: SpaService[] = [
   { id: 'spa-04', name: 'Foot & Leg Reflexology', description: 'Revitalizing foot massage restoring natural energy flow.', price: 1800, duration_mins: 45, requires_on_call: false, is_available: true, image_url: null },
 ]
 
-export default function GuestSpaPage() {
+function GuestSpaContent() {
   const searchParams = useSearchParams()
   const roomId = searchParams.get('room') || '00000000-0000-0000-0000-000000000101'
   const hashParam = searchParams.get('hash') || 'secret-hash-302'
@@ -506,5 +488,13 @@ export default function GuestSpaPage() {
         hotelId={defaultHotelId}
       />
     </main>
+  )
+}
+
+export default function GuestSpaPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>Loading Spa Services…</div>}>
+      <GuestSpaContent />
+    </Suspense>
   )
 }
