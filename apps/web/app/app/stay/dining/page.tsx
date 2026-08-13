@@ -55,10 +55,26 @@ function GuestDiningContent() {
   const catBarRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
-  // Load menu items
+  // Load menu items from dedicated menu_catalog (with catalog_items fallback)
   const fetchItems = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
+
+    // 1. Query dedicated menu_catalog
+    const { data: menuCatalog } = await (supabase.from('menu_catalog') as any)
+      .select('*')
+      .eq('hotel_id', HOTEL_ID)
+      .eq('is_available', true)
+      .order('category')
+      .order('sort_order')
+
+    if (menuCatalog && menuCatalog.length > 0) {
+      setItems(menuCatalog as CatalogItem[])
+      setLoading(false)
+      return
+    }
+
+    // 2. Fallback to catalog_items
+    const { data: catalogItemsData } = await supabase
       .from('catalog_items')
       .select('*')
       .eq('hotel_id', HOTEL_ID)
@@ -66,7 +82,8 @@ function GuestDiningContent() {
       .eq('is_available', true)
       .order('category')
       .order('sort_order')
-    setItems((data ?? []) as CatalogItem[])
+
+    setItems((catalogItemsData ?? []) as CatalogItem[])
     setLoading(false)
   }, [supabase, HOTEL_ID])
 
@@ -77,11 +94,12 @@ function GuestDiningContent() {
     setCart(loadCart())
   }, [])
 
-  // Subscribe to 86 toggles
+  // Subscribe to 86 toggles on menu_catalog and catalog_items
   useEffect(() => {
     const ch = supabase
       .channel('guest-dining-catalog')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'catalog_items' }, fetchItems)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_catalog' }, fetchItems)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, fetchItems)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [supabase, fetchItems])

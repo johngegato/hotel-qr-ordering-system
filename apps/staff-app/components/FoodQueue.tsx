@@ -160,16 +160,35 @@ export default function FoodQueue() {
       .in('status', ['PENDING', 'PREPARING'])
       .order('created_at', { ascending: true })
 
-    // 2. Fetch catalog items from DB
-    const { data: dbCatalog } = await supabase
+    // 2. Fetch dedicated menu catalog items from menu_catalog table
+    const { data: menuCatalogData } = await (supabase as any)
+      .from('menu_catalog')
+      .select('id, name, price, is_available, category, description')
+
+    // 3. Fallback to catalog_items if menu_catalog is not yet created/populated
+    const { data: dbCatalog } = await (supabase as any)
       .from('catalog_items')
       .select('id, name, price, is_available, category, description')
 
-    // Merge database menu items with complete default restaurant menu
+    // Build unified map prioritizing dedicated menu_catalog data
     const mergedMap = new Map<string, CatalogMenuItem>()
     DEFAULT_FULL_MENU.forEach(item => mergedMap.set(item.name.toLowerCase(), item))
+    
     if (dbCatalog && dbCatalog.length > 0) {
-      dbCatalog.forEach(item => {
+      dbCatalog.forEach((item: any) => {
+        mergedMap.set(item.name.toLowerCase(), {
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          is_available: item.is_available ?? true,
+          category: item.category || 'Mains',
+          description: item.description || '',
+        })
+      })
+    }
+
+    if (menuCatalogData && menuCatalogData.length > 0) {
+      menuCatalogData.forEach((item: any) => {
         mergedMap.set(item.name.toLowerCase(), {
           id: item.id,
           name: item.name,
@@ -192,6 +211,7 @@ export default function FoodQueue() {
     ch = supabase
       .channel('staff-food-queue')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_catalog' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, fetchData)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
