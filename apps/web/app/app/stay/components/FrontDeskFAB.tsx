@@ -65,26 +65,26 @@ export default function FrontDeskFAB({
   return (
     <>
       <div className="fixed bottom-6 right-6 z-40 flex items-center gap-3">
-        {/* Floating Call Button */}
+        {/* Floating Call Button - Touch Optimized & Enlarged */}
         <a
           href={`tel:${phone}`}
           onClick={handleClick}
           aria-label={`Call Front Desk at ${phone}`}
-          className="group relative flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-full text-slate-950 font-bold text-sm shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 border border-amber-300/40"
+          className="group relative flex items-center justify-center gap-3 px-6 py-4.5 min-h-[64px] min-w-[64px] rounded-full text-slate-950 font-extrabold text-base shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 border-2 border-amber-300/60"
           style={{
             background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 50%, #d97706 100%)',
-            boxShadow: '0 8px 25px -4px rgba(245, 158, 11, 0.45), 0 0 15px rgba(251, 191, 36, 0.3)',
+            boxShadow: '0 10px 30px -4px rgba(245, 158, 11, 0.55), 0 0 20px rgba(251, 191, 36, 0.4)',
           }}
         >
           {/* Subtle pulse ring around button */}
-          <span className="absolute -inset-1 rounded-full bg-amber-400/30 animate-ping opacity-50 pointer-events-none" />
+          <span className="absolute -inset-1 rounded-full bg-amber-400/40 animate-ping opacity-60 pointer-events-none" />
 
-          <span className="text-xl leading-none">📞</span>
-          <span className="hidden sm:inline font-extrabold tracking-wide uppercase text-xs text-slate-950">
-            Call Desk
+          <span className="text-3xl leading-none transform group-hover:scale-110 transition-transform">📞</span>
+          <span className="hidden sm:inline font-extrabold tracking-wider uppercase text-sm text-slate-950">
+            Call Front Desk
           </span>
-          <span className="text-[11px] font-mono opacity-90 hidden md:inline text-slate-900">
-            ({phone})
+          <span className="text-xs font-mono font-bold opacity-90 hidden md:inline text-slate-900 bg-amber-200/50 px-2 py-0.5 rounded-md">
+            {phone}
           </span>
         </a>
       </div>
