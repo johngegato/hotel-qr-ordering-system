@@ -66,31 +66,30 @@ export default function WelcomeCardClient({
         }}
       />
 
-      <div className="relative z-10 w-full max-w-sm mx-auto">
+      <div className="relative z-10 w-full max-w-md mx-auto py-8">
         {/* Active Requests Realtime Banner */}
         <ActiveRequestsBanner roomId={roomId} />
 
-        {/* Main welcome card */}
-        <div className="glass-strong rounded-3xl p-8 text-center animate-fade-up">
+        {/* Main welcome card - Centered */}
+        <div className="glass-strong rounded-3xl p-8 sm:p-10 text-center animate-fade-up shadow-2xl border border-white/15">
           {/* Hotel logo or icon */}
           <div className="animate-fade-up animate-fade-up-delay-1 mb-6 flex justify-center">
             {hotelLogo ? (
               <img
                 src={hotelLogo}
                 alt={hotelName}
-                className="w-20 h-20 rounded-2xl object-cover shadow-2xl"
+                className="w-24 h-24 rounded-3xl object-cover shadow-2xl"
                 style={{
                   border: `2px solid ${theme.primaryHex}`,
-                  boxShadow: `0 0 20px ${theme.glowRgba}`,
+                  boxShadow: `0 0 25px ${theme.glowRgba}`,
                 }}
                 onError={(e) => {
-                  // Fallback to icon if logo image fails to load
                   ;(e.target as HTMLElement).style.display = 'none'
                 }}
               />
             ) : (
               <div
-                className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl pulse-gold"
+                className="w-24 h-24 rounded-3xl flex items-center justify-center text-5xl pulse-gold shadow-2xl"
                 style={{
                   background: `linear-gradient(135deg, ${theme.badgeBg} 0%, rgba(0,0,0,0.4) 100%)`,
                   border: `1px solid ${theme.badgeBorder}`,
@@ -102,11 +101,11 @@ export default function WelcomeCardClient({
           </div>
 
           {/* Welcome text */}
-          <p className="animate-fade-up animate-fade-up-delay-1 text-slate-400 text-sm font-medium uppercase tracking-widest mb-2">
+          <p className="animate-fade-up animate-fade-up-delay-1 text-slate-400 text-xs sm:text-sm font-bold uppercase tracking-widest mb-2">
             {hotelName}
           </p>
 
-          <h1 className="animate-fade-up animate-fade-up-delay-2 text-5xl font-bold mb-1">
+          <h1 className="animate-fade-up animate-fade-up-delay-2 text-5xl sm:text-6xl font-extrabold mb-1 tracking-tight">
             <span
               style={{
                 background: theme.gradient,
@@ -120,7 +119,7 @@ export default function WelcomeCardClient({
             <span className="text-white">{roomNumber}</span>
           </h1>
 
-          <p className="animate-fade-up animate-fade-up-delay-2 text-slate-400 text-sm mt-2 mb-8">
+          <p className="animate-fade-up animate-fade-up-delay-2 text-slate-300 text-base font-semibold mt-2 mb-8">
             {roomTypeLabels[roomType] ?? roomType}
             {floor && ` · Floor ${floor}`}
           </p>
@@ -128,16 +127,16 @@ export default function WelcomeCardClient({
           {/* Status badge */}
           <div className="animate-fade-up animate-fade-up-delay-3 flex items-center justify-center gap-2 mb-8">
             <div
-              className="px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2"
+              className="px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2.5 shadow-lg"
               style={{
                 background: theme.badgeBg,
                 border: `1px solid ${theme.badgeBorder}`,
                 color: theme.primaryHex,
               }}
             >
-              <span className="relative flex h-2 w-2">
+              <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: theme.primaryHex }} />
-                <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: theme.primaryHex }} />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ background: theme.primaryHex }} />
               </span>
               Session Active
             </div>
@@ -145,31 +144,30 @@ export default function WelcomeCardClient({
 
           {/* Divider */}
           <div
-            className="animate-fade-up animate-fade-up-delay-3 mb-6"
-            style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}
+            className="animate-fade-up animate-fade-up-delay-3 mb-8"
+            style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}
           />
 
           {/* Welcome message */}
-          <p className="animate-fade-up animate-fade-up-delay-4 text-slate-300 text-sm leading-relaxed mb-6">
-            Welcome! Your personal concierge is ready. Explore dining, spa, and room services below.
+          <p className="animate-fade-up animate-fade-up-delay-4 text-slate-200 text-base leading-relaxed mb-8 font-medium">
+            Welcome! Your personal concierge is ready. Select a service below or call the front desk anytime.
           </p>
 
-          {/* Service quick-access buttons */}
-          <div className="animate-fade-up animate-fade-up-delay-4 grid grid-cols-2 gap-3">
+          {/* Service quick-access buttons - Touch Optimized & Enlarged */}
+          <div className="animate-fade-up animate-fade-up-delay-4 grid grid-cols-2 gap-4">
             {quickServices.map((item) => {
               if (item.action === 'callModal') {
                 return (
                   <button
                     key={item.label}
                     onClick={() => setIsCallModalOpen(true)}
-                    className="group relative flex flex-col items-center gap-2 p-4 rounded-2xl transition-all duration-200 hover:-translate-y-0.5 text-left"
+                    className="group relative flex flex-col items-center justify-center gap-2 p-5 rounded-3xl transition-all duration-300 hover:scale-[1.03] active:scale-[0.97] min-h-[120px] text-center shadow-lg border border-white/10 hover:border-amber-400/40 hover:bg-white/10"
                     style={{
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid rgba(255,255,255,0.08)',
+                      background: 'rgba(255,255,255,0.06)',
                     }}
                   >
-                    <span className="text-2xl">{item.icon}</span>
-                    <span className="text-slate-300 text-xs font-medium">{item.label}</span>
+                    <span className="text-4xl transform group-hover:scale-110 transition-transform">{item.icon}</span>
+                    <span className="text-slate-100 text-sm font-extrabold">{item.label}</span>
                   </button>
                 )
               }
@@ -178,14 +176,13 @@ export default function WelcomeCardClient({
                 <a
                   key={item.label}
                   href={item.href}
-                  className="group relative flex flex-col items-center gap-2 p-4 rounded-2xl transition-all duration-200 hover:-translate-y-0.5"
+                  className="group relative flex flex-col items-center justify-center gap-2 p-5 rounded-3xl transition-all duration-300 hover:scale-[1.03] active:scale-[0.97] min-h-[120px] text-center shadow-lg border border-white/10 hover:border-indigo-400/40 hover:bg-white/10"
                   style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'rgba(255,255,255,0.06)',
                   }}
                 >
-                  <span className="text-2xl">{item.icon}</span>
-                  <span className="text-slate-300 text-xs font-medium">{item.label}</span>
+                  <span className="text-4xl transform group-hover:scale-110 transition-transform">{item.icon}</span>
+                  <span className="text-slate-100 text-sm font-extrabold">{item.label}</span>
                 </a>
               )
             })}
