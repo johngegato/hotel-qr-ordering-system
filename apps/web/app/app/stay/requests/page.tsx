@@ -7,6 +7,7 @@ import type { Database } from '@hotel-qr/supabase/types'
 import type { CatalogItem, TaskPayload, TaskPriority, TargetDepartment } from '@hotel-qr/supabase/types'
 
 import PhoneCaptureModal, { getStoredGuestPhone } from '../components/PhoneCaptureModal'
+import FrontDeskFAB from '../components/FrontDeskFAB'
 
 const supabase = createBrowserClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,6 +38,7 @@ function GuestRequestsContent() {
   const roomId = searchParams.get('room')
 
   const [items, setItems] = useState<TaskItem[]>([])
+  const [roomNumber, setRoomNumber] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [step, setStep] = useState<Step>('grid')
   const [selectedItem, setSelectedItem] = useState<TaskItem | null>(null)
@@ -64,6 +66,22 @@ function GuestRequestsContent() {
     fetch()
   }, [])
 
+  useEffect(() => {
+    if (!roomId) return
+    const fetchRoom = async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase as any)
+        .from('rooms')
+        .select('room_number')
+        .eq('id', roomId)
+        .single()
+      if (data?.room_number) {
+        setRoomNumber(data.room_number)
+      }
+    }
+    fetchRoom()
+  }, [roomId])
+
   // Real-time tracker subscription
   useEffect(() => {
     if (!activeRequest) return
@@ -82,12 +100,10 @@ function GuestRequestsContent() {
       )
       .subscribe()
 
-    // Realtime subscription handles all status updates — no polling needed.
-
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [activeRequest?.id])
+  }, [activeRequest])
 
   const openModal = (item: TaskItem) => {
     setSelectedItem(item)
@@ -170,47 +186,74 @@ function GuestRequestsContent() {
   const hash = searchParams.get('hash') ?? ''
 
   return (
-    <main className="relative min-h-screen bg-slate-950 text-slate-100 px-5 py-10">
+    <main className="relative min-h-screen bg-slate-950 text-slate-100 px-5 py-10 pb-28">
       <div className="bg-orb bg-orb-1" />
       <div className="bg-orb bg-orb-2" />
 
-      <div className="relative z-10 max-w-md mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <a href={`/app/stay?room=${roomId}&hash=${hash}`} className="text-slate-500 text-sm hover:text-slate-300 transition-colors">← Back</a>
-            <h1 className="text-2xl font-bold mt-1">Room Requests</h1>
-            <p className="text-slate-400 text-sm">We&apos;ll send staff right away.</p>
-          </div>
+      <div className="relative z-10 max-w-lg mx-auto space-y-8">
+        {/* Header - Center Aligned */}
+        <div className="text-center flex flex-col items-center space-y-2">
+          <a
+            href={`/app/stay?room=${roomId}&hash=${hash}`}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-slate-400 text-xs font-semibold hover:text-white hover:bg-white/10 transition-all mb-1"
+          >
+            ← Back to Concierge
+          </a>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white">Room Services</h1>
+          <p className="text-slate-400 text-sm max-w-xs mx-auto">
+            Select a service request below and our team will attend to your room immediately.
+          </p>
         </div>
 
-        {/* Grid */}
+        {/* Grid - Center Aligned items with enlarged touch targets */}
         {step === 'grid' && (
-          <>
+          <div className="space-y-8">
             {loading ? (
-              <div className="text-center py-16 text-slate-500">Loading requests...</div>
+              <div className="text-center py-20 text-slate-500 font-medium animate-pulse">
+                Loading service options...
+              </div>
             ) : (
               <>
                 {depts.map(dept => {
                   const cfg = DEPT_CONFIG[dept]
                   return (
-                    <div key={dept}>
-                      <div className="flex items-center gap-2 mb-3">
-                        <span>{cfg.icon}</span>
-                        <span className="text-xs font-bold tracking-widest uppercase" style={{ color: cfg.color }}>{cfg.label}</span>
-                        <div className="flex-1 h-px bg-white/5" />
+                    <div key={dept} className="space-y-4">
+                      {/* Department Divider Header */}
+                      <div className="flex items-center justify-center gap-3">
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
+                          <span className="text-base">{cfg.icon}</span>
+                          <span
+                            className="text-xs font-extrabold tracking-widest uppercase"
+                            style={{ color: cfg.color }}
+                          >
+                            {cfg.label}
+                          </span>
+                        </div>
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+
+                      {/* Touch-optimized Card Grid */}
+                      <div className="grid grid-cols-2 gap-4">
                         {grouped[dept].map(item => (
                           <button
                             key={item.id}
                             onClick={() => openModal(item)}
-                            className="text-left p-4 rounded-2xl border transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                            style={{ background: cfg.bg, borderColor: `${cfg.color}30` }}
+                            className="group text-center p-5 rounded-3xl border transition-all duration-300 hover:scale-[1.03] active:scale-[0.97] min-h-[140px] flex flex-col items-center justify-center shadow-lg hover:shadow-2xl relative overflow-hidden"
+                            style={{
+                              background: `linear-gradient(145deg, ${cfg.bg}, rgba(15, 23, 42, 0.7))`,
+                              borderColor: `${cfg.color}35`,
+                            }}
                           >
-                            <div className="text-2xl mb-2">🛎️</div>
-                            <div className="font-bold text-sm text-slate-100 leading-tight">{item.name}</div>
-                            <div className="text-xs text-slate-400 mt-1">⏱ {item.target_sla_mins} min SLA</div>
+                            <div className="text-4xl mb-3 transform group-hover:scale-110 transition-transform">
+                              🛎️
+                            </div>
+                            <div className="font-bold text-sm text-slate-100 leading-snug text-center px-1">
+                              {item.name}
+                            </div>
+                            <div className="text-[11px] text-slate-400 mt-2 px-2.5 py-0.5 rounded-full bg-black/30 border border-white/5 font-medium">
+                              ⏱ {item.target_sla_mins} min SLA
+                            </div>
                           </button>
                         ))}
                       </div>
@@ -218,113 +261,151 @@ function GuestRequestsContent() {
                   )
                 })}
 
-                {/* Custom Request */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span>✍️</span>
-                    <span className="text-xs font-bold tracking-widest uppercase text-slate-500">Other</span>
-                    <div className="flex-1 h-px bg-white/5" />
+                {/* Custom Request Section */}
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center justify-center gap-3">
+                    <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
+                      <span className="text-base">✍️</span>
+                      <span className="text-xs font-extrabold tracking-widest uppercase text-slate-400">
+                        Custom Request
+                      </span>
+                    </div>
+                    <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
                   </div>
+
                   <button
                     onClick={openCustom}
-                    className="w-full p-4 rounded-2xl border border-white/10 text-left transition-all hover:border-white/20 hover:bg-white/5"
+                    className="w-full p-6 rounded-3xl border border-white/15 text-center flex flex-col items-center justify-center transition-all duration-300 hover:border-indigo-500/50 hover:bg-indigo-500/10 active:scale-[0.98] min-h-[130px] shadow-xl"
+                    style={{ background: 'rgba(255, 255, 255, 0.03)' }}
                   >
-                    <div className="text-2xl mb-2">✍️</div>
-                    <div className="font-bold text-sm text-slate-100">Other Request</div>
-                    <div className="text-xs text-slate-400 mt-1">Describe what you need</div>
+                    <div className="text-4xl mb-2">✍️</div>
+                    <div className="font-bold text-base text-slate-100">Other Request</div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      Need something else? Tap to describe your custom request
+                    </div>
                   </button>
                 </div>
               </>
             )}
-          </>
+          </div>
         )}
 
-        {/* Modal Sheet */}
+        {/* Modal Sheet - Center Aligned with Large Buttons */}
         {step === 'modal' && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-6" style={{ background: 'rgba(0,0,0,0.7)' }}>
-            <div className="w-full max-w-md rounded-3xl border border-white/10 p-6 space-y-5" style={{ background: '#0f172a' }}>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
+            <div className="w-full max-w-md rounded-3xl border border-white/15 p-6 space-y-6 text-center animate-fade-up" style={{ background: '#0f172a' }}>
               {isCustom ? (
-                <>
-                  <h2 className="text-xl font-bold">✍️ Other Request</h2>
+                <div className="space-y-3">
+                  <div className="text-4xl">✍️</div>
+                  <h2 className="text-xl font-bold text-white">Other Request</h2>
                   <div>
-                    <label className="text-sm font-semibold text-slate-400 block mb-2">What do you need? *</label>
+                    <label className="text-xs font-semibold text-slate-400 block mb-2 uppercase tracking-wider">
+                      What can we bring to your room? *
+                    </label>
                     <textarea
                       value={customText}
                       onChange={e => setCustomText(e.target.value)}
-                      placeholder="Describe your request..."
+                      placeholder="e.g. Extra pillows, extra towels, iron..."
                       rows={3}
-                      className="w-full p-3 rounded-xl bg-white/5 border border-white/10 text-slate-100 text-sm resize-none focus:outline-none focus:border-indigo-500"
+                      className="w-full p-4 rounded-2xl bg-white/5 border border-white/10 text-slate-100 text-base resize-none focus:outline-none focus:border-indigo-500 text-center placeholder:text-slate-500"
                     />
                   </div>
-                </>
+                </div>
               ) : (
-                <>
+                <div className="space-y-4">
+                  <div className="text-4xl">🛎️</div>
                   <div>
-                    <h2 className="text-xl font-bold">{selectedItem?.name}</h2>
-                    {selectedItem?.description && <p className="text-sm text-slate-400 mt-1">{selectedItem.description}</p>}
+                    <h2 className="text-2xl font-extrabold text-white">{selectedItem?.name}</h2>
+                    {selectedItem?.description && (
+                      <p className="text-sm text-slate-400 mt-1 max-w-xs mx-auto">{selectedItem.description}</p>
+                    )}
                   </div>
 
-                  {/* Quantity */}
-                  <div>
-                    <label className="text-sm font-semibold text-slate-400 block mb-3">Quantity</label>
-                    <div className="flex items-center gap-4">
-                      <button onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                        className="w-10 h-10 rounded-full bg-white/10 text-xl font-bold flex items-center justify-center hover:bg-white/20 transition-colors">−</button>
-                      <span className="text-2xl font-bold w-8 text-center">{quantity}</span>
-                      <button onClick={() => setQuantity(q => Math.min(10, q + 1))}
-                        className="w-10 h-10 rounded-full bg-white/10 text-xl font-bold flex items-center justify-center hover:bg-white/20 transition-colors">+</button>
+                  {/* Quantity adjustment with 56px touch target buttons */}
+                  <div className="pt-2">
+                    <label className="text-xs font-semibold text-slate-400 block mb-3 uppercase tracking-wider">Quantity</label>
+                    <div className="flex items-center justify-center gap-6">
+                      <button
+                        onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                        aria-label="Decrease quantity"
+                        className="w-14 h-14 rounded-2xl bg-white/10 text-2xl font-bold flex items-center justify-center hover:bg-white/20 active:scale-95 transition-all text-slate-200 border border-white/10"
+                      >
+                        −
+                      </button>
+                      <span className="text-3xl font-extrabold w-10 text-center text-white">{quantity}</span>
+                      <button
+                        onClick={() => setQuantity(q => Math.min(10, q + 1))}
+                        aria-label="Increase quantity"
+                        className="w-14 h-14 rounded-2xl bg-white/10 text-2xl font-bold flex items-center justify-center hover:bg-white/20 active:scale-95 transition-all text-slate-200 border border-white/10"
+                      >
+                        +
+                      </button>
                     </div>
                   </div>
-                </>
+                </div>
               )}
 
               {/* Notes */}
-              <div>
-                <label className="text-sm font-semibold text-slate-400 block mb-2">Additional Notes <span className="text-slate-600">(optional)</span></label>
+              <div className="text-center">
+                <label className="text-xs font-semibold text-slate-400 block mb-2 uppercase tracking-wider">
+                  Special Notes <span className="text-slate-500">(Optional)</span>
+                </label>
                 <textarea
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
-                  placeholder="Any special instructions..."
+                  placeholder="Any special instructions for staff..."
                   rows={2}
-                  className="w-full p-3 rounded-xl bg-white/5 border border-white/10 text-slate-100 text-sm resize-none focus:outline-none focus:border-indigo-500"
+                  className="w-full p-4 rounded-2xl bg-white/5 border border-white/10 text-slate-100 text-sm resize-none focus:outline-none focus:border-indigo-500 text-center placeholder:text-slate-500"
                 />
               </div>
 
-              <div className="flex gap-3">
-                <button onClick={() => setStep('grid')} className="flex-1 py-3 rounded-2xl bg-white/5 border border-white/10 text-slate-400 font-bold text-sm hover:bg-white/10 transition-colors">Cancel</button>
+              {/* Enlarge Modal Touch Target Action Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setStep('grid')}
+                  className="flex-1 py-4 px-5 rounded-2xl bg-white/10 border border-white/10 text-slate-300 font-bold text-base hover:bg-white/15 transition-all min-h-[54px] active:scale-95"
+                >
+                  Cancel
+                </button>
                 <button
                   onClick={handleSubmit}
                   disabled={isCustom && !customText.trim()}
-                  className="flex-[2] py-3 rounded-2xl font-bold text-sm text-white transition-colors"
-                  style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', opacity: (isCustom && !customText.trim()) ? 0.5 : 1 }}
+                  className="flex-[2] py-4 px-5 rounded-2xl font-extrabold text-base text-white transition-all shadow-xl min-h-[54px] active:scale-95 flex items-center justify-center gap-2"
+                  style={{
+                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    opacity: (isCustom && !customText.trim()) ? 0.5 : 1,
+                  }}
                 >
-                  Send Request
+                  <span>🚀</span> Send Request
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Submitting */}
+        {/* Submitting - Center Aligned */}
         {step === 'submitting' && (
-          <div className="text-center py-20 space-y-4">
-            <div className="text-5xl animate-spin">⏳</div>
-            <p className="text-slate-400 font-medium">Sending your request...</p>
+          <div className="text-center py-24 space-y-4">
+            <div className="text-6xl animate-bounce">⏳</div>
+            <p className="text-slate-300 text-lg font-bold">Sending your request...</p>
+            <p className="text-slate-500 text-xs">Connecting with hotel staff</p>
           </div>
         )}
 
-        {/* Status Tracker */}
+        {/* Status Tracker - Center Aligned */}
         {step === 'tracking' && activeRequest && (
-          <div className="rounded-3xl border border-white/10 p-6 space-y-6" style={{ background: 'rgba(255,255,255,0.04)' }}>
+          <div className="rounded-3xl border border-white/15 p-8 space-y-8 text-center" style={{ background: 'rgba(255,255,255,0.04)' }}>
             <div className="text-center space-y-2">
-              <div className="text-4xl">
+              <div className="text-5xl mb-2">
                 {activeRequest.status === 'RESOLVED' ? '✅' : activeRequest.status === 'CLAIMED' ? '🏃' : '📨'}
               </div>
-              <h2 className="text-xl font-bold">{activeRequest.taskName}</h2>
+              <h2 className="text-2xl font-extrabold text-white">{activeRequest.taskName}</h2>
+              <p className="text-xs text-indigo-400 font-semibold tracking-wide uppercase">Request Status</p>
             </div>
 
-            {/* Progress bar */}
-            <div className="space-y-3">
+            {/* Progress bar steps */}
+            <div className="space-y-4 max-w-xs mx-auto text-left">
               {[
                 { key: 'PENDING', label: 'Request Received', desc: 'We\'ve received your request', icon: '📨' },
                 { key: 'CLAIMED', label: 'Staff Assigned', desc: 'A staff member is on their way', icon: '🏃' },
@@ -339,12 +420,12 @@ function GuestRequestsContent() {
                 return (
                   <div key={s.key} className="flex items-start gap-4">
                     <div className="flex flex-col items-center">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-lg transition-all duration-500 ${isDone ? 'bg-indigo-500' : 'bg-white/10'}`}>
-                        {isDone ? s.icon : <span className="text-slate-600 text-sm">{i + 1}</span>}
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg transition-all duration-500 ${isDone ? 'bg-indigo-500 text-white shadow-lg' : 'bg-white/10 text-slate-500'}`}>
+                        {isDone ? s.icon : <span className="text-xs font-bold">{i + 1}</span>}
                       </div>
-                      {i < 2 && <div className={`w-0.5 h-8 mt-1 transition-all duration-500 ${stepIdx < currentIdx ? 'bg-indigo-500' : 'bg-white/10'}`} />}
+                      {i < 2 && <div className={`w-0.5 h-10 mt-1 transition-all duration-500 ${stepIdx < currentIdx ? 'bg-indigo-500' : 'bg-white/10'}`} />}
                     </div>
-                    <div className="pt-1.5">
+                    <div className="pt-2">
                       <div className={`font-bold text-sm ${isActive ? 'text-indigo-300' : isDone ? 'text-slate-200' : 'text-slate-600'}`}>{s.label}</div>
                       {(isActive || isDone) && <div className="text-xs text-slate-400 mt-0.5">{s.desc}</div>}
                     </div>
@@ -354,17 +435,24 @@ function GuestRequestsContent() {
             </div>
 
             {activeRequest.status === 'RESOLVED' ? (
-              <button onClick={() => { setStep('grid'); setActiveRequest(null) }}
-                className="w-full py-3 rounded-2xl font-bold text-sm text-white"
-                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
+              <button
+                onClick={() => { setStep('grid'); setActiveRequest(null) }}
+                className="w-full py-4 rounded-2xl font-extrabold text-base text-white shadow-xl min-h-[54px]"
+                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+              >
                 Make Another Request
               </button>
             ) : (
-              <p className="text-center text-xs text-slate-500">This page updates automatically — you can minimise it.</p>
+              <p className="text-center text-xs text-slate-500">
+                This screen updates automatically. You can safely close or minimize this tab.
+              </p>
             )}
           </div>
         )}
       </div>
+
+      {/* Global Floating Action Button for Front Desk Call */}
+      <FrontDeskFAB roomId={roomId} roomNumber={roomNumber} hotelId={HOTEL_ID} />
 
       <PhoneCaptureModal
         isOpen={showPhoneModal}

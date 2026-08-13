@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import CallFrontDeskModal from './CallFrontDeskModal'
 import ActiveRequestsBanner from './ActiveRequestsBanner'
+import FrontDeskFAB from './FrontDeskFAB'
 import { useGuestTheme } from './GuestThemeProvider'
 
 interface WelcomeCardClientProps {
@@ -205,6 +206,13 @@ export default function WelcomeCardClient({
         hotelId={hotelId}
         hotelPhone={hotelPhone}
         roomNumber={roomNumber}
+      />
+      {/* Global Floating Action Button */}
+      <FrontDeskFAB
+        hotelPhone={hotelPhone}
+        roomId={roomId}
+        roomNumber={roomNumber}
+        hotelId={hotelId}
       />
     </main>
   )

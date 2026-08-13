@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import PhoneCaptureModal, { getStoredGuestPhone } from '../components/PhoneCaptureModal'
+import FrontDeskFAB from '../components/FrontDeskFAB'
 import { useSearchParams } from 'next/navigation'
 
 interface SpaService {
@@ -487,6 +488,9 @@ function GuestSpaContent() {
         roomId={roomId}
         hotelId={defaultHotelId}
       />
+
+      {/* Global Floating Action Button */}
+      <FrontDeskFAB roomId={roomId} />
     </main>
   )
 }

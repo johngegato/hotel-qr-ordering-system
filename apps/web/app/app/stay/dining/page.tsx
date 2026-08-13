@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { CatalogItem, CartItem, DietaryTag } from '@hotel-qr/supabase/types'
+import FrontDeskFAB from '../components/FrontDeskFAB'
 
 const CART_KEY = 'hotel_qr_cart'
 
@@ -259,6 +260,8 @@ function GuestDiningContent() {
           </button>
         </div>
       )}
+      {/* Global Floating Action Button */}
+      <FrontDeskFAB roomId={roomId} />
     </div>
   )
 }
