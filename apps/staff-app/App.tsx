@@ -393,7 +393,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 60,
+    paddingBottom: 80,
+    flexGrow: 1,
   },
 
   // Header
@@ -454,9 +455,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 
-  // Content
+  // Content — no flex:1 inside ScrollView; let children define their own height
   content: {
-    flex: 1,
+    width: '100%',
   },
 
   // Hotel Card
