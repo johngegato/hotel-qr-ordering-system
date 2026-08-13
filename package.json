@@ -9,10 +9,9 @@
     "type-check": "pnpm --filter @hotel-qr/web exec tsc --noEmit",
     "lint": "pnpm --filter @hotel-qr/web lint"
   },
-  "packageManager": "pnpm@11.20.0",
+  "packageManager": "pnpm@9.15.4",
   "engines": {
-    "node": ">=18.0.0",
-    "pnpm": ">=8.0.0"
+    "node": ">=18.0.0"
   },
   "pnpm": {
     "allowedBuilds": [
