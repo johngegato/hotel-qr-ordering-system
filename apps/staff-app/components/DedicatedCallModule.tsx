@@ -46,6 +46,7 @@ export default function DedicatedCallModule({ activeStaffId = 'staff-01' }: Dedi
         .select('*, rooms(room_number)')
         .eq('hotel_id', HOTEL_ID)
         .eq('request_type', 'CALL_REQUEST')
+        .in('status', ['PENDING', 'CLAIMED'])  // ← exclude RESOLVED so they disappear after resolution
 
       if (!error && data) {
         setCalls(data as CallRequestItem[])
@@ -74,6 +75,13 @@ export default function DedicatedCallModule({ activeStaffId = 'staff-01' }: Dedi
 
   const handleUpdateStatus = async (id: string, newStatus: 'CLAIMED' | 'RESOLVED') => {
     setUpdating(id)
+
+    // Optimistic removal for RESOLVED — disappear immediately
+    const snapshot = calls.find((c) => c.id === id)
+    if (newStatus === 'RESOLVED') {
+      setCalls((prev) => prev.filter((c) => c.id !== id))
+    }
+
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase.from('requests') as any)
@@ -82,6 +90,10 @@ export default function DedicatedCallModule({ activeStaffId = 'staff-01' }: Dedi
       fetchCalls()
     } catch (err) {
       console.error('Error updating call request:', err)
+      // Restore on failure
+      if (newStatus === 'RESOLVED' && snapshot) {
+        setCalls((prev) => [snapshot, ...prev])
+      }
     } finally {
       setUpdating(null)
     }

@@ -14,6 +14,7 @@ import {
 import { supabase } from './lib/supabase'
 import CallQueue from './components/CallQueue'
 import SpaQueue from './components/SpaQueue'
+import SpaTimetable from './components/SpaTimetable'
 import FoodQueue from './components/FoodQueue'
 import TaskQueue from './components/TaskQueue'
 import UserManagement, { StaffUser } from './components/UserManagement'
@@ -334,7 +335,8 @@ export default function App() {
             <DedicatedCallModule activeStaffId={activeStaffUser?.id || 'staff-01'} />
             <CallQueue />
 
-            {/* 2. Spa Appointments Queue */}
+            {/* 2. Spa Timetable & Appointments Queue */}
+            <SpaTimetable />
             <SpaQueue />
 
             {/* 3. Room Task Queue */}
