@@ -240,7 +240,12 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
 
           const serviceName = payload.service_name || 'Spa Treatment'
           // Derive room number from multiple possible payload keys or the rooms relation
-          const payloadRoom = payload.room_number ?? payload.room ?? payload.room_no ?? payload.roomNumber ?? req.rooms?.room_number ?? ''
+          // Supabase may return the joined `rooms` relation as either an object
+          // or an array. Normalize to extract the room_number in either case.
+          const roomsVal = (req.rooms && typeof req.rooms === 'object')
+            ? (Array.isArray(req.rooms) ? req.rooms[0]?.room_number : req.rooms.room_number)
+            : undefined
+          const payloadRoom = payload.room_number ?? payload.room ?? payload.room_no ?? payload.roomNumber ?? roomsVal ?? ''
           let roomNumber = payloadRoom ? String(payloadRoom) : ''
           if (!roomNumber || roomNumber === 'null') {
             // Debug: log requests missing room info so we can inspect the payload in the browser console

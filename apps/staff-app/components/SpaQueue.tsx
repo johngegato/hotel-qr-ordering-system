@@ -171,7 +171,11 @@ export default function SpaQueue() {
             const slotTime = item.payload?.slot_time ?? 'Scheduled Time'
             const price = item.payload?.price ?? 120
             const intake = item.payload?.intake_note ?? 'None'
-            const rawRoom = item.payload?.room_number ?? item.rooms?.room_number ?? ''
+            // Normalize rooms relation which may be object or array
+            const roomsVal = (item.rooms && typeof item.rooms === 'object')
+              ? (Array.isArray(item.rooms) ? item.rooms[0]?.room_number : item.rooms.room_number)
+              : undefined
+            const rawRoom = item.payload?.room_number ?? roomsVal ?? ''
             const roomDisplay = rawRoom
               ? (String(rawRoom).startsWith('Room') ? String(rawRoom) : `Room ${rawRoom}`)
               : 'Room —'

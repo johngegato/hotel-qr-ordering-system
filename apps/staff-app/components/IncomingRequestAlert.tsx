@@ -125,7 +125,10 @@ export default function IncomingRequestAlert({ request, onDismiss }: IncomingReq
   if (!request) return null
 
   const cfg = TYPE_CONFIG[request.request_type] ?? { label: 'Service Request', icon: '🛎️', color: '#f97316' }
-  const rawRoom = (request.payload?.room_number as any) ?? (request as any).rooms?.room_number ?? ''
+  const roomsVal = ((request as any).rooms && typeof (request as any).rooms === 'object')
+    ? (Array.isArray((request as any).rooms) ? (request as any).rooms[0]?.room_number : (request as any).rooms.room_number)
+    : undefined
+  const rawRoom = (request.payload?.room_number as any) ?? roomsVal ?? ''
   const roomNo = rawRoom
     ? (String(rawRoom).startsWith('Room') ? String(rawRoom) : `Room ${rawRoom}`)
     : '—'
