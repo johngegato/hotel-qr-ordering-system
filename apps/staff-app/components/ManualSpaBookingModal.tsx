@@ -145,6 +145,27 @@ export default function ManualSpaBookingModal({
 
     setIsSaving(true)
     try {
+      // Ensure the default room seed exists in the DB. Some Supabase
+      // deployments may not have run migrations/seeds; creating the room
+      // prevents FK violations when inserting requests that reference it.
+      try {
+        const { data: roomData, error: roomErr } = await (supabase as any)
+          .from('rooms')
+          .select('id')
+          .eq('id', DEFAULT_ROOM_ID)
+          .single()
+        if (roomErr || !roomData) {
+          // Attempt to insert a minimal room record. Use a generated qr_auth_hash
+          // to avoid unique conflicts on repeated attempts.
+          const { error: insRoomErr } = await (supabase as any)
+            .from('rooms')
+            .insert([{ id: DEFAULT_ROOM_ID, hotel_id: HOTEL_ID, room_number: roomNumber.trim() || '302', qr_auth_hash: `seed-${Date.now()}` }])
+          if (insRoomErr) console.warn('Failed to ensure DEFAULT_ROOM_ID exists:', insRoomErr)
+        }
+      } catch (roomCheckErr) {
+        console.warn('Room existence check failed (continuing):', roomCheckErr)
+      }
+
       const payload = {
         service_id: selectedService.id,
         service_name: selectedService.name,
@@ -174,7 +195,11 @@ export default function ManualSpaBookingModal({
         .select('id')
         .single()
 
-      if (reqErr) throw reqErr
+      if (reqErr) {
+        // Log detailed error info to help diagnose constraint/RLS issues
+        console.error('requests.insert error:', reqErr)
+        throw reqErr
+      }
 
       // 2. Explicit audit log (Postgres trigger also fires, this adds richer context)
       await (supabase as any)
@@ -232,8 +257,11 @@ export default function ManualSpaBookingModal({
       onCreated()
       onClose()
     } catch (err: any) {
-      console.error('Failed to create manual booking:', err)
-      Alert.alert('Error', `Failed to create booking: ${err?.message ?? 'Unknown error'}`)
+      // Better error visibility: try to extract useful fields
+      console.error('Failed to create manual booking (detailed):', err)
+      const msg = err?.message || err?.msg || (typeof err === 'string' ? err : 'Unknown error')
+      const details = err?.details || err?.hint || JSON.stringify(err)
+      Alert.alert('Error', `Failed to create booking: ${msg}\n${details}`)
     } finally {
       setIsSaving(false)
     }
