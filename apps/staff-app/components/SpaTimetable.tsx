@@ -559,7 +559,6 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
                     {/* Time label */}
                     <View style={styles.timeCell}>
                       <Text style={[styles.timeText, isBooked && styles.timeTextBooked]}>{slot}</Text>
-                      {isBooked && <Text style={styles.timeDot}>●</Text>}
                     </View>
 
                     {/* One cell per therapist */}
@@ -570,20 +569,21 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
 
                       return (
                         <View key={`${t.id}-${slot}`} style={styles.slotCell}>
-                          {booking
-                            ? renderBookingCard(booking)
-                            : isExpanded
-                              ? (
-                                <TouchableOpacity
-                                  style={styles.emptySlot}
-                                  onPress={() => handleQuickAdd(slot, t)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Text style={styles.emptySlotText}>+ Add</Text>
-                                </TouchableOpacity>
-                              )
-                              : null
-                          }
+                          {booking ? (
+                            renderBookingCard(booking)
+                          ) : isExpanded ? (
+                            <TouchableOpacity
+                              style={styles.emptySlot}
+                              onPress={() => handleQuickAdd(slot, t)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.emptySlotText}>+ Add</Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <View style={styles.minimizedDotContainer}>
+                              <Text style={styles.timeDot}>●</Text>
+                            </View>
+                          )}
                         </View>
                       )
                     })}
@@ -875,6 +875,11 @@ const styles = StyleSheet.create({
   timeDot: {
     color: '#fbbf24',
     fontSize: 6,
+  },
+  minimizedDotContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   slotCell: {
     flex: 1,
