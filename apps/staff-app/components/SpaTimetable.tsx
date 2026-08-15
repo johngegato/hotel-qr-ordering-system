@@ -48,6 +48,7 @@ interface BookingSlot {
   isOnCall: boolean
   source: 'request' | 'lock'
   rawPayload?: any
+  rawRequest?: any
 }
 
 interface SpaTimetableProps {
@@ -286,6 +287,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
             isOnCall,
             source: 'request',
             rawPayload: payload,
+            rawRequest: req,
           })
         })
       }
@@ -407,9 +409,22 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
   }
 
   const openEditModal = (b: BookingSlot) => {
+    // Compute a reliable roomNumber for the edit modal: prefer the booking's
+    // roomNumber, but if it's a placeholder ('Room —') derive from the
+    // original request's joined rooms relation or payload to match RequestHistory.
+    let modalRoom = b.roomNumber
+    if (!modalRoom || modalRoom === 'Room —') {
+      const req = (b as any).rawRequest
+      const roomsVal = (req?.rooms && typeof req.rooms === 'object')
+        ? (Array.isArray(req.rooms) ? req.rooms[0]?.room_number : req.rooms.room_number)
+        : undefined
+      const payloadRoom = roomsVal ?? req?.payload?.room_number ?? req?.payload?.room ?? ''
+      modalRoom = payloadRoom ? (String(payloadRoom).startsWith('Room') ? String(payloadRoom) : `Room ${payloadRoom}`) : 'Room —'
+    }
+
     setSelectedBooking({
       id: b.id,
-      roomNumber: b.roomNumber,
+      roomNumber: modalRoom,
       guestPhone: b.guestPhone,
       serviceName: b.serviceName,
       startTime: b.startTime,
