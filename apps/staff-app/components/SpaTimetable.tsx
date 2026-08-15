@@ -326,6 +326,20 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
     return () => { supabase.removeChannel(channel) }
   }, [fetchTimetableData])
 
+  // Fallback: listen to client-side revalidation events (dispatched by SpaQueue)
+  useEffect(() => {
+    try {
+      const handler = () => fetchTimetableData()
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('spa:revalidate', handler as EventListener)
+        return () => { window.removeEventListener('spa:revalidate', handler as EventListener) }
+      }
+    } catch (e) {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchTimetableData])
+
   // ─── Handlers ───────────────────────────────────────────────────────────────
 
   const handleQuickAdd = (slotTime: string, therapist: Therapist) => {

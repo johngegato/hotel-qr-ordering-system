@@ -122,6 +122,14 @@ export default function SpaQueue() {
       console.error(`Error setting spa status to ${newStatus}:`, err)
       if (snapshot) setRequests((prev) => [snapshot, ...prev])
     } finally {
+      // Notify any timetable listeners to refresh their data (fallback to realtime)
+      try {
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+          window.dispatchEvent(new CustomEvent('spa:revalidate'))
+        }
+      } catch (e) {
+        // ignore
+      }
       setProcessingId(null)
     }
   }
