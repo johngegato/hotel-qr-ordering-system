@@ -298,11 +298,11 @@ export default function EditSpaBookingModal({
 
       // ─── Manage spa_slot_locks ──────────────────────────────────────────────
       // Calculate start/end times for the new slot
-      const [h, m] = selectedTime.split(':').map(Number)
+      const [timeH, timeM] = selectedTime.split(':').map((v) => parseInt(v, 10))
       const lockStart = new Date()
-      lockStart.setHours(h, m, 0, 0)
-      const catalogItem = services.find((s) => s.name === selectedService)
-      const durationMins = catalogItem?.duration_mins ?? 60
+      lockStart.setHours(timeH || 0, timeM || 0, 0, 0)
+      const matchedService = services.find((svc: CatalogService) => svc.name === selectedService)
+      const durationMins = matchedService?.duration_mins ?? 60
       const lockEnd = new Date(lockStart.getTime() + durationMins * 60 * 1000)
       const expiresAt = new Date(lockEnd.getTime() + 24 * 60 * 60 * 1000) // 24 hours after end
 
