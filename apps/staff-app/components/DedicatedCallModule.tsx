@@ -84,10 +84,19 @@ export default function DedicatedCallModule({ activeStaffId = 'staff-01' }: Dedi
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('requests') as any)
+      const { data, error } = await (supabase.from('requests') as any)
         .update({ status: newStatus, claimed_by: activeStaffId })
         .eq('id', id)
-      fetchCalls()
+
+      if (error) throw error
+
+      // For CLAIMED, update local list so UI reflects claimed state immediately
+      if (newStatus === 'CLAIMED') {
+        setCalls(prev => prev.map(c => c.id === id ? { ...(c as any), status: 'CLAIMED', claimed_by: activeStaffId } : c))
+      }
+
+      // Refresh from server to ensure consistency
+      await fetchCalls()
     } catch (err) {
       console.error('Error updating call request:', err)
       // Restore on failure

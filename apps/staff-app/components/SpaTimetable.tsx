@@ -86,6 +86,22 @@ const FALLBACK_THERAPISTS: Therapist[] = [
 export function convertTo24Hour(timeStr: string): string {
   if (!timeStr) return '14:00'
   const trimmed = timeStr.trim()
+
+  // If the value looks like an ISO datetime (contains 'T'), parse it and extract hours/minutes
+  if (trimmed.includes('T')) {
+    try {
+      const d = new Date(trimmed)
+      if (!isNaN(d.getTime())) {
+        const hh = String(d.getHours()).padStart(2, '0')
+        const mm = String(d.getMinutes()).padStart(2, '0')
+        return `${hh}:${mm}`
+      }
+    } catch (e) {
+      // fall through to other parsing strategies
+    }
+  }
+
+  // Match common formats like '14:00' or '2:00 PM'
   const regex = /^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?$/i
   const match = trimmed.match(regex)
   if (!match) return trimmed
@@ -103,6 +119,7 @@ export function convertTo24Hour(timeStr: string): string {
 
   return `${String(hours).padStart(2, '0')}:${minutes}`
 }
+
 
 function getDateRange(day: 'today' | 'tomorrow'): { from: string; to: string } {
   const base = new Date()
