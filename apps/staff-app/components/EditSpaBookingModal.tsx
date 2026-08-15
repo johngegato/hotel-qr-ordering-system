@@ -190,22 +190,32 @@ export default function EditSpaBookingModal({
         start.setHours(h, m, 0, 0)
         const end = new Date(start.getTime() + durationMins * 60 * 1000)
 
-        const { data: locks } = await supabase
-          .from('spa_slot_locks')
-          .select('*')
-          .eq('hotel_id', HOTEL_ID)
-          .in('status', ['BOOKED', 'HELD'])
+        // Query the requests table directly (source of truth for timetable)
+        const { data: reqData } = await supabase
+          .from('requests')
+          .select('id, payload, status')
+          .eq('request_type', 'SPA_BOOKING')
+          .eq('status', 'CONFIRMED')
 
         const newMap: Record<string, boolean> = {}
         for (const t of therapists) {
           const overlap =
-            locks?.some((lock: any) => {
-              if (lock.therapist_id !== t.id) return false
-              // Skip the lock that belongs to the CURRENT booking being edited
-              if (lock.session_id === booking.id) return false
-              const ls = new Date(lock.start_time).getTime()
-              const le = new Date(lock.end_time).getTime()
-              return start.getTime() < le && end.getTime() > ls
+            reqData?.some((req: any) => {
+              const reqTherapistId = req.payload?.therapist_id
+              if (reqTherapistId !== t.id) return false
+              // Skip the current booking being edited
+              if (req.id === booking.id) return false
+              
+              const slotTime = req.payload?.slot_time
+              if (!slotTime) return false
+              
+              const [sh, sm] = slotTime.split(':').map((v: string) => parseInt(v, 10))
+              const reqStart = new Date()
+              reqStart.setHours(sh || 0, sm || 0, 0, 0)
+              const reqDuration = req.payload?.duration_mins ?? 60
+              const reqEnd = new Date(reqStart.getTime() + reqDuration * 60 * 1000)
+              
+              return start.getTime() < reqEnd.getTime() && end.getTime() > reqStart.getTime()
             }) ?? false
           newMap[t.id] = overlap
         }
@@ -617,7 +627,9 @@ export default function EditSpaBookingModal({
                         {t.is_on_call ? '⚡ On-Call Specialist' : '🏠 In-House Staff'}
                       </Text>
                       {hasConflict && (
-                        <Text style={styles.conflictLabel}>⛔ Not available at {selectedTime}</Text>
+                        <View style={styles.bookedBadge}>
+                          <Text style={styles.bookedBadgeText}>🔒 Booked</Text>
+                        </View>
                       )}
                     </View>
                     {isSelected && !hasConflict && (
@@ -964,6 +976,19 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 11,
     marginTop: 3,
+  },
+  bookedBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  bookedBadgeText: {
+    color: '#f87171',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   selectedBadge: {
     backgroundColor: '#4ade80',
