@@ -287,7 +287,7 @@ export default function EditSpaBookingModal({
 
       onSaved()
       onClose()
-    } catch (err: any) {
+    } catch (err) {
       Alert.alert('Save Failed', err?.message ?? 'An unexpected error occurred. Please try again.')
     } finally {
       setSaving(false)
@@ -331,7 +331,7 @@ export default function EditSpaBookingModal({
 
               onSaved()
               onClose()
-            } catch (err: any) {
+            } catch (err) {
               Alert.alert('Cancellation Failed', err?.message ?? 'Could not cancel booking.')
             } finally {
               setSaving(false)

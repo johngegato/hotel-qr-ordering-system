@@ -292,7 +292,7 @@ export default function ManualSpaBookingModal({
 
       onCreated()
       onClose()
-    } catch (err: any) {
+    } catch (err) {
       // Better error visibility: try to extract useful fields
       console.error('Failed to create manual booking (detailed):', err)
       const msg = err?.message || err?.msg || (typeof err === 'string' ? err : 'Unknown error')
