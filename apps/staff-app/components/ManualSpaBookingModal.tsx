@@ -293,11 +293,23 @@ export default function ManualSpaBookingModal({
       onCreated()
       onClose()
     } catch (err) {
-      // Better error visibility: try to extract useful fields
+      // Better error visibility: try to extract useful fields safely
       console.error('Failed to create manual booking (detailed):', err)
-      const msg = err?.message || err?.msg || (typeof err === 'string' ? err : 'Unknown error')
-      const details = err?.details || err?.hint || JSON.stringify(err)
-      Alert.alert('Error', `Failed to create booking: ${msg}\n${details}`)
+      let msg = 'Unknown error'
+      let details = ''
+      try {
+        if (err && typeof err === 'object') {
+          // @ts-ignore
+          msg = err.message || err.msg || JSON.stringify(err)
+          // @ts-ignore
+          details = err.details || err.hint || ''
+        } else if (typeof err === 'string') {
+          msg = err
+        }
+      } catch (e) {
+        // ignore
+      }
+      Alert.alert('Error', `Failed to create booking: ${msg}${details ? '\n' + details : ''}`)
     } finally {
       setIsSaving(false)
     }

@@ -288,7 +288,16 @@ export default function EditSpaBookingModal({
       onSaved()
       onClose()
     } catch (err) {
-      Alert.alert('Save Failed', err?.message ?? 'An unexpected error occurred. Please try again.')
+      let msg = 'An unexpected error occurred. Please try again.'
+      try {
+        if (err && typeof err === 'object') {
+          // @ts-ignore
+          msg = err.message || err.msg || msg
+        } else if (typeof err === 'string') {
+          msg = err
+        }
+      } catch (e) {}
+      Alert.alert('Save Failed', msg)
     } finally {
       setSaving(false)
     }
@@ -332,7 +341,16 @@ export default function EditSpaBookingModal({
               onSaved()
               onClose()
             } catch (err) {
-              Alert.alert('Cancellation Failed', err?.message ?? 'Could not cancel booking.')
+              let msg = 'Could not cancel booking.'
+              try {
+                if (err && typeof err === 'object') {
+                  // @ts-ignore
+                  msg = err.message || err.msg || msg
+                } else if (typeof err === 'string') {
+                  msg = err
+                }
+              } catch (e) {}
+              Alert.alert('Cancellation Failed', msg)
             } finally {
               setSaving(false)
             }
