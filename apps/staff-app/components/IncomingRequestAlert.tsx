@@ -128,7 +128,8 @@ export default function IncomingRequestAlert({ request, onDismiss }: IncomingReq
   const roomsVal = ((request as any).rooms && typeof (request as any).rooms === 'object')
     ? (Array.isArray((request as any).rooms) ? (request as any).rooms[0]?.room_number : (request as any).rooms.room_number)
     : undefined
-  const rawRoom = (request.payload?.room_number as any) ?? roomsVal ?? ''
+  // Prefer rooms relation first (RequestHistory behavior), then payload
+  const rawRoom = roomsVal ?? (request.payload?.room_number as any) ?? ''
   const roomNo = rawRoom
     ? (String(rawRoom).startsWith('Room') ? String(rawRoom) : `Room ${rawRoom}`)
     : '—'

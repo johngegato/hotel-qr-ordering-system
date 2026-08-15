@@ -175,7 +175,8 @@ export default function SpaQueue() {
             const roomsVal = (item.rooms && typeof item.rooms === 'object')
               ? (Array.isArray(item.rooms) ? item.rooms[0]?.room_number : item.rooms.room_number)
               : undefined
-            const rawRoom = item.payload?.room_number ?? roomsVal ?? ''
+            // Prefer the joined rooms relation first (like RequestHistory), then payload
+            const rawRoom = roomsVal ?? item.payload?.room_number ?? ''
             const roomDisplay = rawRoom
               ? (String(rawRoom).startsWith('Room') ? String(rawRoom) : `Room ${rawRoom}`)
               : 'Room —'

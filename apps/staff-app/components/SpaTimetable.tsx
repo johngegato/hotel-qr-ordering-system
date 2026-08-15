@@ -247,7 +247,8 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
           const roomsVal = (req.rooms && typeof req.rooms === 'object')
             ? (Array.isArray(req.rooms) ? req.rooms[0]?.room_number : req.rooms.room_number)
             : undefined
-          const payloadRoom = payload.room_number ?? payload.room ?? payload.room_no ?? payload.roomNumber ?? roomsVal ?? ''
+          // Prefer the joined rooms relation (same as RequestHistory) — fall back to payload fields.
+          const payloadRoom = roomsVal ?? payload.room_number ?? payload.room ?? payload.room_no ?? payload.roomNumber ?? ''
           let roomNumber = payloadRoom ? String(payloadRoom) : ''
           if (!roomNumber || roomNumber === 'null') {
             // Debug: log requests missing room info so we can inspect the payload in the browser console
