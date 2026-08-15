@@ -24,7 +24,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build:web": "npx expo export --platform web"
+    "build:web": "npx expo@~54 export --platform web"
   },
   "private": true
 }
