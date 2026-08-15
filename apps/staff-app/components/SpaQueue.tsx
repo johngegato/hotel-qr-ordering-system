@@ -36,6 +36,7 @@ export default function SpaQueue() {
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [editBooking, setEditBooking] = useState<any | null>(null)
   const [isEditOpen, setIsEditOpen] = useState(false)
+  const [editedMap, setEditedMap] = useState<Record<string, boolean>>({})
 
   // Fetch pending spa requests
   const fetchSpaQueue = async () => {
@@ -240,14 +241,14 @@ export default function SpaQueue() {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.confirmBtn, isProcessing && styles.btnDisabled]}
+                    style={[styles.confirmBtn, (isProcessing || !editedMap[item.id]) && styles.btnDisabled]}
                     onPress={() => handleUpdateStatus(item.id, 'CONFIRMED')}
-                    disabled={isProcessing}
+                    disabled={isProcessing || !editedMap[item.id]}
                   >
                     {isProcessing ? (
                       <ActivityIndicator color="#0f172a" />
                     ) : (
-                      <Text style={styles.confirmBtnText}>✓ Approve & Confirm</Text>
+                      <Text style={styles.confirmBtnText}>{editedMap[item.id] ? '✓ Approve & Confirm' : '✏️ Modify First'}</Text>
                     )}
                   </TouchableOpacity>
 
@@ -271,7 +272,13 @@ export default function SpaQueue() {
           isOpen={isEditOpen}
           booking={editBooking}
           onClose={() => { setIsEditOpen(false); setEditBooking(null) }}
-          onSaved={async () => { await fetchSpaQueue(); setIsEditOpen(false); setEditBooking(null) }}
+          onSaved={async () => {
+            // mark this request as edited so staff can approve it
+            if (editBooking?.id) setEditedMap(prev => ({ ...prev, [editBooking.id]: true }))
+            await fetchSpaQueue()
+            setIsEditOpen(false)
+            setEditBooking(null)
+          }}
           confirmOnSave={false}
         />
       )}

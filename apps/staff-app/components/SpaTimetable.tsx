@@ -239,9 +239,11 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
           if (!withinDay && req.status !== 'PENDING_ON_CALL') return
 
           const serviceName = payload.service_name || 'Spa Treatment'
-          const rawRoom = payload.room_number
-            || (req.rooms?.room_number ? `Room ${req.rooms.room_number}` : 'Room —')
-          const roomNumber = String(rawRoom).startsWith('Room') ? String(rawRoom) : `Room ${rawRoom}`
+          // Derive room number from multiple possible payload keys or the rooms relation
+          const payloadRoom = payload.room_number ?? payload.room ?? payload.room_no ?? payload.roomNumber ?? req.rooms?.room_number ?? ''
+          let roomNumber = payloadRoom ? String(payloadRoom) : ''
+          if (!roomNumber) roomNumber = 'Room —'
+          else if (!roomNumber.startsWith('Room')) roomNumber = `Room ${roomNumber}`
           const guestPhone = payload.guest_phone || payload.phone || ''
           const isOnCall = req.status === 'PENDING_ON_CALL' || payload.is_on_call === true
 
