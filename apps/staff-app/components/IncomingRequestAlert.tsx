@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Vibration,
   View,
+  Platform,
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import { Audio } from 'expo-av'
@@ -68,7 +69,14 @@ export default function IncomingRequestAlert({ request, onDismiss }: IncomingReq
 
     // Aggressive haptics pattern
     Vibration.vibrate(VIBE_PATTERN, false)
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+    // Haptics is not available on web builds; guard the call to avoid runtime errors
+    try {
+      if (Platform.OS !== 'web' && Haptics && typeof Haptics.notificationAsync === 'function') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      }
+    } catch {
+      // ignore haptics failures on unsupported platforms
+    }
 
     // Play built-in system alert sound (works without native build in Expo Go)
     ;(async () => {
