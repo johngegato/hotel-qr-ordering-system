@@ -193,6 +193,34 @@ export default function ManualSpaBookingModal({
           },
         }])
 
+      // 3. Create a spa_slot_locks entry so the timetable shows the booking
+      // immediately and other systems can detect the locked/ booked slot.
+      try {
+        if (reqData?.id) {
+          const [hhStr, mmStr] = selectedTime.split(':')
+          const hh = Number(hhStr || '14')
+          const mm = Number(mmStr || '0')
+          const startDt = new Date()
+          startDt.setHours(hh, mm, 0, 0)
+          const endDt = new Date(startDt.getTime() + (selectedService.duration_mins || 60) * 60 * 1000)
+
+          await (supabase as any)
+            .from('spa_slot_locks')
+            .insert([{
+              hotel_id: HOTEL_ID,
+              therapist_id: selectedTherapistId,
+              session_id: reqData.id,
+              start_time: startDt.toISOString(),
+              end_time: endDt.toISOString(),
+              status: 'BOOKED',
+              expires_at: null,
+            }])
+        }
+      } catch (err) {
+        // non-fatal: timetable will still show the request-based booking
+        console.warn('Failed to create spa_slot_lock for manual booking:', err)
+      }
+
       // Reset form
       setRoomNumber('')
       setGuestPhone('')
