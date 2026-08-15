@@ -155,12 +155,40 @@ export default function ManualSpaBookingModal({
           .eq('id', DEFAULT_ROOM_ID)
           .single()
         if (roomErr || !roomData) {
-          // Attempt to insert a minimal room record. Use a generated qr_auth_hash
-          // to avoid unique conflicts on repeated attempts.
-          const { error: insRoomErr } = await (supabase as any)
+          // Insert a non-invasive seed room so we don't conflict with admin-created
+          // rooms that the Admin UI generates (QR, metadata, etc.). This record
+          // is clearly marked as a seed and inactive so admins can spot/replace it.
+          const seedRoom = {
+            id: DEFAULT_ROOM_ID,
+            hotel_id: HOTEL_ID,
+            room_number: `seed-${roomNumber.trim() || '302'}`,
+            qr_auth_hash: `seed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            is_seed: true,
+            is_active: false,
+            created_by: 'system-seed',
+          }
+
+          const { data: insRoomData, error: insRoomErr } = await (supabase as any)
             .from('rooms')
-            .insert([{ id: DEFAULT_ROOM_ID, hotel_id: HOTEL_ID, room_number: roomNumber.trim() || '302', qr_auth_hash: `seed-${Date.now()}` }])
-          if (insRoomErr) console.warn('Failed to ensure DEFAULT_ROOM_ID exists:', insRoomErr)
+            .insert([seedRoom])
+            .select('id')
+
+          if (insRoomErr) {
+            console.warn('Failed to ensure DEFAULT_ROOM_ID exists:', insRoomErr)
+          } else {
+            // Optional audit log so admins are aware a seed record was created.
+            try {
+              await (supabase as any)
+                .from('audit_logs')
+                .insert([{
+                  hotel_id: HOTEL_ID,
+                  action: 'SEED_ROOM_CREATED',
+                  details: { room_id: DEFAULT_ROOM_ID, source: 'system-seed' },
+                }])
+            } catch (e) {
+              // non-fatal
+            }
+          }
         }
       } catch (roomCheckErr) {
         console.warn('Room existence check failed (continuing):', roomCheckErr)
