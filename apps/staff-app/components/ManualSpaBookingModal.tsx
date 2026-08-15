@@ -146,60 +146,50 @@ export default function ManualSpaBookingModal({
       return
     }
 
-      try {
-        // Only attempt to ensure DEFAULT_ROOM_ID exists when staff did not
-        // select an existing room from the suggestions. If a room was
-        // explicitly selected, we'll use that room's id instead.
-        if (!selectedRoomId) {
-          try {
-            const { data: roomData, error: roomErr } = await (supabase as any)
+    setIsSaving(true)
+    try {
+      // Ensure a fallback seed room exists only if staff didn't pick an existing room
+      if (!selectedRoomId) {
+        try {
+          const { data: roomData, error: roomErr } = await (supabase as any)
+            .from('rooms')
+            .select('id')
+            .eq('id', DEFAULT_ROOM_ID)
+            .single()
+
+          if (roomErr || !roomData) {
+            const seedRoom = {
+              id: DEFAULT_ROOM_ID,
+              hotel_id: HOTEL_ID,
+              room_number: `seed-${roomNumber.trim() || '302'}`,
+              qr_auth_hash: `seed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              is_seed: true,
+              is_active: false,
+              created_by: 'system-seed',
+            }
+            const { error: insRoomErr } = await (supabase as any)
               .from('rooms')
-              .select('id')
-              .eq('id', DEFAULT_ROOM_ID)
-              .single()
-            if (roomErr || !roomData) {
-              // Insert a non-invasive seed room so we don't conflict with admin-created
-              // rooms that the Admin UI generates (QR, metadata, etc.). This record
-              // is clearly marked as a seed and inactive so admins can spot/replace it.
-              const seedRoom = {
-                id: DEFAULT_ROOM_ID,
-                hotel_id: HOTEL_ID,
-                room_number: `seed-${roomNumber.trim() || '302'}`,
-                qr_auth_hash: `seed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                is_seed: true,
-                is_active: false,
-                created_by: 'system-seed',
-              }
+              .insert([seedRoom])
 
-              const { data: insRoomData, error: insRoomErr } = await (supabase as any)
-                .from('rooms')
-                .insert([seedRoom])
-                .select('id')
-
-              if (insRoomErr) {
-                console.warn('Failed to ensure DEFAULT_ROOM_ID exists:', insRoomErr)
-              } else {
-                // Optional audit log so admins are aware a seed record was created.
-                try {
-                  await (supabase as any)
-                    .from('audit_logs')
-                    .insert([{
-                      hotel_id: HOTEL_ID,
-                      action: 'SEED_ROOM_CREATED',
-                      details: { room_id: DEFAULT_ROOM_ID, source: 'system-seed' },
-                    }])
-                } catch (e) {
-                  // non-fatal
-                }
+            if (insRoomErr) {
+              console.warn('Failed to ensure DEFAULT_ROOM_ID exists:', insRoomErr)
+            } else {
+              try {
+                await (supabase as any)
+                  .from('audit_logs')
+                  .insert([{
+                    hotel_id: HOTEL_ID,
+                    action: 'SEED_ROOM_CREATED',
+                    details: { room_id: DEFAULT_ROOM_ID, source: 'system-seed' },
+                  }])
+              } catch (e) {
+                // non-fatal
               }
             }
-          } catch (roomCheckErr) {
-            console.warn('Room existence check failed (continuing):', roomCheckErr)
           }
+        } catch (roomCheckErr) {
+          console.warn('Room existence check failed (continuing):', roomCheckErr)
         }
-
-      } catch (roomCheckErr) {
-        console.warn('Room existence check failed (continuing):', roomCheckErr)
       }
 
       const payload = {
@@ -218,7 +208,7 @@ export default function ManualSpaBookingModal({
         manual_booking: true,
       }
 
-      // 1. Insert request
+      // Insert request
       const { data: reqData, error: reqErr } = await (supabase as any)
         .from('requests')
         .insert([{
@@ -232,30 +222,32 @@ export default function ManualSpaBookingModal({
         .single()
 
       if (reqErr) {
-        // Log detailed error info to help diagnose constraint/RLS issues
         console.error('requests.insert error:', reqErr)
         throw reqErr
       }
 
-      // 2. Explicit audit log (Postgres trigger also fires, this adds richer context)
-      await (supabase as any)
-        .from('audit_logs')
-        .insert([{
-          hotel_id: HOTEL_ID,
-          request_id: reqData?.id ?? null,
-          action: 'MANUAL_BOOKING_CREATED',
-          details: {
-            source: 'staff_manual',
-            service: selectedService.name,
-            therapist: selectedTherapist?.full_name,
-            slot_time: selectedTime,
-            room_number: roomNumber.trim(),
-            guest_phone: guestPhone.trim() || null,
-          },
-        }])
+      // Audit log
+      try {
+        await (supabase as any)
+          .from('audit_logs')
+          .insert([{
+            hotel_id: HOTEL_ID,
+            request_id: reqData?.id ?? null,
+            action: 'MANUAL_BOOKING_CREATED',
+            details: {
+              source: 'staff_manual',
+              service: selectedService.name,
+              therapist: selectedTherapist?.full_name,
+              slot_time: selectedTime,
+              room_number: roomNumber.trim(),
+              guest_phone: guestPhone.trim() || null,
+            },
+          }])
+      } catch (e) {
+        // non-fatal
+      }
 
-      // 3. Create a spa_slot_locks entry so the timetable shows the booking
-      // immediately and other systems can detect the locked/ booked slot.
+      // Create slot lock
       try {
         if (reqData?.id) {
           const [hhStr, mmStr] = selectedTime.split(':')
@@ -277,9 +269,8 @@ export default function ManualSpaBookingModal({
               expires_at: null,
             }])
         }
-      } catch (err) {
-        // non-fatal: timetable will still show the request-based booking
-        console.warn('Failed to create spa_slot_lock for manual booking:', err)
+      } catch (e) {
+        console.warn('Failed to create spa_slot_lock for manual booking:', e)
       }
 
       // Reset form
@@ -293,7 +284,6 @@ export default function ManualSpaBookingModal({
       onCreated()
       onClose()
     } catch (err) {
-      // Better error visibility: try to extract useful fields safely
       console.error('Failed to create manual booking (detailed):', err)
       let msg = 'Unknown error'
       let details = ''
