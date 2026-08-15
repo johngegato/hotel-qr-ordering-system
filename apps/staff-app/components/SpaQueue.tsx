@@ -19,6 +19,7 @@ interface SpaRequestItem {
   request_type: string
   status: 'PENDING' | 'PENDING_ON_CALL' | 'CONFIRMED' | 'DECLINED' | string
   created_at: string
+  rooms?: { room_number: string } | null
   payload?: {
     service_name?: string
     slot_time?: string
@@ -42,9 +43,9 @@ export default function SpaQueue() {
   const fetchSpaQueue = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('requests')
-        .select('*')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.from('requests') as any)
+        .select('*, rooms(room_number)')
         .eq('request_type', 'SPA_BOOKING')
         .in('status', ['PENDING', 'PENDING_ON_CALL'])
         .order('created_at', { ascending: true })
