@@ -170,12 +170,16 @@ export default function SpaQueue() {
             const slotTime = item.payload?.slot_time ?? 'Scheduled Time'
             const price = item.payload?.price ?? 120
             const intake = item.payload?.intake_note ?? 'None'
+            const rawRoom = item.payload?.room_number ?? item.rooms?.room_number ?? ''
+            const roomDisplay = rawRoom
+              ? (String(rawRoom).startsWith('Room') ? String(rawRoom) : `Room ${rawRoom}`)
+              : 'Room —'
 
             return (
               <View style={[styles.card, isOnCall && styles.cardOnCall]}>
                 <View style={styles.cardHeader}>
-                  <View style={styles.roomBadge}>
-                    <Text style={styles.roomText}>{item.payload?.room_number || item.rooms?.room_number || 'Room 302'}</Text>
+                    <View style={styles.roomBadge}>
+                    <Text style={styles.roomText}>{roomDisplay}</Text>
                   </View>
 
                   {isOnCall ? (
@@ -207,7 +211,7 @@ export default function SpaQueue() {
                       // Build editable booking object expected by EditSpaBookingModal
                       const editable = {
                         id: item.id,
-                        roomNumber: item.payload?.room_number || item.rooms?.room_number || 'Room 302',
+                        roomNumber: roomDisplay,
                         guestPhone: item.payload?.guest_phone || '',
                         serviceName: item.payload?.service_name || 'Spa Treatment',
                         startTime: item.payload?.slot_time || '14:00',

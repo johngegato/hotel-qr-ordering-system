@@ -125,7 +125,10 @@ export default function IncomingRequestAlert({ request, onDismiss }: IncomingReq
   if (!request) return null
 
   const cfg = TYPE_CONFIG[request.request_type] ?? { label: 'Service Request', icon: '🛎️', color: '#f97316' }
-  const roomNo = (request.payload?.room_number as string) ?? '—'
+  const rawRoom = (request.payload?.room_number as any) ?? (request as any).rooms?.room_number ?? ''
+  const roomNo = rawRoom
+    ? (String(rawRoom).startsWith('Room') ? String(rawRoom) : `Room ${rawRoom}`)
+    : '—'
 
   const bgFlash = flashAnim.interpolate({
     inputRange: [0, 1],
