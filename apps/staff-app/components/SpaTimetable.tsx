@@ -47,6 +47,7 @@ interface BookingSlot {
   status: string
   isOnCall: boolean
   source: 'request' | 'lock'
+  rawPayload?: any
 }
 
 interface SpaTimetableProps {
@@ -140,6 +141,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
   const [loading, setLoading] = useState(true)
   const [therapists, setTherapists] = useState<Therapist[]>(FALLBACK_THERAPISTS)
   const [bookings, setBookings] = useState<BookingSlot[]>([])
+  const [debugOpenMap, setDebugOpenMap] = useState<Record<string, boolean>>({})
   const [historyBookings, setHistoryBookings] = useState<any[]>([])
   const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today')
 
@@ -282,6 +284,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
             status: req.status,
             isOnCall,
             source: 'request',
+            rawPayload: payload,
           })
         })
       }
@@ -483,6 +486,19 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
             {isOnCall ? '⚡ On-Call' : isConfirmed ? '✓ Confirmed' : '⏳ Pending'}
           </Text>
         </View>
+        {/* Dev-only: show raw payload JSON for debugging */}
+        {typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production' && (
+          <View style={{ marginTop: 8 }}>
+            <Pressable onPress={() => setDebugOpenMap(prev => ({ ...prev, [b.id]: !prev[b.id] }))}>
+              <Text style={{ color: '#94a3b8', fontSize: 12 }}>🔧 Payload</Text>
+            </Pressable>
+            {debugOpenMap[b.id] && (
+              <View style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: 8, marginTop: 6, borderRadius: 8 }}>
+                <Text style={{ color: '#cbd5e1', fontSize: 11, fontFamily: 'monospace' }}>{JSON.stringify(b.rawPayload || {}, null, 2)}</Text>
+              </View>
+            )}
+          </View>
+        )}
       </Pressable>
     )
   }
