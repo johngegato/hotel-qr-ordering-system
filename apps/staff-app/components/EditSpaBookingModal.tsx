@@ -84,6 +84,8 @@ interface EditSpaBookingModalProps {
   booking: EditableBooking | null
   onClose: () => void
   onSaved: () => void
+  /** If true, saving will set request status to CONFIRMED. When false, only payload is updated (used for pre-approval edits). */
+  confirmOnSave?: boolean
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -93,6 +95,7 @@ export default function EditSpaBookingModal({
   booking,
   onClose,
   onSaved,
+  confirmOnSave = true,
 }: EditSpaBookingModalProps) {
   const [saving, setSaving] = useState(false)
   const [therapists, setTherapists] = useState<Therapist[]>([])
@@ -243,24 +246,26 @@ export default function EditSpaBookingModal({
       const servicePrice = catalogItem?.price ?? 0
       const serviceDuration = catalogItem?.duration_mins ?? 60
 
-      // Update requests row only. The timetable reads directly from requests,
-      // so this is all that is needed for the card to re-appear in the correct slot.
+      // Update requests row only. Optionally confirm the booking depending on
+      // whether this save is a pre-approval edit or the actual approve action.
+      const updatePayload: any = {
+        payload: {
+          service_name: selectedService,
+          slot_time: selectedTime,
+          room_number: booking.roomNumber,
+          assigned_therapist: therapistName,
+          therapist_id: selectedTherapistId,
+          is_on_call: isOnCall,
+          guest_phone: booking.guestPhone,
+          price: servicePrice,
+          duration_mins: serviceDuration,
+        },
+      }
+      if (confirmOnSave) updatePayload.status = 'CONFIRMED'
+
       const { error: reqErr } = await supabase
         .from('requests')
-        .update({
-          status: 'CONFIRMED',
-          payload: {
-            service_name: selectedService,
-            slot_time: selectedTime,
-            room_number: booking.roomNumber,
-            assigned_therapist: therapistName,
-            therapist_id: selectedTherapistId,
-            is_on_call: isOnCall,
-            guest_phone: booking.guestPhone,
-            price: servicePrice,
-            duration_mins: serviceDuration,
-          },
-        })
+        .update(updatePayload)
         .eq('id', booking.id)
 
       if (reqErr) {

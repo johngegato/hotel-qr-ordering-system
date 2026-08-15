@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
+  Linking,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
 
@@ -31,6 +32,8 @@ export default function SpaQueue() {
   const [requests, setRequests] = useState<SpaRequestItem[]>([])
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
+  const [editBooking, setEditBooking] = useState<any | null>(null)
+  const [isEditOpen, setIsEditOpen] = useState(false)
 
   // Fetch pending spa requests
   const fetchSpaQueue = async () => {
@@ -162,7 +165,7 @@ export default function SpaQueue() {
               <View style={[styles.card, isOnCall && styles.cardOnCall]}>
                 <View style={styles.cardHeader}>
                   <View style={styles.roomBadge}>
-                    <Text style={styles.roomText}>Room 302</Text>
+                    <Text style={styles.roomText}>{item.payload?.room_number || item.rooms?.room_number || 'Room 302'}</Text>
                   </View>
 
                   {isOnCall ? (
@@ -187,6 +190,41 @@ export default function SpaQueue() {
 
                 {/* Action Buttons */}
                 <View style={styles.actionRow}>
+                  {/* Modify / Edit before approval */}
+                  <TouchableOpacity
+                    style={[styles.modifyBtn, isProcessing && styles.btnDisabled]}
+                    onPress={() => {
+                      // Build editable booking object expected by EditSpaBookingModal
+                      const editable = {
+                        id: item.id,
+                        roomNumber: item.payload?.room_number || item.rooms?.room_number || 'Room 302',
+                        guestPhone: item.payload?.guest_phone || '',
+                        serviceName: item.payload?.service_name || 'Spa Treatment',
+                        startTime: item.payload?.slot_time || '14:00',
+                        therapistId: item.payload?.therapist_id || null,
+                        therapistName: item.payload?.assigned_therapist || '',
+                        isOnCall: item.status === 'PENDING_ON_CALL' || item.payload?.is_on_call === true,
+                        status: item.status,
+                      }
+                      setEditBooking(editable)
+                      setIsEditOpen(true)
+                    }}
+                  >
+                    <Text style={styles.modifyBtnText}>✏️ Modify</Text>
+                  </TouchableOpacity>
+
+                  {/* Dial / Call guest */}
+                  <TouchableOpacity
+                    style={[styles.callBtn, isProcessing && styles.btnDisabled]}
+                    onPress={() => {
+                      const phone = item.payload?.guest_phone || ''
+                      if (phone) Linking.openURL(`tel:${phone}`)
+                      else Alert.alert('No Phone', 'Guest phone number not provided.')
+                    }}
+                  >
+                    <Text style={styles.callBtnText}>📞 Call</Text>
+                  </TouchableOpacity>
+
                   <TouchableOpacity
                     style={[styles.confirmBtn, isProcessing && styles.btnDisabled]}
                     onPress={() => handleUpdateStatus(item.id, 'CONFIRMED')}
@@ -210,6 +248,17 @@ export default function SpaQueue() {
               </View>
             )
           }}
+        />
+      )}
+
+      {/* Edit modal for pre-approval edits */}
+      {isEditOpen && editBooking && (
+        <EditSpaBookingModal
+          isOpen={isEditOpen}
+          booking={editBooking}
+          onClose={() => { setIsEditOpen(false); setEditBooking(null) }}
+          onSaved={async () => { await fetchSpaQueue(); setIsEditOpen(false); setEditBooking(null) }}
+          confirmOnSave={false}
         />
       )}
     </View>
