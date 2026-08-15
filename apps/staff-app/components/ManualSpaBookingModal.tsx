@@ -76,6 +76,9 @@ export default function ManualSpaBookingModal({
   const [services, setServices] = useState<SpaServiceItem[]>(DEFAULT_SERVICES)
   const [therapists, setTherapists] = useState<Therapist[]>(FALLBACK_THERAPISTS)
   const [roomNumber, setRoomNumber] = useState('')
+  const [roomResults, setRoomResults] = useState<any[]>([])
+  const [isSearchingRooms, setIsSearchingRooms] = useState(false)
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
   const [guestPhone, setGuestPhone] = useState('')
   const [selectedService, setSelectedService] = useState<SpaServiceItem>(DEFAULT_SERVICES[0])
   const [selectedTherapistId, setSelectedTherapistId] = useState(FALLBACK_THERAPISTS[0].id)
@@ -143,53 +146,58 @@ export default function ManualSpaBookingModal({
       return
     }
 
-    setIsSaving(true)
-    try {
-      // Ensure the default room seed exists in the DB. Some Supabase
-      // deployments may not have run migrations/seeds; creating the room
-      // prevents FK violations when inserting requests that reference it.
       try {
-        const { data: roomData, error: roomErr } = await (supabase as any)
-          .from('rooms')
-          .select('id')
-          .eq('id', DEFAULT_ROOM_ID)
-          .single()
-        if (roomErr || !roomData) {
-          // Insert a non-invasive seed room so we don't conflict with admin-created
-          // rooms that the Admin UI generates (QR, metadata, etc.). This record
-          // is clearly marked as a seed and inactive so admins can spot/replace it.
-          const seedRoom = {
-            id: DEFAULT_ROOM_ID,
-            hotel_id: HOTEL_ID,
-            room_number: `seed-${roomNumber.trim() || '302'}`,
-            qr_auth_hash: `seed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            is_seed: true,
-            is_active: false,
-            created_by: 'system-seed',
-          }
+        // Only attempt to ensure DEFAULT_ROOM_ID exists when staff did not
+        // select an existing room from the suggestions. If a room was
+        // explicitly selected, we'll use that room's id instead.
+        if (!selectedRoomId) {
+          try {
+            const { data: roomData, error: roomErr } = await (supabase as any)
+              .from('rooms')
+              .select('id')
+              .eq('id', DEFAULT_ROOM_ID)
+              .single()
+            if (roomErr || !roomData) {
+              // Insert a non-invasive seed room so we don't conflict with admin-created
+              // rooms that the Admin UI generates (QR, metadata, etc.). This record
+              // is clearly marked as a seed and inactive so admins can spot/replace it.
+              const seedRoom = {
+                id: DEFAULT_ROOM_ID,
+                hotel_id: HOTEL_ID,
+                room_number: `seed-${roomNumber.trim() || '302'}`,
+                qr_auth_hash: `seed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                is_seed: true,
+                is_active: false,
+                created_by: 'system-seed',
+              }
 
-          const { data: insRoomData, error: insRoomErr } = await (supabase as any)
-            .from('rooms')
-            .insert([seedRoom])
-            .select('id')
+              const { data: insRoomData, error: insRoomErr } = await (supabase as any)
+                .from('rooms')
+                .insert([seedRoom])
+                .select('id')
 
-          if (insRoomErr) {
-            console.warn('Failed to ensure DEFAULT_ROOM_ID exists:', insRoomErr)
-          } else {
-            // Optional audit log so admins are aware a seed record was created.
-            try {
-              await (supabase as any)
-                .from('audit_logs')
-                .insert([{
-                  hotel_id: HOTEL_ID,
-                  action: 'SEED_ROOM_CREATED',
-                  details: { room_id: DEFAULT_ROOM_ID, source: 'system-seed' },
-                }])
-            } catch (e) {
-              // non-fatal
+              if (insRoomErr) {
+                console.warn('Failed to ensure DEFAULT_ROOM_ID exists:', insRoomErr)
+              } else {
+                // Optional audit log so admins are aware a seed record was created.
+                try {
+                  await (supabase as any)
+                    .from('audit_logs')
+                    .insert([{
+                      hotel_id: HOTEL_ID,
+                      action: 'SEED_ROOM_CREATED',
+                      details: { room_id: DEFAULT_ROOM_ID, source: 'system-seed' },
+                    }])
+                } catch (e) {
+                  // non-fatal
+                }
+              }
             }
+          } catch (roomCheckErr) {
+            console.warn('Room existence check failed (continuing):', roomCheckErr)
           }
         }
+
       } catch (roomCheckErr) {
         console.warn('Room existence check failed (continuing):', roomCheckErr)
       }
@@ -215,7 +223,7 @@ export default function ManualSpaBookingModal({
         .from('requests')
         .insert([{
           hotel_id: HOTEL_ID,
-          room_id: DEFAULT_ROOM_ID,
+          room_id: selectedRoomId ?? DEFAULT_ROOM_ID,
           request_type: 'SPA_BOOKING',
           status: 'CONFIRMED',
           payload,
@@ -295,6 +303,43 @@ export default function ManualSpaBookingModal({
     }
   }
 
+  // ─── Room search (debounced) ─────────────────────────────────────────────
+  useEffect(() => {
+    const q = roomNumber.trim()
+    if (!q) {
+      setRoomResults([])
+      setIsSearchingRooms(false)
+      return
+    }
+
+    setIsSearchingRooms(true)
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await (supabase as any)
+          .from('rooms')
+          .select('id, room_number')
+          .eq('hotel_id', HOTEL_ID)
+          .ilike('room_number', `${q}%`)
+          .limit(10)
+
+        setRoomResults(data || [])
+      } catch (e) {
+        console.warn('Room search failed:', e)
+        setRoomResults([])
+      } finally {
+        setIsSearchingRooms(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(t)
+  }, [roomNumber])
+
+  const handleSelectRoomSuggestion = (room: any) => {
+    setSelectedRoomId(room.id)
+    setRoomNumber(String(room.room_number))
+    setRoomResults([])
+  }
+
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -333,9 +378,19 @@ export default function ManualSpaBookingModal({
                 placeholder="e.g. 302, Suite 4A"
                 placeholderTextColor="#475569"
                 value={roomNumber}
-                onChangeText={setRoomNumber}
+                  onChangeText={(v) => { setRoomNumber(v); setSelectedRoomId(null); }}
                 autoCapitalize="characters"
               />
+              {/* Room suggestions */}
+              {roomResults.length > 0 && (
+                <View style={styles.suggestionList}>
+                  {roomResults.map(r => (
+                    <TouchableOpacity key={r.id} onPress={() => handleSelectRoomSuggestion(r)} style={styles.suggestionItem}>
+                      <Text style={styles.suggestionText}>Room {r.room_number}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
 
             {/* Guest Phone */}
@@ -680,5 +735,23 @@ const styles = StyleSheet.create({
   },
   btnDisabled: {
     opacity: 0.6,
+  },
+  suggestionList: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderRadius: 8,
+    marginTop: 6,
+    maxHeight: 160,
+  },
+  suggestionItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderBottomColor: 'rgba(255,255,255,0.03)',
+    borderBottomWidth: 1,
+  },
+  suggestionText: {
+    color: '#e2e8f0',
+    fontSize: 12,
   },
 })
