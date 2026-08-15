@@ -196,22 +196,30 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
           const rawSlot = payload.slot_time || payload.display_time || '14:00'
           const startTime = convertTo24Hour(String(rawSlot))
 
-          // Filter to selected day: compare slot hour to date range
-          // Since slot_time is just HH:MM (not a full datetime), we use created_at
-          // for "today" filtering only — but show all if date can't be determined
-          const createdAt = new Date(req.created_at)
+          // Prefer filtering by the scheduled slot datetime (derived from slot_time)
+          // instead of the request `created_at`. This ensures bookings created
+          // on a different day but scheduled for the selected day appear correctly
+          // in the timetable. Fall back to created_at heuristics only when slot
+          // time cannot be parsed.
           const dayFrom = new Date(from)
           const dayTo = new Date(to)
-          const withinDay = createdAt >= dayFrom && createdAt < dayTo
-
-          // For tomorrow tab, skip today's entries; for today, skip tomorrow's
-          // But always include PENDING_ON_CALL regardless (they may have no date)
-          if (!withinDay && req.status !== 'PENDING_ON_CALL') {
-            // If slot was manually created and we can check: skip if not in range
-            // Soft filter: only skip if created_at is clearly on a different day
+          let withinDay = false
+          try {
+            const [hhStr, mmStr] = startTime.split(':')
+            const hh = Number(hhStr || '14')
+            const mm = Number(mmStr || '0')
+            const slotDate = new Date(dayFrom)
+            slotDate.setHours(hh, mm, 0, 0)
+            withinDay = slotDate >= dayFrom && slotDate < dayTo
+          } catch (e) {
+            // if parsing fails, fall back to created_at based heuristic
+            const createdAt = new Date(req.created_at)
             const isOlderThanYesterday = createdAt < new Date(dayFrom.getTime() - 24 * 60 * 60 * 1000)
-            if (isOlderThanYesterday) return
+            withinDay = !isOlderThanYesterday
           }
+
+          // Always include PENDING_ON_CALL entries as they may not have reliable slot datetimes
+          if (!withinDay && req.status !== 'PENDING_ON_CALL') return
 
           const serviceName = payload.service_name || 'Spa Treatment'
           const rawRoom = payload.room_number
@@ -286,11 +294,17 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
   useEffect(() => {
     fetchTimetableData()
 
-    const channel = supabase
-      .channel('spa-timetable-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, fetchTimetableData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'spa_slot_locks' }, fetchTimetableData)
-      .subscribe()
+    const channel = supabase.channel('spa-timetable-realtime')
+    // Listen to INSERT/UPDATE/DELETE on requests and spa_slot_locks so timetable refreshes reliably
+    channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'requests' }, () => fetchTimetableData())
+    channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'requests' }, () => fetchTimetableData())
+    channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'requests' }, () => fetchTimetableData())
+
+    channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'spa_slot_locks' }, () => fetchTimetableData())
+    channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'spa_slot_locks' }, () => fetchTimetableData())
+    channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'spa_slot_locks' }, () => fetchTimetableData())
+
+    channel.subscribe()
 
     return () => { supabase.removeChannel(channel) }
   }, [fetchTimetableData])
