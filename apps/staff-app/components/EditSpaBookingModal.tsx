@@ -263,6 +263,14 @@ export default function EditSpaBookingModal({
       }
       if (confirmOnSave) updatePayload.status = 'CONFIRMED'
 
+      // Normalize room number: store raw numeric/short value (e.g. '101') rather
+      // than a formatted label like 'Room 101' to keep payload consistent.
+      const rawRoomValue = (booking.roomNumber || '').toString()
+      const normalizedRoom = rawRoomValue.startsWith('Room')
+        ? rawRoomValue.replace(/^Room\s*/i, '').trim()
+        : rawRoomValue
+      updatePayload.payload = { ...updatePayload.payload, room_number: normalizedRoom }
+
       const { error: reqErr } = await supabase
         .from('requests')
         .update(updatePayload)

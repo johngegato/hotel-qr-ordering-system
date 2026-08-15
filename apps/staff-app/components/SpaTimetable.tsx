@@ -242,6 +242,10 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
           // Derive room number from multiple possible payload keys or the rooms relation
           const payloadRoom = payload.room_number ?? payload.room ?? payload.room_no ?? payload.roomNumber ?? req.rooms?.room_number ?? ''
           let roomNumber = payloadRoom ? String(payloadRoom) : ''
+          if (!roomNumber || roomNumber === 'null') {
+            // Debug: log requests missing room info so we can inspect the payload in the browser console
+            try { console.debug('[SpaTimetable] missing room for request', { id: req.id, payload }) } catch (e) {}
+          }
           if (!roomNumber) roomNumber = 'Room —'
           else if (!roomNumber.startsWith('Room')) roomNumber = `Room ${roomNumber}`
           const guestPhone = payload.guest_phone || payload.phone || ''
