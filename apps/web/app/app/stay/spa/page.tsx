@@ -103,6 +103,26 @@ function GuestSpaContent() {
     '05:30 PM',
   ]
 
+  const getSlotWindow = (slotTime: string, durationMinutes: number = 60) => {
+    const [time, meridiem] = slotTime.split(' ')
+    const [hourText, minuteText] = time.split(':')
+    let hour = Number(hourText)
+    const minute = Number(minuteText || '00')
+
+    if (meridiem && meridiem.toUpperCase() === 'PM' && hour < 12) hour += 12
+    if (meridiem && meridiem.toUpperCase() === 'AM' && hour === 12) hour = 0
+
+    const start = new Date()
+    start.setHours(hour, minute, 0, 0)
+
+    if (start.getTime() < Date.now()) {
+      start.setDate(start.getDate() + 1)
+    }
+
+    const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
+    return { start, end }
+  }
+
   // Handle slot selection and 10-minute hold lock
   const handleSelectSlot = async (slotTime: string) => {
     setSelectedSlotTime(slotTime)
@@ -110,16 +130,16 @@ function GuestSpaContent() {
     setIsOnCallSlot(requiresOnCall)
 
     try {
-      const startTime = new Date().toISOString()
-      const endTime = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+      const durationMinutes = selectedService?.duration_mins || 60
+      const { start, end } = getSlotWindow(slotTime, durationMinutes)
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from('spa_slot_locks') as any)
         .insert([
           {
             hotel_id: defaultHotelId,
-            start_time: startTime,
-            end_time: endTime,
+            start_time: start.toISOString(),
+            end_time: end.toISOString(),
             status: 'HELD',
             expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
           },
@@ -147,6 +167,14 @@ function GuestSpaContent() {
     setBookingStatus(initialStatus)
 
     try {
+      const roomLookup = await (supabase as any)
+        .from('rooms')
+        .select('room_number')
+        .eq('id', roomId)
+        .maybeSingle()
+
+      const roomNumber = roomLookup?.data?.room_number ?? ''
+
       // 1. Insert booking request into requests table
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: reqData, error: reqErr } = await (supabase as any)
@@ -160,6 +188,7 @@ function GuestSpaContent() {
             service_id: selectedService.id,
             service_name: selectedService.name,
             slot_time: selectedSlotTime,
+            room_number: roomNumber,
             price: selectedService.price,
             duration_mins: selectedService.duration_mins,
             intake_note: intakeNote.trim() || 'No special intake preferences',
@@ -192,12 +221,20 @@ function GuestSpaContent() {
           .subscribe()
       }
 
-      // 2. Update slot lock to BOOKED
+      // 2. Update slot lock to BOOKED using the actual chosen slot window
       if (holdLockId) {
+        const durationMinutes = selectedService.duration_mins || 60
+        const { start, end } = getSlotWindow(selectedSlotTime, durationMinutes)
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (supabase as any)
           .from('spa_slot_locks')
-          .update({ status: 'BOOKED' })
+          .update({
+            status: 'BOOKED',
+            start_time: start.toISOString(),
+            end_time: end.toISOString(),
+            expires_at: new Date(end.getTime() + 10 * 60 * 1000).toISOString(),
+          })
           .eq('id', holdLockId)
       }
 

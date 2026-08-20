@@ -185,38 +185,26 @@ export default function EditSpaBookingModal({
       try {
         const selectedServiceObj = services.find((s) => s.name === selectedService)
         const durationMins = selectedServiceObj?.duration_mins ?? 60
+        const slotStart = new Date()
         const [h, m] = selectedTime.split(':').map(Number)
-        const start = new Date()
-        start.setHours(h, m, 0, 0)
-        const end = new Date(start.getTime() + durationMins * 60 * 1000)
+        slotStart.setHours(h || 0, m || 0, 0, 0)
+        if (slotStart.getTime() < Date.now()) slotStart.setDate(slotStart.getDate() + 1)
+        const slotEnd = new Date(slotStart.getTime() + durationMins * 60 * 1000)
 
-        // Query the requests table directly (source of truth for timetable)
-        const { data: reqData } = await supabase
-          .from('requests')
-          .select('id, payload, status')
-          .eq('request_type', 'SPA_BOOKING')
-          .eq('status', 'CONFIRMED')
+        const { data: lockData } = await supabase
+          .from('spa_slot_locks')
+          .select('id, therapist_id, start_time, end_time, status')
+          .in('status', ['HELD', 'BOOKED'])
+          .lt('start_time', slotEnd.toISOString())
+          .gt('end_time', slotStart.toISOString())
 
         const newMap: Record<string, boolean> = {}
         for (const t of therapists) {
-          const overlap =
-            reqData?.some((req: any) => {
-              const reqTherapistId = req.payload?.therapist_id
-              if (reqTherapistId !== t.id) return false
-              // Skip the current booking being edited
-              if (req.id === booking.id) return false
-              
-              const slotTime = req.payload?.slot_time
-              if (!slotTime) return false
-              
-              const [sh, sm] = slotTime.split(':').map((v: string) => parseInt(v, 10))
-              const reqStart = new Date()
-              reqStart.setHours(sh || 0, sm || 0, 0, 0)
-              const reqDuration = req.payload?.duration_mins ?? 60
-              const reqEnd = new Date(reqStart.getTime() + reqDuration * 60 * 1000)
-              
-              return start.getTime() < reqEnd.getTime() && end.getTime() > reqStart.getTime()
-            }) ?? false
+          const overlap = (lockData || []).some((lock: any) => {
+            if (lock.therapist_id !== t.id) return false
+            if (booking.therapistId && lock.id === booking.id) return false
+            return true
+          })
           newMap[t.id] = overlap
         }
         setConflictMap(newMap)
@@ -307,29 +295,30 @@ export default function EditSpaBookingModal({
         }])
 
       // ─── Manage spa_slot_locks ──────────────────────────────────────────────
-      // Calculate start/end times for the new slot
       const [timeH, timeM] = selectedTime.split(':').map((v) => parseInt(v, 10))
       const lockStart = new Date()
       lockStart.setHours(timeH || 0, timeM || 0, 0, 0)
+      if (lockStart.getTime() < Date.now()) lockStart.setDate(lockStart.getDate() + 1)
       const matchedService = services.find((svc: CatalogService) => svc.name === selectedService)
       const durationMins = matchedService?.duration_mins ?? 60
       const lockEnd = new Date(lockStart.getTime() + durationMins * 60 * 1000)
-      const expiresAt = new Date(lockEnd.getTime() + 24 * 60 * 60 * 1000) // 24 hours after end
+      const expiresAt = new Date(lockEnd.getTime() + 10 * 60 * 1000)
 
-      // Delete any existing slot lock for this booking (session_id)
       await supabase
         .from('spa_slot_locks')
         .delete()
-        .eq('session_id', booking.id)
+        .eq('therapist_id', selectedTherapistId)
+        .in('status', ['HELD', 'BOOKED'])
+        .lt('start_time', lockEnd.toISOString())
+        .gt('end_time', lockStart.toISOString())
 
-      // Insert the new BOOKED slot lock
       const { error: lockErr } = await supabase
         .from('spa_slot_locks')
         .insert([
           {
             hotel_id: HOTEL_ID,
             therapist_id: selectedTherapistId,
-            session_id: booking.id,
+            session_id: null,
             start_time: lockStart.toISOString(),
             end_time: lockEnd.toISOString(),
             status: 'BOOKED',
@@ -339,7 +328,6 @@ export default function EditSpaBookingModal({
 
       if (lockErr) {
         console.error('[EditSpaBookingModal] Failed to create slot lock:', lockErr)
-        // Non-fatal: the booking is still saved in requests, but lock tracking is broken
       }
       // ─────────────────────────────────────────────────────────────────────────
 

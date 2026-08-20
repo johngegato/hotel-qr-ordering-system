@@ -224,6 +224,41 @@ export default function App() {
     }
   }
 
+  const hydrateIncomingAlert = async (request: any): Promise<IncomingRequest | null> => {
+    if (!request || request.request_type !== 'SPA_BOOKING') return request
+
+    const payload = request.payload || {}
+    const roomFromPayload =
+      payload.room_number ??
+      payload.room ??
+      payload.room_no ??
+      payload.roomNumber ??
+      ''
+
+    let roomNumber = typeof roomFromPayload === 'string' && roomFromPayload.trim() ? roomFromPayload.trim() : ''
+
+    if (!roomNumber && request.room_id) {
+      const { data: roomData } = await supabase
+        .from('rooms')
+        .select('room_number')
+        .eq('id', request.room_id)
+        .maybeSingle()
+
+      roomNumber = roomData?.room_number ? String(roomData.room_number) : ''
+    }
+
+    if (!roomNumber) return request
+
+    return {
+      ...request,
+      rooms: [{ room_number: roomNumber }],
+      payload: {
+        ...payload,
+        room_number: roomNumber,
+      },
+    }
+  }
+
   const handleLogin = useCallback(async () => {
     setIsLoggingIn(true)
     setLoginError('')
@@ -289,7 +324,13 @@ export default function App() {
         fetchStats()
         // Fire aggressive alert on every new PENDING request
         if (payload.eventType === 'INSERT' && (payload.new as any)?.status === 'PENDING') {
-          setIncomingAlert(payload.new as IncomingRequest)
+          hydrateIncomingAlert(payload.new as any)
+            .then((nextRequest) => {
+              if (nextRequest) setIncomingAlert(nextRequest as IncomingRequest)
+            })
+            .catch(() => {
+              setIncomingAlert(payload.new as IncomingRequest)
+            })
         }
       })
       .subscribe()

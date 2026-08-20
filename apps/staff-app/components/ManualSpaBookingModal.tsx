@@ -43,6 +43,23 @@ const FALLBACK_THERAPISTS = [
   { id: '20000000-0000-0000-0000-000000000002', full_name: 'Marcus Vance (On-Call)',   is_on_call: true  },
 ]
 
+function buildSlotWindow(slotTime: string, durationMins: number) {
+  const [timePart, meridiem] = slotTime.split(' ')
+  const [hoursText, minutesText] = timePart.split(':')
+  let hours = Number(hoursText || '0')
+  const minutes = Number(minutesText || '0')
+
+  if (meridiem && meridiem.toUpperCase() === 'PM' && hours < 12) hours += 12
+  if (meridiem && meridiem.toUpperCase() === 'AM' && hours === 12) hours = 0
+
+  const start = new Date()
+  start.setHours(hours, minutes, 0, 0)
+  if (start.getTime() < Date.now()) start.setDate(start.getDate() + 1)
+
+  const end = new Date(start.getTime() + (durationMins || 60) * 60 * 1000)
+  return { start, end }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Therapist {
@@ -85,6 +102,8 @@ export default function ManualSpaBookingModal({
   const [selectedTime, setSelectedTime] = useState('14:00')
   const [intakeNote, setIntakeNote] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [conflictMap, setConflictMap] = useState<Record<string, boolean>>({})
+  const [checkingConflicts, setCheckingConflicts] = useState(false)
 
   // Fetch live services (from Admin catalog_items) & live therapists
   useEffect(() => {
@@ -137,6 +156,40 @@ export default function ManualSpaBookingModal({
       setIntakeNote('')
     }
   }, [isOpen, quickAddSlot, services])
+
+  // Re-check conflicts when time or service changes
+  useEffect(() => {
+    if (!isOpen || therapists.length === 0) return
+    const check = async () => {
+      setCheckingConflicts(true)
+      try {
+        const durationMins = selectedService?.duration_mins ?? 60
+        const { start, end } = buildSlotWindow(selectedTime, durationMins)
+
+        const { data: lockData } = await supabase
+          .from('spa_slot_locks')
+          .select('id, therapist_id, start_time, end_time, status')
+          .in('status', ['HELD', 'BOOKED'])
+          .lt('start_time', end.toISOString())
+          .gt('end_time', start.toISOString())
+
+        const newMap: Record<string, boolean> = {}
+        for (const t of therapists) {
+          const overlap = (lockData || []).some((lock: any) => {
+            if (lock.therapist_id !== t.id) return false
+            return true
+          })
+          newMap[t.id] = overlap
+        }
+        setConflictMap(newMap)
+      } catch {
+        // ignore conflict check errors, don't block save
+      } finally {
+        setCheckingConflicts(false)
+      }
+    }
+    check()
+  }, [selectedTime, selectedService, isOpen, therapists])
 
   const selectedTherapist = therapists.find((t) => t.id === selectedTherapistId) ?? therapists[0]
 
@@ -247,28 +300,33 @@ export default function ManualSpaBookingModal({
         // non-fatal
       }
 
-      // Create slot lock
+      // Create slot lock against the selected therapist/time using the actual slot window
       try {
-        if (reqData?.id) {
-          const [hhStr, mmStr] = selectedTime.split(':')
-          const hh = Number(hhStr || '14')
-          const mm = Number(mmStr || '0')
-          const startDt = new Date()
-          startDt.setHours(hh, mm, 0, 0)
-          const endDt = new Date(startDt.getTime() + (selectedService.duration_mins || 60) * 60 * 1000)
+        const { start, end } = buildSlotWindow(selectedTime, selectedService.duration_mins || 60)
 
-          await (supabase as any)
-            .from('spa_slot_locks')
-            .insert([{
-              hotel_id: HOTEL_ID,
-              therapist_id: selectedTherapistId,
-              session_id: reqData.id,
-              start_time: startDt.toISOString(),
-              end_time: endDt.toISOString(),
-              status: 'BOOKED',
-              expires_at: null,
-            }])
+        const { data: existingLocks } = await supabase
+          .from('spa_slot_locks')
+          .select('id')
+          .eq('therapist_id', selectedTherapistId)
+          .in('status', ['HELD', 'BOOKED'])
+          .lt('start_time', end.toISOString())
+          .gt('end_time', start.toISOString())
+
+        if ((existingLocks || []).length > 0) {
+          throw new Error('This therapist already has an active booking for that time slot.')
         }
+
+        await (supabase as any)
+          .from('spa_slot_locks')
+          .insert([{
+            hotel_id: HOTEL_ID,
+            therapist_id: selectedTherapistId,
+            session_id: null,
+            start_time: start.toISOString(),
+            end_time: end.toISOString(),
+            status: 'BOOKED',
+            expires_at: new Date(end.getTime() + 10 * 60 * 1000).toISOString(),
+          }])
       } catch (e) {
         console.warn('Failed to create spa_slot_lock for manual booking:', e)
       }
@@ -648,6 +706,7 @@ const styles = StyleSheet.create({
   therapistChipIcon: {
     fontSize: 14,
   },
+  // test-marker
   therapistChipText: {
     color: '#94a3b8',
     fontSize: 13,
