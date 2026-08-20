@@ -33,7 +33,7 @@ const isValidUuid = (value?: string | null) => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
-export default function DedicatedCallModule({ activeStaffId = 'staff-01' }: DedicatedCallModuleProps) {
+export default function DedicatedCallModule({ activeStaffId }: DedicatedCallModuleProps) {
   const [calls, setCalls] = useState<CallRequestItem[]>([])
   const [loading, setLoading] = useState(true)
   const [roomSort, setRoomSort] = useState<'asc' | 'desc'>('asc')

@@ -86,7 +86,7 @@ function SlaTimer({ createdAt, slaMinutes }: { createdAt: string; slaMinutes: nu
 }
 
 // ─── Main Component ────────────────────────────────────────────
-export default function TaskQueue() {
+export default function TaskQueue({ activeStaffId }: { activeStaffId?: string }) {
   const [tasks, setTasks] = useState<TaskRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
@@ -133,7 +133,7 @@ export default function TaskQueue() {
     setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'CLAIMED' } : t))
     const { error } = await supabase
       .from('requests')
-      .update({ status: 'CLAIMED', claimed_at: new Date().toISOString() })
+      .update({ status: 'CLAIMED', claimed_by: activeStaffId || null, claimed_at: new Date().toISOString() })
       .eq('id', task.id)
     if (error && snapshot) setTasks(prev => prev.map(t => t.id === task.id ? snapshot : t))
     setProcessingId(null)
@@ -145,7 +145,7 @@ export default function TaskQueue() {
     setTasks(prev => prev.filter(t => t.id !== task.id))
     const { error } = await supabase
       .from('requests')
-      .update({ status: 'RESOLVED', claimed_at: new Date().toISOString() })
+      .update({ status: 'RESOLVED', claimed_by: activeStaffId || null, claimed_at: new Date().toISOString() })
       .eq('id', task.id)
     if (error && snapshot) setTasks(prev => [snapshot, ...prev])
     setProcessingId(null)

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import {
   StyleSheet,
   Text,
@@ -10,6 +10,7 @@ import {
   Animated,
   Dimensions,
   ScrollView,
+  TextInput,
 } from 'react-native'
 import { supabase } from './lib/supabase'
 import CallQueue from './components/CallQueue'
@@ -141,6 +142,10 @@ export default function App() {
   const [resolvedToday, setResolvedToday] = useState(0)
   const [activeStaffUser, setActiveStaffUser] = useState<StaffUser | null>(null)
   const [incomingAlert, setIncomingAlert] = useState<IncomingRequest | null>(null)
+  const [loginEmail, setLoginEmail] = useState('frontdesk@demo.local')
+  const [loginPassword, setLoginPassword] = useState('demo123456')
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const [loginError, setLoginError] = useState('')
   const fadeAnim = React.useRef(new Animated.Value(0)).current
   const slideAnim = React.useRef(new Animated.Value(30)).current
 
@@ -219,6 +224,52 @@ export default function App() {
     }
   }
 
+  const handleLogin = useCallback(async () => {
+    setIsLoggingIn(true)
+    setLoginError('')
+
+    try {
+      const email = loginEmail.trim().toLowerCase()
+      const password = loginPassword.trim()
+
+      if (!email || !password) {
+        throw new Error('Enter both email and password.')
+      }
+
+      const { data, error } = await supabase
+        .from('staff_users')
+        .select('*')
+        .eq('email', email)
+        .eq('password', password)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) {
+        throw new Error('Invalid staff credentials. Try frontdesk@demo.local / demo123456.')
+      }
+
+      setActiveStaffUser({
+        id: data.id,
+        name: data.full_name,
+        email: data.email,
+        role: data.role,
+      })
+      setLoginError('')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to log in.'
+      setLoginError(message)
+      setActiveStaffUser(null)
+    } finally {
+      setIsLoggingIn(false)
+    }
+  }, [loginEmail, loginPassword])
+
+  const handleLogout = () => {
+    setActiveStaffUser(null)
+    setLoginError('')
+  }
+
   useEffect(() => {
     fetchData()
 
@@ -236,6 +287,59 @@ export default function App() {
 
     return () => { supabase.removeChannel(channel) }
   }, [])
+
+  if (!activeStaffUser && status !== 'error' && status === 'connected') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+        <View style={styles.loginContainer}>
+          <View style={styles.loginCard}>
+            <Text style={styles.loginTitle}>🏨 Staff Login</Text>
+            <Text style={styles.loginSubtitle}>Front desk access</Text>
+
+            <Text style={styles.inputLabel}>Email</Text>
+            <TextInput
+              style={styles.input}
+              value={loginEmail}
+              onChangeText={setLoginEmail}
+              placeholder="frontdesk@demo.local"
+              placeholderTextColor="#64748b"
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+
+            <Text style={styles.inputLabel}>Password</Text>
+            <TextInput
+              style={styles.input}
+              value={loginPassword}
+              onChangeText={setLoginPassword}
+              placeholder="demo123456"
+              placeholderTextColor="#64748b"
+              secureTextEntry
+            />
+
+            <TouchableOpacity
+              style={[styles.loginButton, isLoggingIn && styles.loginButtonDisabled]}
+              onPress={handleLogin}
+              disabled={isLoggingIn}
+            >
+              <Text style={styles.loginButtonText}>
+                {isLoggingIn ? 'Signing in...' : 'Login'}
+              </Text>
+            </TouchableOpacity>
+
+            {loginError ? <Text style={styles.loginError}>{loginError}</Text> : null}
+
+            <View style={styles.demoBox}>
+              <Text style={styles.demoTitle}>Demo credentials</Text>
+              <Text style={styles.demoText}>frontdesk@demo.local</Text>
+              <Text style={styles.demoText}>demo123456</Text>
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    )
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -257,12 +361,13 @@ export default function App() {
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <Text style={styles.headerIcon}>🏨</Text>
-            <View>
-              <Text style={styles.headerTitle}>Front Desk</Text>
-              <Text style={styles.headerSubtitle}>Tablet Interface</Text>
-            </View>
-          </View>
-          <StatusBadge status={status} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.headerTitle}>Front Desk</Text>
+                <Text style={styles.headerSubtitle}>Tablet Interface</Text>
+              </View>
+              <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+                <Text style={styles.logoutButtonText}>Log out</Text>
+              </TouchableOpacity>
         </View>
 
         {/* Content */}
@@ -332,18 +437,18 @@ export default function App() {
             </View>
 
             {/* 1. Dedicated Call Requests Module & Real-time Call Queue */}
-            <DedicatedCallModule activeStaffId={activeStaffUser?.id || 'staff-01'} />
-            <CallQueue />
+            <DedicatedCallModule activeStaffId={activeStaffUser?.id || undefined} />
+            <CallQueue activeStaffId={activeStaffUser?.id} />
 
             {/* 2. Spa Timetable & Appointments Queue */}
             <SpaTimetable />
-            <SpaQueue />
+            <SpaQueue activeStaffId={activeStaffUser?.id} />
 
             {/* 3. Room Task Queue */}
-            <TaskQueue />
+            <TaskQueue activeStaffId={activeStaffUser?.id} />
 
             {/* 4. Food Orders Queue */}
-            <FoodQueue />
+            <FoodQueue activeStaffId={activeStaffUser?.id} />
 
             {/* 5. Staff User Management */}
             <UserManagement

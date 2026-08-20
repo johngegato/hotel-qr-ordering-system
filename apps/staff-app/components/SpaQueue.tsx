@@ -31,7 +31,7 @@ interface SpaRequestItem {
   } | null
 }
 
-export default function SpaQueue() {
+export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) {
   const [requests, setRequests] = useState<SpaRequestItem[]>([])
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
@@ -112,7 +112,7 @@ export default function SpaQueue() {
     try {
       const { error } = await supabase
         .from('requests')
-        .update({ status: newStatus, claimed_at: new Date().toISOString() })
+        .update({ status: newStatus, claimed_by: activeStaffId || null, claimed_at: new Date().toISOString() })
         .eq('id', id)
 
       if (error) {

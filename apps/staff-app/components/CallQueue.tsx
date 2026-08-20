@@ -22,7 +22,7 @@ interface RequestItem {
   } | null
 }
 
-export default function CallQueue() {
+export default function CallQueue({ activeStaffId }: { activeStaffId?: string }) {
   const [requests, setRequests] = useState<RequestItem[]>([])
   const [loading, setLoading] = useState(true)
   const [claimingId, setClaimingId] = useState<string | null>(null)
@@ -104,6 +104,7 @@ export default function CallQueue() {
         .from('requests')
         .update({
           status: 'CLAIMED',
+          claimed_by: activeStaffId || null,
           claimed_at: new Date().toISOString(),
         })
         .eq('id', id)

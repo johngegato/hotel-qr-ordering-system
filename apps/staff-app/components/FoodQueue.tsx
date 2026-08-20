@@ -131,7 +131,7 @@ function ArrivalTimer({ target }: { target: string }) {
   return <Text style={[styles.arrivalTimer, left < 120 && styles.arrivalTimerUrgent]}>{m}:{String(s).padStart(2, '0')}</Text>
 }
 
-export default function FoodQueue() {
+export default function FoodQueue({ activeStaffId }: { activeStaffId?: string }) {
   const [orders, setOrders] = useState<FoodRequest[]>([])
   const [catalogItems, setCatalogItems] = useState<CatalogMenuItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -226,7 +226,7 @@ export default function FoodQueue() {
   // Update order status directly (e.g. Accept/Prepare, Order Ready)
   const updateStatus = async (id: string, status: string) => {
     setUpdating(id)
-    await supabase.from('requests').update({ status, claimed_at: new Date().toISOString() }).eq('id', id)
+    await supabase.from('requests').update({ status, claimed_by: activeStaffId || null, claimed_at: new Date().toISOString() }).eq('id', id)
     setUpdating(null)
   }
 
@@ -311,6 +311,7 @@ export default function FoodQueue() {
         .update({
           payload: updatedPayload,
           status: 'PREPARING',
+          claimed_by: activeStaffId || null,
           claimed_at: new Date().toISOString(),
         })
         .eq('id', editingOrder.id)
