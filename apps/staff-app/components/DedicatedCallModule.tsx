@@ -28,6 +28,11 @@ interface DedicatedCallModuleProps {
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
+const isValidUuid = (value?: string | null) => {
+  if (!value) return false
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
 export default function DedicatedCallModule({ activeStaffId = 'staff-01' }: DedicatedCallModuleProps) {
   const [calls, setCalls] = useState<CallRequestItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -77,17 +82,22 @@ export default function DedicatedCallModule({ activeStaffId = 'staff-01' }: Dedi
     setUpdating(id)
 
     const snapshot = calls.find((c) => c.id === id)
+    const safeClaimedBy = isValidUuid(activeStaffId) ? activeStaffId : null
 
     if (newStatus === 'RESOLVED') {
       setCalls((prev) => prev.filter((c) => c.id !== id))
     } else {
-      setCalls(prev => prev.map(c => c.id === id ? { ...(c as any), status: 'CLAIMED', claimed_by: activeStaffId } : c))
+      setCalls(prev => prev.map(c => c.id === id ? { ...(c as any), status: 'CLAIMED', claimed_by: safeClaimedBy } : c))
     }
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase.from('requests') as any)
-        .update({ status: newStatus, claimed_by: activeStaffId })
+        .update({
+          status: newStatus,
+          claimed_by: safeClaimedBy,
+          claimed_at: new Date().toISOString(),
+        })
         .eq('id', id)
 
       if (error) throw error
