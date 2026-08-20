@@ -76,32 +76,35 @@ export default function DedicatedCallModule({ activeStaffId = 'staff-01' }: Dedi
   const handleUpdateStatus = async (id: string, newStatus: 'CLAIMED' | 'RESOLVED') => {
     setUpdating(id)
 
-    // Optimistic removal for RESOLVED — disappear immediately
     const snapshot = calls.find((c) => c.id === id)
+
     if (newStatus === 'RESOLVED') {
       setCalls((prev) => prev.filter((c) => c.id !== id))
+    } else {
+      setCalls(prev => prev.map(c => c.id === id ? { ...(c as any), status: 'CLAIMED', claimed_by: activeStaffId } : c))
     }
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.from('requests') as any)
+      const { error } = await (supabase.from('requests') as any)
         .update({ status: newStatus, claimed_by: activeStaffId })
         .eq('id', id)
 
       if (error) throw error
 
-      // For CLAIMED, update local list so UI reflects claimed state immediately
+      // Only refresh after a claim. For a resolve, the item is intentionally removed from the active queue,
+      // and the realtime subscription / server update should keep the list in sync without reintroducing a stale item.
       if (newStatus === 'CLAIMED') {
-        setCalls(prev => prev.map(c => c.id === id ? { ...(c as any), status: 'CLAIMED', claimed_by: activeStaffId } : c))
+        await fetchCalls()
       }
-
-      // Refresh from server to ensure consistency
-      await fetchCalls()
     } catch (err) {
       console.error('Error updating call request:', err)
-      // Restore on failure
-      if (newStatus === 'RESOLVED' && snapshot) {
-        setCalls((prev) => [snapshot, ...prev])
+
+      if (snapshot) {
+        setCalls((prev) => {
+          const exists = prev.some((c) => c.id === snapshot.id)
+          return exists ? prev : [snapshot, ...prev]
+        })
       }
     } finally {
       setUpdating(null)
