@@ -165,6 +165,7 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
           data={requests}
           keyExtractor={(item) => item.id}
           scrollEnabled={false}
+          contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
             const isProcessing = processingId === item.id
             const isOnCall = item.status === 'PENDING_ON_CALL' || item.payload?.is_on_call
@@ -300,6 +301,9 @@ const styles = StyleSheet.create({
     maxWidth: 600,
     alignSelf: 'center',
     marginTop: 16,
+  },
+  listContent: {
+    paddingBottom: 12,
   },
   loadingContainer: {
     padding: 32,
@@ -439,33 +443,72 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 10,
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 10,
+    columnGap: 10,
+  },
+  modifyBtn: {
+    flex: 1,
+    minWidth: 94,
+    backgroundColor: 'rgba(167, 139, 250, 0.14)',
+    borderColor: 'rgba(167, 139, 250, 0.28)',
+    borderWidth: 1,
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modifyBtnText: {
+    color: '#d8ccff',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  callBtn: {
+    flex: 1,
+    minWidth: 82,
+    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    borderColor: 'rgba(96, 165, 250, 0.3)',
+    borderWidth: 1,
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  callBtnText: {
+    color: '#93c5fd',
+    fontWeight: 'bold',
+    fontSize: 13,
   },
   confirmBtn: {
-    flex: 2,
+    flex: 1.5,
+    minWidth: 150,
     backgroundColor: '#4ade80',
     paddingVertical: 12,
+    paddingHorizontal: 10,
     borderRadius: 12,
     alignItems: 'center',
   },
   confirmBtnText: {
     color: '#0f172a',
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 13,
   },
   declineBtn: {
     flex: 1,
+    minWidth: 94,
     backgroundColor: 'rgba(248, 113, 113, 0.15)',
     borderColor: 'rgba(248, 113, 113, 0.3)',
     borderWidth: 1,
     paddingVertical: 12,
+    paddingHorizontal: 10,
     borderRadius: 12,
     alignItems: 'center',
   },
   declineBtnText: {
     color: '#f87171',
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 13,
   },
   btnDisabled: {
     opacity: 0.6,
