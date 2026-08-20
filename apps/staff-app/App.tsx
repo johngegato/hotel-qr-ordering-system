@@ -361,13 +361,14 @@ export default function App() {
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <Text style={styles.headerIcon}>🏨</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.headerTitle}>Front Desk</Text>
-                <Text style={styles.headerSubtitle}>Tablet Interface</Text>
-              </View>
-              <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-                <Text style={styles.logoutButtonText}>Log out</Text>
-              </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.headerTitle}>Front Desk</Text>
+              <Text style={styles.headerSubtitle}>Tablet Interface</Text>
+            </View>
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+              <Text style={styles.logoutButtonText}>Log out</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Content */}
