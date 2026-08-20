@@ -55,6 +55,23 @@ const FALLBACK_THERAPISTS = [
   },
 ]
 
+function buildSlotWindow(slotTime: string, durationMins: number) {
+  const [timePart] = slotTime.split(' ')
+  const [hoursText, minutesText] = timePart.split(':')
+  let hours = Number(hoursText || '0')
+  const minutes = Number(minutesText || '0')
+
+  const start = new Date()
+  start.setHours(hours, minutes, 0, 0)
+  if (start.getTime() < Date.now()) start.setDate(start.getDate() + 1)
+
+  const end = new Date(start.getTime() + (durationMins || 60) * 60 * 1000)
+  return { start, end }
+}
+
+const timeWindowsOverlap = (startA: Date, endA: Date, startB: Date, endB: Date) =>
+  startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime()
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface EditableBooking {
@@ -101,6 +118,7 @@ export default function EditSpaBookingModal({
   const [therapists, setTherapists] = useState<Therapist[]>([])
   const [loadingTherapists, setLoadingTherapists] = useState(true)
   const [conflictMap, setConflictMap] = useState<Record<string, boolean>>({})
+  const [slotAvailabilityMap, setSlotAvailabilityMap] = useState<Record<string, Record<string, boolean>>>({})
   const [checkingConflicts, setCheckingConflicts] = useState(false)
 
   // Catalog services (fetched from admin config)
@@ -114,10 +132,28 @@ export default function EditSpaBookingModal({
   // Track the original therapist so we don't false-conflict against their own lock
   const [originalTherapistId, setOriginalTherapistId] = useState<string | null>(null)
 
+  const normalizeTimeTo24Hour = (timeValue: string | null | undefined): string => {
+    if (!timeValue) return '14:00'
+    const trimmed = timeValue.trim()
+    if (/^\d{1,2}:\d{2}$/.test(trimmed)) return trimmed
+
+    const match = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i)
+    if (!match) return trimmed
+
+    let hours = Number(match[1])
+    const minutes = match[2]
+    const meridiem = match[3]?.toUpperCase()
+
+    if (meridiem === 'PM' && hours < 12) hours += 12
+    if (meridiem === 'AM' && hours === 12) hours = 0
+
+    return `${String(hours).padStart(2, '0')}:${minutes}`
+  }
+
   // Initialise fields when booking changes
   useEffect(() => {
     if (booking) {
-      setSelectedTime(booking.startTime || '14:00')
+      setSelectedTime(normalizeTimeTo24Hour(booking.startTime || '14:00'))
       setSelectedTherapistId(booking.therapistId)
       setSelectedService(booking.serviceName || 'Deep Tissue Massage')
       setOriginalTherapistId(booking.therapistId)  // remember original for conflict exclusion
@@ -185,28 +221,34 @@ export default function EditSpaBookingModal({
       try {
         const selectedServiceObj = services.find((s) => s.name === selectedService)
         const durationMins = selectedServiceObj?.duration_mins ?? 60
-        const slotStart = new Date()
-        const [h, m] = selectedTime.split(':').map(Number)
-        slotStart.setHours(h || 0, m || 0, 0, 0)
-        if (slotStart.getTime() < Date.now()) slotStart.setDate(slotStart.getDate() + 1)
-        const slotEnd = new Date(slotStart.getTime() + durationMins * 60 * 1000)
 
         const { data: lockData } = await supabase
           .from('spa_slot_locks')
           .select('id, therapist_id, start_time, end_time, status')
           .in('status', ['HELD', 'BOOKED'])
-          .lt('start_time', slotEnd.toISOString())
-          .gt('end_time', slotStart.toISOString())
 
         const newMap: Record<string, boolean> = {}
+        const availabilityMap: Record<string, Record<string, boolean>> = {}
+
         for (const t of therapists) {
-          const overlap = (lockData || []).some((lock: any) => {
-            if (lock.therapist_id !== t.id) return false
-            if (booking.therapistId && lock.id === booking.id) return false
-            return true
-          })
-          newMap[t.id] = overlap
+          const perSlot: Record<string, boolean> = {}
+          for (const slot of TIME_SLOTS) {
+            const candidate = buildSlotWindow(slot, durationMins)
+            const isCurrentBooking = originalTherapistId && t.id === originalTherapistId && slot === selectedTime
+            perSlot[slot] = isCurrentBooking
+              ? false
+              : (lockData || []).some((lock: any) => {
+                  if (lock.therapist_id !== t.id) return false
+                  const lockStart = new Date(lock.start_time)
+                  const lockEnd = new Date(lock.end_time)
+                  return timeWindowsOverlap(candidate.start, candidate.end, lockStart, lockEnd)
+                })
+          }
+          availabilityMap[t.id] = perSlot
+          newMap[t.id] = perSlot[selectedTime] ?? false
         }
+
+        setSlotAvailabilityMap(availabilityMap)
         setConflictMap(newMap)
       } catch {
         // ignore conflict check errors, don't block save
@@ -244,10 +286,11 @@ export default function EditSpaBookingModal({
 
       // Update requests row only. Optionally confirm the booking depending on
       // whether this save is a pre-approval edit or the actual approve action.
+      const normalizedSelectedTime = normalizeTimeTo24Hour(selectedTime)
       const updatePayload: any = {
         payload: {
           service_name: selectedService,
-          slot_time: selectedTime,
+          slot_time: normalizedSelectedTime,
           room_number: booking.roomNumber,
           assigned_therapist: therapistName,
           therapist_id: selectedTherapistId,
@@ -442,16 +485,7 @@ export default function EditSpaBookingModal({
 
             <View style={styles.timePreviewCard}>
               <Text style={styles.timePreviewLabel}>Selected Appointment Time</Text>
-              <Text style={styles.timePreviewExact}>{selectedTime} <Text style={styles.timePreview12}>({(() => {
-                const [hStr, mStr] = selectedTime.split(':')
-                let h = parseInt(hStr || '14', 10)
-                const m = mStr ? mStr.padStart(2, '0') : '00'
-                if (isNaN(h)) return selectedTime
-                const ampm = h >= 12 ? 'PM' : 'AM'
-                h = h % 12
-                if (h === 0) h = 12
-                return `${h}:${m} ${ampm}`
-              })()})</Text></Text>
+              <Text style={styles.timePreviewExact}>{normalizeTimeTo24Hour(selectedTime)}</Text>
             </View>
 
             {/* Quick Minute Stepper Controls */}
@@ -535,16 +569,19 @@ export default function EditSpaBookingModal({
                 const hourPart = t.split(':')[0]
                 const selectedHour = selectedTime.split(':')[0]
                 const isActive = selectedHour === hourPart
+                const isBlocked = !!slotAvailabilityMap[selectedTherapistId || '']?.[t]
                 return (
                   <TouchableOpacity
                     key={t}
-                    style={[styles.timeChip, isActive && styles.timeChipActive]}
+                    style={[styles.timeChip, isActive && styles.timeChipActive, isBlocked && styles.timeChipDisabled]}
                     onPress={() => {
+                      if (isBlocked) return
                       const currentMin = selectedTime.split(':')[1] || '00'
                       setSelectedTime(`${hourPart}:${currentMin}`)
                     }}
+                    disabled={isBlocked}
                   >
-                    <Text style={[styles.timeChipText, isActive && styles.timeChipTextActive]}>
+                    <Text style={[styles.timeChipText, isActive && styles.timeChipTextActive, isBlocked && styles.timeChipTextDisabled]}>
                       {hourPart}:00
                     </Text>
                   </TouchableOpacity>

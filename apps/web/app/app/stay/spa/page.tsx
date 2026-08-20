@@ -103,6 +103,21 @@ function GuestSpaContent() {
     '05:30 PM',
   ]
 
+  const convertDisplayTimeTo24Hour = (slotTime: string): string => {
+    if (!slotTime) return '14:00'
+    if (/^\d{1,2}:\d{2}$/.test(slotTime.trim())) return slotTime.trim()
+
+    const [time, meridiem] = slotTime.trim().split(' ')
+    const [hourText, minuteText] = time.split(':')
+    let hour = Number(hourText)
+    const minute = Number(minuteText || '00')
+
+    if (meridiem && meridiem.toUpperCase() === 'PM' && hour < 12) hour += 12
+    if (meridiem && meridiem.toUpperCase() === 'AM' && hour === 12) hour = 0
+
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+  }
+
   const getSlotWindow = (slotTime: string, durationMinutes: number = 60) => {
     const [time, meridiem] = slotTime.split(' ')
     const [hourText, minuteText] = time.split(':')
@@ -125,7 +140,8 @@ function GuestSpaContent() {
 
   // Handle slot selection and 10-minute hold lock
   const handleSelectSlot = async (slotTime: string) => {
-    setSelectedSlotTime(slotTime)
+    const normalizedSlotTime = convertDisplayTimeTo24Hour(slotTime)
+    setSelectedSlotTime(normalizedSlotTime)
     const requiresOnCall = selectedService?.requires_on_call || slotTime === '05:30 PM'
     setIsOnCallSlot(requiresOnCall)
 

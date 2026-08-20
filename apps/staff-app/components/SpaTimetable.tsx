@@ -385,11 +385,35 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
 
       if (locksData) {
         locksData.forEach((lock: SpaSlotLock) => {
+          const lockStart = new Date(lock.start_time)
+          const lockEnd = new Date(lock.end_time)
+
           const alreadyCovered = slotBookings.some(
             b => b.id === lock.id || (lock.session_id && b.id === lock.session_id)
           )
+
+          const hasRequestOverlap = slotBookings.some((b) => {
+            if (b.source !== 'request') return false
+
+            const [startH, startM] = (b.startTime || '00:00').split(':').map(Number)
+            const [endH, endM] = (b.endTime || '00:00').split(':').map(Number)
+
+            const bookingStart = new Date(lockStart)
+            bookingStart.setHours(startH, startM, 0, 0)
+
+            const bookingEnd = new Date(lockStart)
+            bookingEnd.setHours(endH, endM, 0, 0)
+
+            return timeWindowsOverlap(lockStart, lockEnd, bookingStart, bookingEnd)
+          })
+
+          // Guest bookings can create a slot lock without a therapist id. If a real
+          // request already occupies the same window, do not render a duplicate
+          // "Spa Desk" card for the lock.
+          if (hasRequestOverlap || !lock.therapist_id) return
+
           if (!alreadyCovered) {
-            const startHour = new Date(lock.start_time).getHours()
+            const startHour = lockStart.getHours()
             const therapist = loadedTherapists.find(t => t.id === lock.therapist_id)
             slotBookings.push({
               id: lock.id,
@@ -590,11 +614,13 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
   const renderBookingCard = (b: BookingSlot) => {
     const isConfirmed = b.status === 'CONFIRMED'
     const isOnCall = b.isOnCall || b.status === 'PENDING_ON_CALL'
-    const cardStyle = isOnCall ? styles.bookingOnCall
+    const isLock = b.source === 'lock'
+    const cardStyle = isLock ? styles.bookingLocked
+      : isOnCall ? styles.bookingOnCall
       : isConfirmed ? styles.bookingConfirmed
       : styles.bookingPending
 
-    if (confirmDeleteId === b.id) {
+    if (confirmDeleteId === b.id && !isLock) {
       return (
         <View key={b.id} style={[styles.bookingCard, cardStyle]}>
           <View style={styles.confirmOverlay}>
@@ -620,24 +646,37 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
     }
 
     return (
-      <Pressable key={b.id} style={[styles.bookingCard, cardStyle]} onPress={() => openEditModal(b)}>
+      <Pressable
+        key={b.id}
+        style={[styles.bookingCard, cardStyle]}
+        onPress={() => !isLock && openEditModal(b)}
+        disabled={isLock}
+      >
         <View style={styles.cardTopRow}>
           <Text style={styles.bookingRoom} numberOfLines={1}>{b.roomNumber}</Text>
-          <TouchableOpacity
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            onPress={() => setConfirmDeleteId(b.id)}
-          >
-            <Text style={styles.cardDeleteIcon}>✕</Text>
-          </TouchableOpacity>
+          {!isLock && (
+            <TouchableOpacity
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => setConfirmDeleteId(b.id)}
+            >
+              <Text style={styles.cardDeleteIcon}>✕</Text>
+            </TouchableOpacity>
+          )}
         </View>
         <Text style={styles.bookingService} numberOfLines={1}>{b.serviceName}</Text>
         <Text style={styles.bookingTimeTag}>⏰ {b.startTime} → {b.endTime}</Text>
-        {!!b.guestPhone && (
+        {!!b.guestPhone && !isLock && (
           <Text style={styles.bookingPhone} numberOfLines={1}>📞 {b.guestPhone}</Text>
         )}
-        <View style={[styles.statusPill, isOnCall ? styles.pillOnCall : isConfirmed ? styles.pillConfirmed : styles.pillPending]}>
+        <View style={[
+          styles.statusPill,
+          isLock ? styles.pillLocked
+            : isOnCall ? styles.pillOnCall
+            : isConfirmed ? styles.pillConfirmed
+            : styles.pillPending,
+        ]}>
           <Text style={styles.statusPillText}>
-            {isOnCall ? '⚡ On-Call' : isConfirmed ? '✓ Confirmed' : '⏳ Pending'}
+            {isLock ? '🔒 Reserved' : isOnCall ? '⚡ On-Call' : isConfirmed ? '✓ Confirmed' : '⏳ Pending'}
           </Text>
         </View>
         {/* Dev-only: show raw payload JSON for debugging */}
@@ -1305,6 +1344,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(167,139,250,0.35)',
     borderWidth: 1,
   },
+  bookingLocked: {
+    backgroundColor: 'rgba(148,163,184,0.08)',
+    borderColor: 'rgba(148,163,184,0.25)',
+    borderWidth: 1,
+    opacity: 0.94,
+  },
   cardTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1345,6 +1390,7 @@ const styles = StyleSheet.create({
   pillConfirmed: { backgroundColor: 'rgba(74,222,128,0.2)' },
   pillOnCall: { backgroundColor: 'rgba(251,191,36,0.2)' },
   pillPending: { backgroundColor: 'rgba(167,139,250,0.2)' },
+  pillLocked: { backgroundColor: 'rgba(148,163,184,0.18)' },
   statusPillText: {
     color: '#e2e8f0',
     fontSize: 8,
