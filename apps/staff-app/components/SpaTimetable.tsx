@@ -156,13 +156,21 @@ const isHistoryStatus = (status?: string) => ['CANCELLED', 'DECLINED', 'RESOLVED
 const shouldMoveBookingToHistory = (request: any, selectedDay: 'today' | 'tomorrow') => {
   const status = String(request?.status || '')
   if (isHistoryStatus(status)) return true
-  if (status !== 'CONFIRMED') return false
 
-  const payload = request?.payload || {}
-  const slotTime = payload.slot_time || payload.display_time || '14:00'
-  const durationMins = Number(payload.duration_mins || payload.duration || 60)
-  const window = buildSlotWindow(slotTime, durationMins, selectedDay)
-  return new Date() > window.end
+  if (['CONFIRMED', 'PENDING', 'PENDING_ON_CALL'].includes(status)) {
+    const payload = request?.payload || {}
+    if (!payload || typeof payload !== 'object') return false
+
+    const isGuestFlow = Boolean(payload.manual_booking || payload.guest_phone || payload.phone || payload.guest_name)
+    if (isGuestFlow) return true
+
+    const slotTime = payload.slot_time || payload.display_time || '14:00'
+    const durationMins = Number(payload.duration_mins || payload.duration || 60)
+    const window = buildSlotWindow(slotTime, durationMins, selectedDay)
+    return new Date() > window.end || status !== 'PENDING'
+  }
+
+  return false
 }
 
 const timeWindowsOverlap = (startA: Date, endA: Date, startB: Date, endB: Date) =>
@@ -267,9 +275,9 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
         .select('*, rooms(room_number)')
         .eq('hotel_id', HOTEL_ID)
         .eq('request_type', 'SPA_BOOKING')
-        .in('status', ['CONFIRMED', 'CANCELLED', 'DECLINED', 'RESOLVED', 'COMPLETED'])
+        .in('status', ['CONFIRMED', 'PENDING', 'PENDING_ON_CALL', 'CANCELLED', 'DECLINED', 'RESOLVED', 'COMPLETED'])
         .order('created_at', { ascending: false })
-        .limit(30)
+        .limit(60)
 
       const filteredHistory = (doneData || []).filter((request: any) => shouldMoveBookingToHistory(request, selectedDay))
       setHistoryBookings(filteredHistory)

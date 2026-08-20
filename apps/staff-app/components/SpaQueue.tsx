@@ -212,11 +212,9 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
 
                 {/* Action Buttons */}
                 <View style={styles.actionRow}>
-                  {/* Modify / Edit before approval */}
                   <TouchableOpacity
                     style={[styles.modifyBtn, isProcessing && styles.btnDisabled]}
                     onPress={() => {
-                      // Build editable booking object expected by EditSpaBookingModal
                       const editable = {
                         id: item.id,
                         roomNumber: roomDisplay,
@@ -232,10 +230,9 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
                       setIsEditOpen(true)
                     }}
                   >
-                    <Text style={styles.modifyBtnText}>✏️ Modify</Text>
+                    <Text style={styles.modifyBtnText}>✏️ Edit</Text>
                   </TouchableOpacity>
 
-                  {/* Dial / Call guest */}
                   <TouchableOpacity
                     style={[styles.callBtn, isProcessing && styles.btnDisabled]}
                     onPress={() => {
@@ -248,14 +245,14 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.confirmBtn, (isProcessing || !editedMap[item.id]) && styles.btnDisabled]}
+                    style={[styles.confirmBtn, isProcessing && styles.btnDisabled]}
                     onPress={() => handleUpdateStatus(item.id, 'CONFIRMED')}
-                    disabled={isProcessing || !editedMap[item.id]}
+                    disabled={isProcessing}
                   >
                     {isProcessing ? (
                       <ActivityIndicator color="#0f172a" />
                     ) : (
-                      <Text style={styles.confirmBtnText}>{editedMap[item.id] ? '✓ Approve & Confirm' : '✏️ Modify First'}</Text>
+                      <Text style={styles.confirmBtnText}>✓ Approve</Text>
                     )}
                   </TouchableOpacity>
 
@@ -264,7 +261,7 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
                     onPress={() => handleUpdateStatus(item.id, 'DECLINED')}
                     disabled={isProcessing}
                   >
-                    <Text style={styles.declineBtnText}>✕ Decline</Text>
+                    <Text style={styles.declineBtnText}>✕ Cancel</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -468,76 +465,75 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: 10,
-    columnGap: 10,
+    alignItems: 'stretch',
+    gap: 8,
   },
   modifyBtn: {
-    flexBasis: '30%',
-    flexGrow: 1,
-    minWidth: 92,
+    flex: 1,
+    minWidth: 0,
     backgroundColor: 'rgba(167, 139, 250, 0.14)',
     borderColor: 'rgba(167, 139, 250, 0.28)',
     borderWidth: 1,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   modifyBtnText: {
     color: '#d8ccff',
     fontWeight: 'bold',
-    fontSize: 13,
+    fontSize: 12,
   },
   callBtn: {
-    flexBasis: '22%',
-    flexGrow: 1,
-    minWidth: 84,
+    flex: 1,
+    minWidth: 0,
     backgroundColor: 'rgba(59, 130, 246, 0.12)',
     borderColor: 'rgba(96, 165, 250, 0.3)',
     borderWidth: 1,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   callBtnText: {
     color: '#93c5fd',
     fontWeight: 'bold',
-    fontSize: 13,
+    fontSize: 12,
   },
   confirmBtn: {
-    flexBasis: '38%',
-    flexGrow: 1,
-    minWidth: 150,
+    flex: 1.2,
+    minWidth: 0,
     backgroundColor: '#4ade80',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   confirmBtnText: {
     color: '#0f172a',
     fontWeight: 'bold',
-    fontSize: 13,
+    fontSize: 12,
   },
   declineBtn: {
-    flexBasis: '24%',
-    flexGrow: 1,
-    minWidth: 92,
+    flex: 1,
+    minWidth: 0,
     backgroundColor: 'rgba(248, 113, 113, 0.15)',
     borderColor: 'rgba(248, 113, 113, 0.3)',
     borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   declineBtnText: {
     color: '#f87171',
     fontWeight: 'bold',
-    fontSize: 13,
+    fontSize: 12,
   },
   btnDisabled: {
     opacity: 0.6,
