@@ -238,14 +238,23 @@ export default function App() {
 
       const { data, error } = await supabase
         .from('staff_users')
-        .select('*')
+        .select('id, full_name, email, role, password, is_active')
         .eq('email', email)
-        .eq('password', password)
-        .eq('is_active', true)
         .maybeSingle()
 
-      if (error) throw error
-      if (!data) {
+      if (error) {
+        if (error.code === '42501' || error.code === 'PGRST301') {
+          throw new Error('Staff login lookup is blocked by Supabase RLS. The staff_users table must allow public credential checks.')
+        }
+
+        throw error
+      }
+
+      if (!data || data.is_active !== true) {
+        throw new Error('Invalid staff credentials. Try frontdesk@demo.local / demo123456.')
+      }
+
+      if (data.password !== password) {
         throw new Error('Invalid staff credentials. Try frontdesk@demo.local / demo123456.')
       }
 
@@ -361,14 +370,20 @@ export default function App() {
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <Text style={styles.headerIcon}>🏨</Text>
-            <View style={{ flex: 1 }}>
+            <View style={styles.headerMeta}>
               <Text style={styles.headerTitle}>Front Desk</Text>
               <Text style={styles.headerSubtitle}>Tablet Interface</Text>
             </View>
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-              <Text style={styles.logoutButtonText}>Log out</Text>
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton} activeOpacity={0.9}>
+              <Text style={styles.logoutButtonText}>↩ Logout</Text>
             </TouchableOpacity>
           </View>
+          {activeStaffUser && (
+            <View style={styles.userPill}>
+              <Text style={styles.userPillLabel}>Signed in</Text>
+              <Text style={styles.userPillText}>{activeStaffUser.name}</Text>
+            </View>
+          )}
         </View>
 
         {/* Content */}
@@ -505,6 +520,112 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
 
+  // Login screen
+  loginContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: 20,
+    paddingVertical: 28,
+  },
+  loginCard: {
+    width: '100%',
+    maxWidth: 440,
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: 28,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: '#020617',
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 8,
+  },
+  loginTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    marginBottom: 6,
+  },
+  loginSubtitle: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    marginBottom: 18,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#e2e8f0',
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  input: {
+    backgroundColor: '#0b1220',
+    color: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#475569',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+  },
+  loginButton: {
+    marginTop: 18,
+    backgroundColor: COLORS.gold,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: COLORS.gold,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  loginButtonDisabled: {
+    opacity: 0.75,
+  },
+  loginButtonText: {
+    color: '#0f172a',
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  loginError: {
+    marginTop: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.32)',
+    backgroundColor: 'rgba(248,113,113,0.1)',
+    color: '#fca5a5',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  demoBox: {
+    marginTop: 18,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(251,191,36,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.26)',
+  },
+  demoTitle: {
+    color: '#fcd34d',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  demoText: {
+    color: '#e2e8f0',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+
   // Header
   header: {
     marginBottom: 24,
@@ -514,6 +635,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
+  },
+  headerMeta: {
+    flex: 1,
   },
   headerIcon: {
     fontSize: 40,
@@ -528,6 +652,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  userPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(251,191,36,0.08)',
+    borderColor: 'rgba(251,191,36,0.25)',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  userPillLabel: {
+    fontSize: 10,
+    color: COLORS.gold,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  userPillText: {
+    fontSize: 12,
+    color: COLORS.textPrimary,
+    fontWeight: '700',
+  },
+  logoutButton: {
+    backgroundColor: '#7f1d1d',
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.45)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    shadowColor: '#7f1d1d',
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  logoutButtonText: {
+    color: '#fff1f2',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 
   // Badge
