@@ -265,13 +265,15 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
           booking={editBooking}
           onClose={() => { setIsEditOpen(false); setEditBooking(null) }}
           onSaved={async () => {
-            // mark this request as edited so staff can approve it
-            if (editBooking?.id) setEditedMap(prev => ({ ...prev, [editBooking.id]: true }))
+            if (editBooking?.id) {
+              setEditedMap(prev => ({ ...prev, [editBooking.id]: true }))
+              setRequests(prev => prev.filter(item => item.id !== editBooking.id))
+            }
             await fetchSpaQueue()
             setIsEditOpen(false)
             setEditBooking(null)
           }}
-          confirmOnSave={false}
+          confirmOnSave={true}
         />
       )}
     </View>
