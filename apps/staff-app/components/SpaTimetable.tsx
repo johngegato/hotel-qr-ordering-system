@@ -686,15 +686,21 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
 
                     {/* One cell per therapist */}
                     {therapists.map(t => {
-                      const booking = bookings.find(
+                      const matchingBookings = bookings.filter(
                         b => slotHour(b.startTime) === hour && b.therapistId === t.id
                       )
                       const slotBlocked = isSlotBlockedForTherapist(slot, t.id, 60, selectedDay, bookings)
 
                       return (
                         <View key={`${t.id}-${slot}`} style={styles.slotCell}>
-                          {booking ? (
-                            renderBookingCard(booking)
+                          {matchingBookings.length > 0 ? (
+                            <View style={styles.bookingStack}>
+                              {matchingBookings.map((booking) => (
+                                <View key={booking.id} style={styles.bookingStackItem}>
+                                  {renderBookingCard(booking)}
+                                </View>
+                              ))}
+                            </View>
                           ) : isExpanded ? (
                             <TouchableOpacity
                               style={[styles.emptySlot, slotBlocked && styles.emptySlotBlocked]}
@@ -1013,6 +1019,14 @@ const styles = StyleSheet.create({
     minWidth: 180,
     minHeight: 80,
     marginHorizontal: 3,
+    justifyContent: 'center',
+  },
+  bookingStack: {
+    gap: 6,
+    width: '100%',
+  },
+  bookingStackItem: {
+    width: '100%',
   },
 
   // Empty slot (expanded mode)
