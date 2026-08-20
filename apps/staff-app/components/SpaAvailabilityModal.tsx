@@ -33,6 +33,23 @@ export interface SpaSlotLock {
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
+function buildSlotWindow(slotTime: string, durationMins: number) {
+  const [timePart] = (slotTime || '14:00').split(' ')
+  const [hoursText, minutesText] = timePart.split(':')
+  let hours = Number(hoursText || '14')
+  const minutes = Number(minutesText || '0')
+
+  const start = new Date()
+  start.setHours(hours, minutes, 0, 0)
+  if (start.getTime() < Date.now()) start.setDate(start.getDate() + 1)
+
+  const end = new Date(start.getTime() + (durationMins || 60) * 60 * 1000)
+  return { start, end }
+}
+
+const timeWindowsOverlap = (startA: Date, endA: Date, startB: Date, endB: Date) =>
+  startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime()
+
 interface SpaRequestForModal {
   id: string
   room_id: string
@@ -106,28 +123,22 @@ export default function SpaAvailabilityModal({
         ]
         setTherapists(list)
 
-        // Query confirmed spa requests and slot locks for conflict checking
-        const { data: confirmedReqs } = await supabase
-          .from('requests')
-          .select('*')
-          .eq('hotel_id', HOTEL_ID)
-          .eq('request_type', 'SPA_BOOKING')
-          .eq('status', 'CONFIRMED')
+        const { data: locks } = await supabase
+          .from('spa_slot_locks')
+          .select('id, therapist_id, start_time, end_time, status')
+          .in('status', ['HELD', 'BOOKED'])
 
+        const requestedWindow = buildSlotWindow(slotTime, durationMins)
         const conflictMap: Record<string, boolean> = {}
 
-        // Evaluate conflicts per therapist
         list.forEach((t) => {
-          if (confirmedReqs) {
-            const hasConflict = confirmedReqs.some((req: any) => {
-              const reqSlot = req.payload?.slot_time || ''
-              const reqTherapist = req.payload?.assigned_therapist || ''
-              return reqSlot.includes(slotTime.substring(0, 2)) && reqTherapist.includes(t.full_name.split(' ')[0])
-            })
-            conflictMap[t.id] = hasConflict
-          } else {
-            conflictMap[t.id] = false
-          }
+          const hasConflict = (locks || []).some((lock: any) => {
+            if (!lock || lock.therapist_id !== t.id) return false
+            const lockStart = new Date(lock.start_time)
+            const lockEnd = new Date(lock.end_time)
+            return timeWindowsOverlap(requestedWindow.start, requestedWindow.end, lockStart, lockEnd)
+          })
+          conflictMap[t.id] = hasConflict
         })
 
         setConflicts(conflictMap)
