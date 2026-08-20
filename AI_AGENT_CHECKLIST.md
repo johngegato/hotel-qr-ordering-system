@@ -15,7 +15,9 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Confirm `requests` row is inserted and `spa_slot_locks` created.
   - Confirm timetable updates via realtime subscriptions.
 - [ ] Check RLS and service role permissions for migrations and seeding.
-- [ ] Review `apps/staff-app/components/ManualSpaBookingModal.tsx` and `SpaTimetable.tsx` for recent edits.
+- [ ] Review `apps/staff-app/components/ManualSpaBookingModal.tsx`, [apps/staff-app/components/SpaQueue.tsx](apps/staff-app/components/SpaQueue.tsx), and [apps/staff-app/components/SpaTimetable.tsx](apps/staff-app/components/SpaTimetable.tsx) for recent edits.
+- [ ] Validate the queue UX: edit a pending booking from the queue, save it, confirm it disappears immediately from the pending list, and verify it is only shown once in the timetable/history.
+- [ ] Confirm approval happens only inside `EditSpaBookingModal` and no queue-level approval button remains active to avoid duplicate book/over-approve flows.
 - [ ] Reproduce Vercel build: push to `main` and inspect Vercel build logs for `expo export` errors.
 - [ ] If build fails on Vercel, run the same commands locally and adjust `apps/staff-app/app.json` and `package.json` as needed.
 - [ ] Add integration test (optional): simulate manual booking and assert DB rows and realtime notification.

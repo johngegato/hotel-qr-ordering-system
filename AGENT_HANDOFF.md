@@ -29,7 +29,8 @@ Files changed (high level)
 
 - apps/staff-app/components/SpaQueue.tsx
   - Added Modify (opens `EditSpaBookingModal`) and Call (uses `Linking.openURL('tel:')`) buttons on pending spa request cards.
-  - Added `editedMap` to require staff to modify a pending request before Approve becomes enabled. The Approve button is disabled and shows `✏️ Modify First` until an edit occurs.
+  - Final UI polish: compact action row fits inside card bounds without clipping; approve is no longer exposed directly outside the edit modal to avoid double-approval and duplicate-booking errors.
+  - On successful save from the edit modal, the queue immediately removes the edited item from the pending list and refreshes the source data so the card disappears without waiting on the timetable.
   - Emits a client `spa:revalidate` event after approve/decline so the timetable can refetch as a fallback when realtime updates are missed.
 
 - apps/staff-app/components/IncomingRequestAlert.tsx
@@ -164,6 +165,8 @@ pnpm dev
 - Run the full test/build cycle on your machine or CI: install deps, run `tsc`, run `expo export`, and verify Vercel deploy logs. (Priority: confirm build passes.)
 - Apply `09_seed_default_room.sql` to Supabase to avoid FK 409 errors in production.
 - Add a lightweight e2e or integration test for manual booking flow that verifies `requests` insert and `spa_slot_locks` creation.
+- Check the live staff app against the browser scenario: edit a pending booking from the queue, save, confirm it disappears from pending queue instantly, and verify it appears in the timetable/history only once.
+- Review any outstanding worktree changes before a larger repo-wide cleanup, especially unrelated modified files like `context.md` or migration scripts.
 
 **Contact & context**
 - Commits with recent fixes were pushed to `main` (latest includes the ManualSpaBookingModal fix). Check commit history for details.
