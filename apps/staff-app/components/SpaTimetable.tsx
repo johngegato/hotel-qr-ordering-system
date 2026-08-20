@@ -151,8 +151,37 @@ function buildSlotWindow(slotTime: string, durationMins: number, day: 'today' | 
   return { start, end }
 }
 
+const isHistoryStatus = (status?: string) => ['CANCELLED', 'DECLINED', 'RESOLVED', 'COMPLETED'].includes(String(status || ''))
+
+const shouldMoveBookingToHistory = (request: any, selectedDay: 'today' | 'tomorrow') => {
+  const status = String(request?.status || '')
+  if (isHistoryStatus(status)) return true
+  if (status !== 'CONFIRMED') return false
+
+  const payload = request?.payload || {}
+  const slotTime = payload.slot_time || payload.display_time || '14:00'
+  const durationMins = Number(payload.duration_mins || payload.duration || 60)
+  const window = buildSlotWindow(slotTime, durationMins, selectedDay)
+  return new Date() > window.end
+}
+
 const timeWindowsOverlap = (startA: Date, endA: Date, startB: Date, endB: Date) =>
   startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime()
+
+const releaseSpaLockForWindow = async (therapistId: string | null, slotTime: string, durationMins: number) => {
+  if (!therapistId || !slotTime) return
+  const { start, end } = buildSlotWindow(slotTime, durationMins, 'today')
+  const now = new Date()
+  const safeEnd = new Date(Math.max(end.getTime(), now.getTime()))
+
+  await (supabase as any)
+    .from('spa_slot_locks')
+    .update({ status: 'EXPIRED', expires_at: now.toISOString() })
+    .eq('therapist_id', therapistId)
+    .in('status', ['BOOKED', 'HELD'])
+    .lt('start_time', safeEnd.toISOString())
+    .gt('end_time', start.toISOString())
+}
 
 function isSlotBlockedForTherapist(
   slotTime: string,
@@ -189,6 +218,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
   const [debugOpenMap, setDebugOpenMap] = useState<Record<string, boolean>>({})
   const [historyBookings, setHistoryBookings] = useState<any[]>([])
   const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today')
+  const [selectedHistoryBooking, setSelectedHistoryBooking] = useState<any | null>(null)
 
   // UI state
   const [isExpanded, setIsExpanded] = useState(false) // false = minimized (booked only)
@@ -230,19 +260,36 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
         .eq('request_type', 'SPA_BOOKING')
         .in('status', ['CONFIRMED', 'PENDING', 'PENDING_ON_CALL'])
 
-      // 3. History — last 10 completed/cancelled
+      // 3. History — include expired confirmations and terminal statuses. This keeps
+      //    past appointments visible in Booking History instead of leaving them in the active queue.
       const { data: doneData } = await (supabase as any)
         .from('requests')
         .select('*, rooms(room_number)')
         .eq('hotel_id', HOTEL_ID)
         .eq('request_type', 'SPA_BOOKING')
-        .in('status', ['COMPLETED', 'CANCELLED', 'RESOLVED'])
+        .in('status', ['CONFIRMED', 'CANCELLED', 'DECLINED', 'RESOLVED', 'COMPLETED'])
         .order('created_at', { ascending: false })
-        .limit(10)
+        .limit(30)
 
-      if (doneData) setHistoryBookings(doneData)
+      const filteredHistory = (doneData || []).filter((request: any) => shouldMoveBookingToHistory(request, selectedDay))
+      setHistoryBookings(filteredHistory)
 
-      // 4. Slot locks
+      // 4. Expire stale locks for booking windows that have already passed or were cancelled.
+      const { data: staleLocks } = await (supabase as any)
+        .from('spa_slot_locks')
+        .select('*')
+        .eq('hotel_id', HOTEL_ID)
+        .in('status', ['BOOKED', 'HELD'])
+        .lt('end_time', new Date().toISOString())
+
+      if (staleLocks && staleLocks.length > 0) {
+        await (supabase as any)
+          .from('spa_slot_locks')
+          .update({ status: 'EXPIRED', expires_at: new Date().toISOString() })
+          .in('id', staleLocks.map((lock: any) => lock.id))
+      }
+
+      // 5. Slot locks
       const { data: locksData } = await supabase
         .from('spa_slot_locks')
         .select('*')
@@ -426,6 +473,8 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
           .from('requests')
           .update({ status: 'CANCELLED' })
           .eq('id', booking.id)
+
+        await releaseSpaLockForWindow(booking.therapistId, booking.startTime, Number((booking as any).rawRequest?.payload?.duration_mins || 60))
       } else {
         await (supabase as any)
           .from('spa_slot_locks')
@@ -454,6 +503,46 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
     } finally {
       setConfirmDeleteId(null)
       setDeleting(false)
+    }
+  }
+
+  const handleHistoryCompletion = async (item: any) => {
+    if (!item?.id) return
+    try {
+      const payload = item.payload || {}
+      const slotTime = payload.slot_time || payload.display_time || '14:00'
+      const durationMins = Number(payload.duration_mins || payload.duration || 60)
+      const therapistId = payload.therapist_id || null
+
+      await (supabase as any)
+        .from('requests')
+        .update({ status: 'RESOLVED', claimed_at: new Date().toISOString() })
+        .eq('id', item.id)
+
+      if (therapistId) {
+        await releaseSpaLockForWindow(therapistId, slotTime, durationMins)
+      }
+
+      await (supabase as any)
+        .from('audit_logs')
+        .insert([{
+          hotel_id: HOTEL_ID,
+          request_id: item.id,
+          action: 'BOOKING_COMPLETED_EARLY',
+          details: {
+            room_number: payload.room_number || item.rooms?.room_number || 'N/A',
+            service: payload.service_name || 'Spa Treatment',
+            therapist_id: therapistId,
+            slot_time: slotTime,
+            duration_mins: durationMins,
+          },
+        }])
+
+      setSelectedHistoryBooking(null)
+      await fetchTimetableData()
+      if (onRefreshQueue) onRefreshQueue()
+    } catch (err) {
+      console.error('Failed to finish spa booking:', err)
     }
   }
 
@@ -761,28 +850,122 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
             ) : (
               historyBookings.map((item: any) => {
                 const p = item.payload || {}
-                const cancelled = item.status === 'CANCELLED'
+                const cancelled = item.status === 'CANCELLED' || item.status === 'DECLINED'
+                const finished = item.status === 'RESOLVED' || item.status === 'COMPLETED'
+                const roomLabel = p.room_number || item.rooms?.room_number || 'Room —'
+
                 return (
-                  <View key={item.id} style={styles.historyCard}>
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.historyCard}
+                    activeOpacity={0.8}
+                    onPress={() => setSelectedHistoryBooking(item)}
+                  >
                     <View style={styles.historyTopRow}>
                       <Text style={styles.historyRoom}>
-                        {p.room_number || 'Room'} · {p.service_name || 'Spa Service'}
+                        {roomLabel} · {p.service_name || 'Spa Service'}
                       </Text>
-                      <Text style={[styles.historyBadge, cancelled ? styles.badgeCancelled : styles.badgeCompleted]}>
-                        {cancelled ? '✕ Cancelled' : '✓ Completed'}
+                      <Text style={[styles.historyBadge, cancelled ? styles.badgeCancelled : finished ? styles.badgeCompleted : styles.badgeCompleted]}>
+                        {cancelled ? '✕ Cancelled' : finished ? '✓ Completed' : '✓ Past'}
                       </Text>
                     </View>
                     <View style={styles.historyMetaRow}>
                       <Text style={styles.historyMeta}>⏰ {p.slot_time || '—'}</Text>
                       <Text style={styles.historyMeta}>👤 {p.assigned_therapist || 'Therapist'}</Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 )
               })
             )}
           </View>
         )}
       </View>
+
+      {selectedHistoryBooking && (
+        <View style={styles.historyDetailOverlay}>
+          <View style={styles.historyDetailCard}>
+            <View style={styles.historyDetailHeader}>
+              <Text style={styles.historyDetailTitle}>Booking Details</Text>
+              <TouchableOpacity onPress={() => setSelectedHistoryBooking(null)}>
+                <Text style={styles.historyDetailClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.historyDetailScroll} showsVerticalScrollIndicator={false}>
+              {(() => {
+                const p = selectedHistoryBooking.payload || {}
+                const roomLabel = p.room_number || selectedHistoryBooking.rooms?.room_number || 'Room —'
+                const staffName = p.assigned_therapist || 'Unassigned'
+                const statusLabel = selectedHistoryBooking.status === 'CANCELLED' || selectedHistoryBooking.status === 'DECLINED'
+                  ? 'Cancelled'
+                  : selectedHistoryBooking.status === 'RESOLVED' || selectedHistoryBooking.status === 'COMPLETED'
+                    ? 'Completed'
+                    : 'Past booking'
+
+                return (
+                  <View style={styles.historyDetailBody}>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Status</Text>
+                      <Text style={styles.detailValue}>{statusLabel}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Room</Text>
+                      <Text style={styles.detailValue}>{roomLabel}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Service</Text>
+                      <Text style={styles.detailValue}>{p.service_name || 'Spa Treatment'}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Therapist</Text>
+                      <Text style={styles.detailValue}>{staffName}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Scheduled</Text>
+                      <Text style={styles.detailValue}>{p.slot_time || '—'}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Duration</Text>
+                      <Text style={styles.detailValue}>{Number(p.duration_mins || 60)} min</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Price</Text>
+                      <Text style={styles.detailValue}>₱{Number(p.price || 0).toLocaleString()}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Guest Phone</Text>
+                      <Text style={styles.detailValue}>{p.guest_phone || 'Not provided'}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Created</Text>
+                      <Text style={styles.detailValue}>{new Date(selectedHistoryBooking.created_at).toLocaleString()}</Text>
+                    </View>
+                    <View style={styles.detailNoteBox}>
+                      <Text style={styles.detailLabel}>Notes</Text>
+                      <Text style={styles.detailValue}>{p.intake_note || 'No intake notes recorded.'}</Text>
+                    </View>
+                  </View>
+                )
+              })()}
+            </ScrollView>
+
+            <View style={styles.historyDetailActions}>
+              <TouchableOpacity
+                style={styles.historyActionSecondary}
+                onPress={() => setSelectedHistoryBooking(null)}
+              >
+                <Text style={styles.historyActionSecondaryText}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.historyActionPrimary}
+                onPress={() => handleHistoryCompletion(selectedHistoryBooking)}
+              >
+                <Text style={styles.historyActionPrimaryText}>Mark Finished</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* ── Modals ── */}
       <ManualSpaBookingModal
@@ -1260,6 +1443,8 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: 'bold',
+    flex: 1,
+    paddingRight: 8,
   },
   historyBadge: {
     fontSize: 10,
@@ -1267,6 +1452,106 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
+  },
+  historyDetailOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(2, 6, 23, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  historyDetailCard: {
+    width: '92%',
+    maxWidth: 520,
+    maxHeight: '80%',
+    backgroundColor: '#0f172a',
+    borderColor: 'rgba(167,139,250,0.3)',
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 16,
+  },
+  historyDetailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  historyDetailTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  historyDetailClose: {
+    color: '#94a3b8',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  historyDetailScroll: {
+    maxHeight: 420,
+  },
+  historyDetailBody: {
+    gap: 10,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(148,163,184,0.12)',
+  },
+  detailLabel: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  detailValue: {
+    color: '#e2e8f0',
+    fontSize: 12,
+    flex: 1,
+    textAlign: 'right',
+  },
+  detailNoteBox: {
+    backgroundColor: 'rgba(15,23,42,0.8)',
+    borderColor: 'rgba(148,163,184,0.18)',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    gap: 6,
+  },
+  historyDetailActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 16,
+  },
+  historyActionSecondary: {
+    flex: 1,
+    backgroundColor: 'rgba(148,163,184,0.1)',
+    borderColor: 'rgba(148,163,184,0.2)',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  historyActionSecondaryText: {
+    color: '#cbd5e1',
+    fontWeight: '700',
+  },
+  historyActionPrimary: {
+    flex: 1,
+    backgroundColor: '#4ade80',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  historyActionPrimaryText: {
+    color: '#0f172a',
+    fontWeight: '700',
   },
   badgeCompleted: {
     backgroundColor: 'rgba(74,222,128,0.15)',
