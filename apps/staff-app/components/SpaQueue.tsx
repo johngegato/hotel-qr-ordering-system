@@ -245,18 +245,6 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.confirmBtn, isProcessing && styles.btnDisabled]}
-                    onPress={() => handleUpdateStatus(item.id, 'CONFIRMED')}
-                    disabled={isProcessing}
-                  >
-                    {isProcessing ? (
-                      <ActivityIndicator color="#0f172a" />
-                    ) : (
-                      <Text style={styles.confirmBtnText}>✓ Approve</Text>
-                    )}
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
                     style={[styles.declineBtn, isProcessing && styles.btnDisabled]}
                     onPress={() => handleUpdateStatus(item.id, 'DECLINED')}
                     disabled={isProcessing}
