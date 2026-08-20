@@ -60,6 +60,21 @@ function buildSlotWindow(slotTime: string, durationMins: number) {
   return { start, end }
 }
 
+const timeWindowsOverlap = (startA: Date, endA: Date, startB: Date, endB: Date) =>
+  startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime()
+
+const isTimeSlotBlockedForTherapist = (slotTime: string, therapistId: string | null, durationMins: number, locks: any[]) => {
+  if (!therapistId || !slotTime) return false
+  const { start, end } = buildSlotWindow(slotTime, durationMins)
+  return (locks || []).some((lock: any) => {
+    if (!lock || lock.therapist_id !== therapistId) return false
+    if (!['BOOKED', 'HELD'].includes(lock.status)) return false
+    const lockStart = new Date(lock.start_time)
+    const lockEnd = new Date(lock.end_time)
+    return timeWindowsOverlap(start, end, lockStart, lockEnd)
+  })
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Therapist {
@@ -103,6 +118,7 @@ export default function ManualSpaBookingModal({
   const [intakeNote, setIntakeNote] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [conflictMap, setConflictMap] = useState<Record<string, boolean>>({})
+  const [slotAvailabilityMap, setSlotAvailabilityMap] = useState<Record<string, Record<string, boolean>>>({})
   const [checkingConflicts, setCheckingConflicts] = useState(false)
 
   // Fetch live services (from Admin catalog_items) & live therapists
@@ -164,23 +180,25 @@ export default function ManualSpaBookingModal({
       setCheckingConflicts(true)
       try {
         const durationMins = selectedService?.duration_mins ?? 60
-        const { start, end } = buildSlotWindow(selectedTime, durationMins)
 
         const { data: lockData } = await supabase
           .from('spa_slot_locks')
           .select('id, therapist_id, start_time, end_time, status')
           .in('status', ['HELD', 'BOOKED'])
-          .lt('start_time', end.toISOString())
-          .gt('end_time', start.toISOString())
 
         const newMap: Record<string, boolean> = {}
+        const availabilityMap: Record<string, Record<string, boolean>> = {}
+
         for (const t of therapists) {
-          const overlap = (lockData || []).some((lock: any) => {
-            if (lock.therapist_id !== t.id) return false
-            return true
-          })
-          newMap[t.id] = overlap
+          const perSlot: Record<string, boolean> = {}
+          for (const slot of TIME_SLOTS) {
+            perSlot[slot] = isTimeSlotBlockedForTherapist(slot, t.id, durationMins, lockData || [])
+          }
+          availabilityMap[t.id] = perSlot
+          newMap[t.id] = perSlot[selectedTime] ?? false
         }
+
+        setSlotAvailabilityMap(availabilityMap)
         setConflictMap(newMap)
       } catch {
         // ignore conflict check errors, don't block save
@@ -190,6 +208,14 @@ export default function ManualSpaBookingModal({
     }
     check()
   }, [selectedTime, selectedService, isOpen, therapists])
+
+  useEffect(() => {
+    if (!selectedTherapistId || !slotAvailabilityMap[selectedTherapistId]) return
+    if (slotAvailabilityMap[selectedTherapistId][selectedTime]) {
+      const nextAvailable = TIME_SLOTS.find((slot) => !slotAvailabilityMap[selectedTherapistId]?.[slot])
+      if (nextAvailable) setSelectedTime(nextAvailable)
+    }
+  }, [selectedTherapistId, selectedTime, slotAvailabilityMap])
 
   const selectedTherapist = therapists.find((t) => t.id === selectedTherapistId) ?? therapists[0]
 
@@ -201,6 +227,26 @@ export default function ManualSpaBookingModal({
 
     setIsSaving(true)
     try {
+      const selectedServiceDuration = selectedService?.duration_mins ?? 60
+      const { data: existingLocks } = await supabase
+        .from('spa_slot_locks')
+        .select('id, therapist_id, start_time, end_time, status')
+        .eq('therapist_id', selectedTherapistId)
+        .in('status', ['HELD', 'BOOKED'])
+
+      const isProposedWindowBlocked = (existingLocks || []).some((lock: any) => {
+        if (!lock || lock.therapist_id !== selectedTherapistId) return false
+        const { start, end } = buildSlotWindow(selectedTime, selectedServiceDuration)
+        const lockStart = new Date(lock.start_time)
+        const lockEnd = new Date(lock.end_time)
+        return timeWindowsOverlap(start, end, lockStart, lockEnd)
+      })
+
+      if (isProposedWindowBlocked) {
+        Alert.alert('Scheduling Conflict', 'This therapist already has a booking overlapping the selected time and service duration. Choose another time or therapist.')
+        return
+      }
+
       // Ensure a fallback seed room exists only if staff didn't pick an existing room
       if (!selectedRoomId) {
         try {
@@ -490,18 +536,32 @@ export default function ManualSpaBookingModal({
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Assign Therapist</Text>
               <View style={styles.therapistRow}>
-                {therapists.map((t) => (
-                  <TouchableOpacity
-                    key={t.id}
-                    style={[styles.therapistChip, selectedTherapistId === t.id && styles.therapistChipActive]}
-                    onPress={() => setSelectedTherapistId(t.id)}
-                  >
-                    <Text style={styles.therapistChipIcon}>{t.is_on_call ? '⚡' : '🏠'}</Text>
-                    <Text style={[styles.therapistChipText, selectedTherapistId === t.id && styles.therapistChipTextActive]}>
-                      {t.full_name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {therapists.map((t) => {
+                  const isBlocked = !!slotAvailabilityMap[t.id]?.[selectedTime]
+                  return (
+                    <TouchableOpacity
+                      key={t.id}
+                      style={[
+                        styles.therapistChip,
+                        selectedTherapistId === t.id && styles.therapistChipActive,
+                        isBlocked && styles.therapistChipDisabled,
+                      ]}
+                      onPress={() => {
+                        if (!isBlocked) setSelectedTherapistId(t.id)
+                      }}
+                      disabled={isBlocked}
+                    >
+                      <Text style={styles.therapistChipIcon}>{t.is_on_call ? '⚡' : '🏠'}</Text>
+                      <Text style={[
+                        styles.therapistChipText,
+                        selectedTherapistId === t.id && styles.therapistChipTextActive,
+                        isBlocked && styles.therapistChipTextDisabled,
+                      ]}>
+                        {t.full_name}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                })}
               </View>
             </View>
 
@@ -510,17 +570,31 @@ export default function ManualSpaBookingModal({
               <Text style={styles.fieldLabel}>Appointment Time</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.timeRow}>
-                  {TIME_SLOTS.map((t) => (
-                    <TouchableOpacity
-                      key={t}
-                      style={[styles.timeChip, selectedTime === t && styles.timeChipActive]}
-                      onPress={() => setSelectedTime(t)}
-                    >
-                      <Text style={[styles.timeChipText, selectedTime === t && styles.timeChipTextActive]}>
-                        {t}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                  {TIME_SLOTS.map((t) => {
+                    const isBlocked = !!slotAvailabilityMap[selectedTherapistId]?.[t]
+                    return (
+                      <TouchableOpacity
+                        key={t}
+                        style={[
+                          styles.timeChip,
+                          selectedTime === t && styles.timeChipActive,
+                          isBlocked && styles.timeChipDisabled,
+                        ]}
+                        onPress={() => {
+                          if (!isBlocked) setSelectedTime(t)
+                        }}
+                        disabled={isBlocked}
+                      >
+                        <Text style={[
+                          styles.timeChipText,
+                          selectedTime === t && styles.timeChipTextActive,
+                          isBlocked && styles.timeChipTextDisabled,
+                        ]}>
+                          {t}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  })}
                 </View>
               </ScrollView>
             </View>
@@ -715,6 +789,13 @@ const styles = StyleSheet.create({
   therapistChipTextActive: {
     color: '#4ade80',
   },
+  therapistChipDisabled: {
+    opacity: 0.45,
+    borderColor: 'rgba(100,116,139,0.2)',
+  },
+  therapistChipTextDisabled: {
+    color: '#64748b',
+  },
   timeRow: {
     flexDirection: 'row',
     gap: 8,
@@ -726,6 +807,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30,41,59,0.6)',
     borderColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
+  },
+  timeChipDisabled: {
+    opacity: 0.45,
+    backgroundColor: 'rgba(100,116,139,0.1)',
+    borderColor: 'rgba(100,116,139,0.15)',
   },
   timeChipActive: {
     backgroundColor: 'rgba(251,191,36,0.2)',

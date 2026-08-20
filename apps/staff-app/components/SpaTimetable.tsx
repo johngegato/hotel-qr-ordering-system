@@ -136,6 +136,50 @@ function slotHour(time: string): number {
   return parseInt(time.split(':')[0], 10)
 }
 
+function buildSlotWindow(slotTime: string, durationMins: number, day: 'today' | 'tomorrow' = 'today') {
+  const dayDate = new Date()
+  if (day === 'tomorrow') dayDate.setDate(dayDate.getDate() + 1)
+
+  const [hoursText, minutesText] = slotTime.split(':')
+  const hours = Number(hoursText || '0')
+  const minutes = Number(minutesText || '0')
+
+  const start = new Date(dayDate)
+  start.setHours(hours, minutes, 0, 0)
+
+  const end = new Date(start.getTime() + (durationMins || 60) * 60 * 1000)
+  return { start, end }
+}
+
+const timeWindowsOverlap = (startA: Date, endA: Date, startB: Date, endB: Date) =>
+  startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime()
+
+function isSlotBlockedForTherapist(
+  slotTime: string,
+  therapistId: string | null,
+  durationMins: number,
+  day: 'today' | 'tomorrow',
+  bookings: BookingSlot[],
+) {
+  if (!therapistId || !slotTime) return false
+
+  const { start, end } = buildSlotWindow(slotTime, durationMins, day)
+  return bookings.some((b) => {
+    if (!b.therapistId || b.therapistId !== therapistId) return false
+
+    const [startH, startM] = (b.startTime || '00:00').split(':').map(Number)
+    const [endH, endM] = (b.endTime || '00:00').split(':').map(Number)
+
+    const bookingStart = new Date(start)
+    bookingStart.setHours(startH, startM, 0, 0)
+
+    const bookingEnd = new Date(start)
+    bookingEnd.setHours(endH, endM, 0, 0)
+
+    return timeWindowsOverlap(start, end, bookingStart, bookingEnd)
+  })
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
@@ -360,6 +404,11 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
   // ─── Handlers ───────────────────────────────────────────────────────────────
 
   const handleQuickAdd = (slotTime: string, therapist: Therapist) => {
+    const isBlocked = isSlotBlockedForTherapist(slotTime, therapist.id, 60, selectedDay, bookings)
+    if (isBlocked) {
+      return
+    }
+
     setQuickAddSlot({
       slotTime,
       therapistId: therapist.id,
@@ -640,6 +689,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
                       const booking = bookings.find(
                         b => slotHour(b.startTime) === hour && b.therapistId === t.id
                       )
+                      const slotBlocked = isSlotBlockedForTherapist(slot, t.id, 60, selectedDay, bookings)
 
                       return (
                         <View key={`${t.id}-${slot}`} style={styles.slotCell}>
@@ -647,11 +697,14 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
                             renderBookingCard(booking)
                           ) : isExpanded ? (
                             <TouchableOpacity
-                              style={styles.emptySlot}
-                              onPress={() => handleQuickAdd(slot, t)}
+                              style={[styles.emptySlot, slotBlocked && styles.emptySlotBlocked]}
+                              onPress={() => !slotBlocked && handleQuickAdd(slot, t)}
                               activeOpacity={0.7}
+                              disabled={slotBlocked}
                             >
-                              <Text style={styles.emptySlotText}>+ Add</Text>
+                              <Text style={[styles.emptySlotText, slotBlocked && styles.emptySlotTextBlocked]}>
+                                {slotBlocked ? 'Busy' : '+ Add'}
+                              </Text>
                             </TouchableOpacity>
                           ) : (
                             <View style={styles.minimizedDotContainer}>
@@ -976,6 +1029,13 @@ const styles = StyleSheet.create({
   emptySlotText: {
     color: '#334155',
     fontSize: 11,
+  },
+  emptySlotBlocked: {
+    backgroundColor: 'rgba(100, 116, 139, 0.12)',
+    borderColor: 'rgba(100, 116, 139, 0.2)',
+  },
+  emptySlotTextBlocked: {
+    color: '#64748b',
   },
 
   // Empty grid state (no bookings, minimized)

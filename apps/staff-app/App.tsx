@@ -18,7 +18,7 @@ import SpaQueue from './components/SpaQueue'
 import SpaTimetable from './components/SpaTimetable'
 import FoodQueue from './components/FoodQueue'
 import TaskQueue from './components/TaskQueue'
-import UserManagement, { StaffUser } from './components/UserManagement'
+import { StaffUser } from './components/UserManagement'
 import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
 import IncomingRequestAlert, { type IncomingRequest } from './components/IncomingRequestAlert'
@@ -419,12 +419,6 @@ export default function App() {
               <Text style={styles.logoutButtonText}>↩ Logout</Text>
             </TouchableOpacity>
           </View>
-          {activeStaffUser && (
-            <View style={styles.userPill}>
-              <Text style={styles.userPillLabel}>Signed in</Text>
-              <Text style={styles.userPillText}>{activeStaffUser.name}</Text>
-            </View>
-          )}
         </View>
 
         {/* Content */}
@@ -507,13 +501,7 @@ export default function App() {
             {/* 4. Food Orders Queue */}
             <FoodQueue activeStaffId={activeStaffUser?.id} />
 
-            {/* 5. Staff User Management */}
-            <UserManagement
-              activeUser={activeStaffUser}
-              onSelectUser={setActiveStaffUser}
-            />
-
-            {/* 6. All Request History Logs */}
+            {/* 5. All Request History Logs */}
             <RequestHistory />
 
 
@@ -693,30 +681,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
     marginTop: 2,
-  },
-  userPill: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(251,191,36,0.08)',
-    borderColor: 'rgba(251,191,36,0.25)',
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  userPillLabel: {
-    fontSize: 10,
-    color: COLORS.gold,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  userPillText: {
-    fontSize: 12,
-    color: COLORS.textPrimary,
-    fontWeight: '700',
   },
   logoutButton: {
     backgroundColor: '#7f1d1d',
