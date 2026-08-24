@@ -414,8 +414,13 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
             b => b.id === lock.id || (lock.session_id && b.id === lock.session_id)
           )
 
+          const requestMatch = lock.request_id
+            ? slotBookings.some((b) => b.source === 'request' && b.id === lock.request_id)
+            : false
+
           const hasRequestOverlap = slotBookings.some((b) => {
             if (b.source !== 'request') return false
+            if (lock.request_id && b.id === lock.request_id) return true
 
             const [startH, startM] = (b.startTime || '00:00').split(':').map(Number)
             const [endH, endM] = (b.endTime || '00:00').split(':').map(Number)
@@ -431,8 +436,9 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
 
           // Guest bookings can create a slot lock without a therapist id. If a real
           // request already occupies the same window, do not render a duplicate
-          // "Spa Desk" card for the lock.
-          if (hasRequestOverlap || !lock.therapist_id) return
+          // "Spa Desk" card for the lock. We also skip lock rows whose request_id is
+          // already represented by the corresponding request card.
+          if (requestMatch || hasRequestOverlap || !lock.therapist_id) return
 
           if (!alreadyCovered) {
             const startHour = lockStart.getHours()
