@@ -358,21 +358,21 @@ export default function EditSpaBookingModal({
       originalStart.setHours(originalHour || 0, originalMinute || 0, 0, 0)
       const originalDuration = Number(booking.payload?.duration_mins || serviceDuration)
       const originalEnd = new Date(originalStart.getTime() + originalDuration * 60 * 1000)
+      const originalScheduledAt = booking.payload?.scheduled_at ? new Date(booking.payload.scheduled_at) : null
       const staleLockCandidates = (activeLocks || []).filter((lock: any) => {
         if (!lock || !lock.therapist_id) return false
-        if (lock.request_id === booking.id) return true
-        if (lock.therapist_id !== originalTherapistId) return false
+
         const lockStart = new Date(lock.start_time)
         const lockEnd = new Date(lock.end_time)
-        const sameWindow = lockStart.getTime() === originalStart.getTime() && lockEnd.getTime() === originalEnd.getTime()
-        const sameScheduledWindow = booking.payload?.scheduled_at
-          ? (() => {
-              const payloadStart = new Date(booking.payload.scheduled_at)
-              const payloadEnd = new Date(payloadStart.getTime() + originalDuration * 60 * 1000)
-              return lockStart.getTime() === payloadStart.getTime() && lockEnd.getTime() === payloadEnd.getTime()
-            })()
+        const sameRequestLink = lock.request_id === booking.id
+        const sameExactWindow = lockStart.getTime() === originalStart.getTime() && lockEnd.getTime() === originalEnd.getTime()
+        const sameScheduledWindow = originalScheduledAt
+          ? lockStart.getTime() === originalScheduledAt.getTime() && lockEnd.getTime() === new Date(originalScheduledAt.getTime() + originalDuration * 60 * 1000).getTime()
           : false
-        return sameWindow || sameScheduledWindow
+        const sameOriginalTherapist = lock.therapist_id === originalTherapistId
+        const overlapsOriginalWindow = sameOriginalTherapist && timeWindowsOverlap(originalStart, originalEnd, lockStart, lockEnd)
+
+        return sameRequestLink || sameExactWindow || sameScheduledWindow || overlapsOriginalWindow
       })
       const legacyWindowMatch = staleLockCandidates[0] || null
       const overlapOldLock = (activeLocks || []).find((lock: any) =>
@@ -422,6 +422,21 @@ export default function EditSpaBookingModal({
           oldLock.id,
           ...staleLockCandidates.map((lock: any) => lock.id),
           ...((activeLocks || []).filter((lock: any) => lock.request_id === booking.id && lock.id !== oldLock.id).map((lock: any) => lock.id)),
+          ...((activeLocks || []).filter((lock: any) => {
+            if (!lock || !lock.therapist_id) return false
+            if (lock.request_id === booking.id) return true
+            if (lock.therapist_id !== originalTherapistId) return false
+
+            const lockStart = new Date(lock.start_time)
+            const lockEnd = new Date(lock.end_time)
+
+            const sameExactWindow = lockStart.getTime() === originalStart.getTime() && lockEnd.getTime() === originalEnd.getTime()
+            const sameScheduledWindow = originalScheduledAt
+              ? lockStart.getTime() === originalScheduledAt.getTime() && lockEnd.getTime() === new Date(originalScheduledAt.getTime() + originalDuration * 60 * 1000).getTime()
+              : false
+
+            return sameExactWindow || sameScheduledWindow || timeWindowsOverlap(originalStart, originalEnd, lockStart, lockEnd)
+          }).map((lock: any) => lock.id)),
         ]))
         if (lockIdsToRemove.length > 0) {
           await (supabase as any)
