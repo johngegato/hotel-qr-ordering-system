@@ -333,13 +333,12 @@ export default function EditSpaBookingModal({
       updatePayload.payload = { ...updatePayload.payload, room_number: normalizedRoom }
 
       // ─── Manage spa_slot_locks ──────────────────────────────────────────────
-      const { data: overlappingLocks, error: lockReadErr } = await supabase
+      const therapistIds = Array.from(new Set([selectedTherapistId, originalTherapistId].filter(Boolean))) as string[]
+      const { data: activeLocks, error: lockReadErr } = await supabase
         .from('spa_slot_locks')
-        .select('id, start_time, end_time')
-        .eq('therapist_id', selectedTherapistId)
+        .select('id, therapist_id, start_time, end_time')
+        .in('therapist_id', therapistIds)
         .in('status', ['HELD', 'BOOKED'])
-        .lt('start_time', lockEnd.toISOString())
-        .gt('end_time', lockStart.toISOString())
 
       if (lockReadErr) throw lockReadErr
 
@@ -347,9 +346,10 @@ export default function EditSpaBookingModal({
         .split(':').map((value) => parseInt(value, 10))
       const originalStart = getBookingBaseDate(booking)
       originalStart.setHours(originalHour || 0, originalMinute || 0, 0, 0)
-      const originalEnd = new Date(originalStart.getTime() + serviceDuration * 60 * 1000)
-      const oldLock = (overlappingLocks || []).find((lock: any) =>
-        selectedTherapistId === originalTherapistId &&
+      const originalDuration = Number(booking.payload?.duration_mins || serviceDuration)
+      const originalEnd = new Date(originalStart.getTime() + originalDuration * 60 * 1000)
+      const oldLock = (activeLocks || []).find((lock: any) =>
+        lock.therapist_id === originalTherapistId &&
         timeWindowsOverlap(originalStart, originalEnd, new Date(lock.start_time), new Date(lock.end_time))
       )
 
@@ -361,7 +361,11 @@ export default function EditSpaBookingModal({
         ? oldLock
         : undefined
 
-      const competingLocks = (overlappingLocks || []).filter((lock: any) => lock.id !== oldLock?.id)
+      const competingLocks = (activeLocks || []).filter((lock: any) =>
+        lock.id !== oldLock?.id &&
+        lock.therapist_id === selectedTherapistId &&
+        timeWindowsOverlap(lockStart, lockEnd, new Date(lock.start_time), new Date(lock.end_time))
+      )
       if (competingLocks.length > 0) {
         throw new Error('This therapist already has an active booking for that time slot.')
       }
