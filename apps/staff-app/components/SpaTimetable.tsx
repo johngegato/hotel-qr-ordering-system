@@ -47,6 +47,7 @@ interface BookingSlot {
   status: string
   isOnCall: boolean
   source: 'request' | 'lock'
+  isVisible?: boolean
   rawPayload?: any
   rawRequest?: any
 }
@@ -447,6 +448,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
               status: lock.status,
               isOnCall: false,
               source: 'lock',
+              isVisible: false,
             })
           }
         })
@@ -624,12 +626,13 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
 
   // Slots that have at least one booking (for minimized view)
   const bookedSlots = TIME_SLOTS.filter(slot =>
-    bookings.some(b => slotHour(b.startTime) === slotHour(slot))
+    bookings.some(b => b.isVisible !== false && slotHour(b.startTime) === slotHour(slot))
   )
 
   const displaySlots = isExpanded ? TIME_SLOTS : bookedSlots
 
-  const totalBooked = bookings.length
+  const visibleBookings = bookings.filter(b => b.isVisible !== false)
+  const totalBooked = visibleBookings.length
 
   // ─── Render helpers ─────────────────────────────────────────────────────────
 
@@ -825,7 +828,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
             ) : (
               displaySlots.map(slot => {
                 const hour = slotHour(slot)
-                const isBooked = bookings.some(b => slotHour(b.startTime) === hour)
+                const isBooked = visibleBookings.some(b => slotHour(b.startTime) === hour)
 
                 return (
                   <View key={slot} style={[styles.tableRow, isBooked && styles.tableRowBooked]}>
@@ -837,7 +840,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
                     {/* One cell per therapist */}
                     {therapists.map(t => {
                       const matchingBookings = bookings.filter(
-                        b => slotHour(b.startTime) === hour && b.therapistId === t.id
+                        b => b.isVisible !== false && slotHour(b.startTime) === hour && b.therapistId === t.id
                       )
                       const slotBlocked = isSlotBlockedForTherapist(slot, t.id, 60, selectedDay, bookings)
 
