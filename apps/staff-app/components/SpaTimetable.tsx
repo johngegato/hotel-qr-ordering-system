@@ -461,7 +461,29 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
         })
       }
 
-      if (currentFetch === fetchVersion.current) setBookings(slotBookings)
+      // Collapse any duplicate request rows that share the same booking identity.
+      // This guards against the same booking being rendered twice when the DB or
+      // a concurrent staff action produces multiple rows for the same therapist,
+      // room, and time window.
+      const dedupedBookings: BookingSlot[] = []
+      const seen = new Set<string>()
+
+      for (const booking of slotBookings) {
+        const identity = [
+          booking.therapistId ?? 'none',
+          String(booking.roomNumber || '').trim(),
+          booking.startTime,
+          booking.endTime,
+          booking.serviceName,
+          booking.status,
+        ].join('|')
+
+        if (seen.has(identity)) continue
+        seen.add(identity)
+        dedupedBookings.push(booking)
+      }
+
+      if (currentFetch === fetchVersion.current) setBookings(dedupedBookings)
     } catch (err) {
       console.error('Error fetching spa timetable:', err)
     } finally {
