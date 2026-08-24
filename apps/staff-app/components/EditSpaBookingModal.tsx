@@ -358,11 +358,22 @@ export default function EditSpaBookingModal({
       originalStart.setHours(originalHour || 0, originalMinute || 0, 0, 0)
       const originalDuration = Number(booking.payload?.duration_mins || serviceDuration)
       const originalEnd = new Date(originalStart.getTime() + originalDuration * 60 * 1000)
+      const legacyWindowMatch = (activeLocks || []).find((lock: any) => {
+        if (lock.therapist_id !== originalTherapistId) return false
+        const lockStart = new Date(lock.start_time)
+        const lockEnd = new Date(lock.end_time)
+        if (booking.payload?.scheduled_at) {
+          const payloadStart = new Date(booking.payload.scheduled_at)
+          const payloadEnd = new Date(payloadStart.getTime() + originalDuration * 60 * 1000)
+          return lockStart.getTime() === payloadStart.getTime() && lockEnd.getTime() === payloadEnd.getTime()
+        }
+        return lockStart.getTime() === originalStart.getTime() && lockEnd.getTime() === originalEnd.getTime()
+      })
       const overlapOldLock = (activeLocks || []).find((lock: any) =>
         lock.therapist_id === originalTherapistId &&
         timeWindowsOverlap(originalStart, originalEnd, new Date(lock.start_time), new Date(lock.end_time))
       )
-      const oldLock = exactRequestLocks[0] || overlapOldLock
+      const oldLock = exactRequestLocks[0] || legacyWindowMatch || overlapOldLock
 
       // Keep the current booking's existing lock when its therapist and time
       // are unchanged. Never delete all overlapping locks: that can remove a
