@@ -291,6 +291,7 @@ export default function ManualSpaBookingModal({
         }
       }
 
+      const { start, end } = buildSlotWindow(selectedTime, selectedService.duration_mins || 60)
       const payload = {
         service_id: selectedService.id,
         service_name: selectedService.name,
@@ -310,7 +311,6 @@ export default function ManualSpaBookingModal({
 
       // Acquire the lock before creating the request. A booking without a lock
       // can be accepted by another staff session immediately afterward.
-      const { start, end } = buildSlotWindow(selectedTime, selectedService.duration_mins || 60)
       const { data: finalLocks, error: finalLockReadError } = await supabase
         .from('spa_slot_locks')
         .select('id')
