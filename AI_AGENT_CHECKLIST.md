@@ -59,6 +59,7 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 - VS Code diagnostics and `git diff --check` pass for the touched files.
 - Full Expo/TypeScript builds and clean-database end-to-end verification remain unverified because the local checkout lacks the Expo/TypeScript dependencies.
 - Supabase migration `11_scheduled_booking_expiration.sql` is committed but has not been confirmed as applied in the live project.
+- Commit `1003ad4` fixed duplicate request creation by keeping guest holds lock-only and handling the reservation RPC's one-row array response in the staff manual flow.
 
 ### Phase 2: Database Reservation Integrity
 
@@ -98,7 +99,7 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 
 - [x] Add unit tests for time parsing, timezone boundaries, date selection, and overlap rules.
 - [x] Add tests for granular edit lock replacement and rollback behavior.
-- [x] Add an integration test for atomic duplicate prevention.
+- [ ] Add an integration test for atomic duplicate prevention. The production write-path fix is pushed, but automated integration coverage is still open.
 - [x] Add a tenant-isolation test for staff queries and realtime events.
 - [x] Run TypeScript checks for both apps.
 - [x] Run the staff Expo web export.
