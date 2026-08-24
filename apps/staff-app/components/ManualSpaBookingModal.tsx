@@ -43,7 +43,7 @@ const FALLBACK_THERAPISTS = [
   { id: '20000000-0000-0000-0000-000000000002', full_name: 'Marcus Vance (On-Call)',   is_on_call: true  },
 ]
 
-function buildSlotWindow(slotTime: string, durationMins: number) {
+function buildSlotWindow(slotTime: string, durationMins: number, day: 'today' | 'tomorrow' = 'today') {
   const [timePart, meridiem] = slotTime.split(' ')
   const [hoursText, minutesText] = timePart.split(':')
   let hours = Number(hoursText || '0')
@@ -53,8 +53,9 @@ function buildSlotWindow(slotTime: string, durationMins: number) {
   if (meridiem && meridiem.toUpperCase() === 'AM' && hours === 12) hours = 0
 
   const start = new Date()
+  if (day === 'tomorrow') start.setDate(start.getDate() + 1)
   start.setHours(hours, minutes, 0, 0)
-  if (start.getTime() < Date.now()) start.setDate(start.getDate() + 1)
+  if (day === 'today' && start.getTime() < Date.now()) start.setDate(start.getDate() + 1)
 
   const end = new Date(start.getTime() + (durationMins || 60) * 60 * 1000)
   return { start, end }
@@ -63,9 +64,9 @@ function buildSlotWindow(slotTime: string, durationMins: number) {
 const timeWindowsOverlap = (startA: Date, endA: Date, startB: Date, endB: Date) =>
   startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime()
 
-const isTimeSlotBlockedForTherapist = (slotTime: string, therapistId: string | null, durationMins: number, locks: any[]) => {
+const isTimeSlotBlockedForTherapist = (slotTime: string, therapistId: string | null, durationMins: number, locks: any[], day: 'today' | 'tomorrow' = 'today') => {
   if (!therapistId || !slotTime) return false
-  const { start, end } = buildSlotWindow(slotTime, durationMins)
+  const { start, end } = buildSlotWindow(slotTime, durationMins, day)
   return (locks || []).some((lock: any) => {
     if (!lock || lock.therapist_id !== therapistId) return false
     if (!['BOOKED', 'HELD'].includes(lock.status)) return false
@@ -85,6 +86,7 @@ interface Therapist {
 
 export interface QuickAddSlot {
   slotTime: string
+  day: 'today' | 'tomorrow'
   therapistId: string
   therapistName: string
   isOnCall: boolean
@@ -115,6 +117,7 @@ export default function ManualSpaBookingModal({
   const [selectedService, setSelectedService] = useState<SpaServiceItem>(DEFAULT_SERVICES[0])
   const [selectedTherapistId, setSelectedTherapistId] = useState(FALLBACK_THERAPISTS[0].id)
   const [selectedTime, setSelectedTime] = useState('14:00')
+  const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today')
   const [intakeNote, setIntakeNote] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [conflictMap, setConflictMap] = useState<Record<string, boolean>>({})
@@ -162,6 +165,7 @@ export default function ManualSpaBookingModal({
     if (!isOpen) return
     if (quickAddSlot) {
       setSelectedTime(quickAddSlot.slotTime)
+      setSelectedDay(quickAddSlot.day)
       setSelectedTherapistId(quickAddSlot.therapistId)
     } else {
       setRoomNumber('')
@@ -169,6 +173,7 @@ export default function ManualSpaBookingModal({
       if (services.length > 0) setSelectedService(services[0])
       setSelectedTherapistId(FALLBACK_THERAPISTS[0].id)
       setSelectedTime('14:00')
+      setSelectedDay('today')
       setIntakeNote('')
     }
   }, [isOpen, quickAddSlot, services])
@@ -192,7 +197,7 @@ export default function ManualSpaBookingModal({
         for (const t of therapists) {
           const perSlot: Record<string, boolean> = {}
           for (const slot of TIME_SLOTS) {
-            perSlot[slot] = isTimeSlotBlockedForTherapist(slot, t.id, durationMins, lockData || [])
+            perSlot[slot] = isTimeSlotBlockedForTherapist(slot, t.id, durationMins, lockData || [], selectedDay)
           }
           availabilityMap[t.id] = perSlot
           newMap[t.id] = perSlot[selectedTime] ?? false
@@ -207,7 +212,7 @@ export default function ManualSpaBookingModal({
       }
     }
     check()
-  }, [selectedTime, selectedService, isOpen, therapists])
+  }, [selectedTime, selectedService, selectedDay, isOpen, therapists])
 
   useEffect(() => {
     if (!selectedTherapistId || !slotAvailabilityMap[selectedTherapistId]) return
@@ -218,6 +223,13 @@ export default function ManualSpaBookingModal({
   }, [selectedTherapistId, selectedTime, slotAvailabilityMap])
 
   const selectedTherapist = therapists.find((t) => t.id === selectedTherapistId) ?? therapists[0]
+
+  const adjustSelectedTime = (delta: number) => {
+    const [hoursText, minutesText] = selectedTime.split(':')
+    const currentMinutes = Number(hoursText || 0) * 60 + Number(minutesText || 0)
+    const nextMinutes = Math.max(0, Math.min(23 * 60 + 59, currentMinutes + delta))
+    setSelectedTime(`${String(Math.floor(nextMinutes / 60)).padStart(2, '0')}:${String(nextMinutes % 60).padStart(2, '0')}`)
+  }
 
   const handleCreate = async () => {
     if (!roomNumber.trim()) {
@@ -236,7 +248,7 @@ export default function ManualSpaBookingModal({
 
       const isProposedWindowBlocked = (existingLocks || []).some((lock: any) => {
         if (!lock || lock.therapist_id !== selectedTherapistId) return false
-        const { start, end } = buildSlotWindow(selectedTime, selectedServiceDuration)
+        const { start, end } = buildSlotWindow(selectedTime, selectedServiceDuration, selectedDay)
         const lockStart = new Date(lock.start_time)
         const lockEnd = new Date(lock.end_time)
         return timeWindowsOverlap(start, end, lockStart, lockEnd)
@@ -291,7 +303,7 @@ export default function ManualSpaBookingModal({
         }
       }
 
-      const { start, end } = buildSlotWindow(selectedTime, selectedService.duration_mins || 60)
+      const { start, end } = buildSlotWindow(selectedTime, selectedService.duration_mins || 60, selectedDay)
       const payload = {
         service_id: selectedService.id,
         service_name: selectedService.name,
@@ -574,6 +586,24 @@ export default function ManualSpaBookingModal({
             {/* Time Slot Picker */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Appointment Time</Text>
+              <View style={styles.minuteControlRow}>
+                {[-15, -5, -1, 1, 5, 15].map((delta) => (
+                  <TouchableOpacity key={delta} style={styles.minuteControl} onPress={() => adjustSelectedTime(delta)}>
+                    <Text style={styles.minuteControlText}>{delta > 0 ? '+' : ''}{delta}m</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.minuteControlRow}>
+                {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map((minute) => (
+                  <TouchableOpacity
+                    key={minute}
+                    style={[styles.minuteChip, selectedTime.split(':')[1] === minute && styles.minuteChipActive]}
+                    onPress={() => setSelectedTime(`${selectedTime.split(':')[0]}:${minute}`)}
+                  >
+                    <Text style={[styles.minuteChipText, selectedTime.split(':')[1] === minute && styles.minuteChipTextActive]}>:{minute}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.timeRow}>
                   {TIME_SLOTS.map((t) => {
@@ -831,6 +861,44 @@ const styles = StyleSheet.create({
   timeChipTextActive: {
     color: '#fbbf24',
   },
+  minuteControlRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  minuteControl: {
+    backgroundColor: 'rgba(30,41,59,0.8)',
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  minuteControlText: {
+    color: '#cbd5e1',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  minuteChip: {
+    backgroundColor: 'rgba(30,41,59,0.7)',
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  minuteChipActive: {
+    backgroundColor: 'rgba(251,191,36,0.2)',
+    borderColor: 'rgba(251,191,36,0.6)',
+  },
+  minuteChipText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  minuteChipTextActive: {
+    color: '#fbbf24',
+  },
   summaryBox: {
     backgroundColor: 'rgba(30,41,59,0.5)',
     borderColor: 'rgba(255,255,255,0.08)',
@@ -857,6 +925,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     padding: 16,
+    position: 'relative',
+    zIndex: 10,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.08)',
   },

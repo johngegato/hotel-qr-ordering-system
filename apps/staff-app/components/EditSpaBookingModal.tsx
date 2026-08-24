@@ -287,6 +287,14 @@ export default function EditSpaBookingModal({
       // Update requests row only. Optionally confirm the booking depending on
       // whether this save is a pre-approval edit or the actual approve action.
       const normalizedSelectedTime = normalizeTimeTo24Hour(selectedTime)
+      const [timeH, timeM] = normalizedSelectedTime.split(':').map((v) => parseInt(v, 10))
+      const lockStart = new Date()
+      lockStart.setHours(timeH || 0, timeM || 0, 0, 0)
+      if (lockStart.getTime() < Date.now()) lockStart.setDate(lockStart.getDate() + 1)
+      const matchedService = services.find((svc: CatalogService) => svc.name === selectedService)
+      const durationMins = matchedService?.duration_mins ?? 60
+      const lockEnd = new Date(lockStart.getTime() + durationMins * 60 * 1000)
+      const expiresAt = new Date(lockEnd.getTime() + 10 * 60 * 1000)
       const updatePayload: any = {
         payload: {
           service_name: selectedService,
@@ -312,15 +320,6 @@ export default function EditSpaBookingModal({
       updatePayload.payload = { ...updatePayload.payload, room_number: normalizedRoom }
 
       // ─── Manage spa_slot_locks ──────────────────────────────────────────────
-      const [timeH, timeM] = selectedTime.split(':').map((v) => parseInt(v, 10))
-      const lockStart = new Date()
-      lockStart.setHours(timeH || 0, timeM || 0, 0, 0)
-      if (lockStart.getTime() < Date.now()) lockStart.setDate(lockStart.getDate() + 1)
-      const matchedService = services.find((svc: CatalogService) => svc.name === selectedService)
-      const durationMins = matchedService?.duration_mins ?? 60
-      const lockEnd = new Date(lockStart.getTime() + durationMins * 60 * 1000)
-      const expiresAt = new Date(lockEnd.getTime() + 10 * 60 * 1000)
-
       const { data: overlappingLocks, error: lockReadErr } = await supabase
         .from('spa_slot_locks')
         .select('id, start_time, end_time')
@@ -1052,6 +1051,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 12,
+    position: 'relative',
+    zIndex: 10,
+    elevation: 10,
   },
   deleteBtn: {
     flex: 1,

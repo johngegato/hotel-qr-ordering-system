@@ -490,6 +490,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
 
     setQuickAddSlot({
       slotTime,
+      day: selectedDay,
       therapistId: therapist.id,
       therapistName: therapist.full_name,
       isOnCall: therapist.is_on_call,
