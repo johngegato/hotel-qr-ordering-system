@@ -234,7 +234,7 @@ export default function EditSpaBookingModal({
 
         const { data: lockData } = await supabase
           .from('spa_slot_locks')
-          .select('id, therapist_id, start_time, end_time, status')
+          .select('id, therapist_id, start_time, end_time, status, expires_at')
           .in('status', ['HELD', 'BOOKED'])
 
         const newMap: Record<string, boolean> = {}
@@ -252,6 +252,15 @@ export default function EditSpaBookingModal({
               ? false
               : (lockData || []).some((lock: any) => {
                   if (lock.therapist_id !== t.id) return false
+                  if (lock.expires_at && new Date(lock.expires_at) <= new Date()) return false
+                  const originalDuration = Number(booking.payload?.duration_mins || durationMins)
+                  const originalStart = getBookingBaseDate(booking)
+                  const [originalHour, originalMinute] = normalizeTimeTo24Hour(booking.startTime)
+                    .split(':').map((value) => parseInt(value, 10))
+                  originalStart.setHours(originalHour || 0, originalMinute || 0, 0, 0)
+                  const originalEnd = new Date(originalStart.getTime() + originalDuration * 60 * 1000)
+                  if (lock.therapist_id === originalTherapistId &&
+                    timeWindowsOverlap(originalStart, originalEnd, new Date(lock.start_time), new Date(lock.end_time))) return false
                   const lockStart = new Date(lock.start_time)
                   const lockEnd = new Date(lock.end_time)
                   return timeWindowsOverlap(candidate.start, candidate.end, lockStart, lockEnd)

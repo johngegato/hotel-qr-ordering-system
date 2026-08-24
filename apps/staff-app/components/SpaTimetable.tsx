@@ -205,6 +205,7 @@ function isSlotBlockedForTherapist(
 
   const { start, end } = buildSlotWindow(slotTime, durationMins, day)
   return bookings.some((b) => {
+    if (b.isVisible === false) return false
     if (!b.therapistId || b.therapistId !== therapistId) return false
 
     const [startH, startM] = (b.startTime || '00:00').split(':').map(Number)

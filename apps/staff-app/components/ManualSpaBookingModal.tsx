@@ -70,6 +70,7 @@ const isTimeSlotBlockedForTherapist = (slotTime: string, therapistId: string | n
   return (locks || []).some((lock: any) => {
     if (!lock || lock.therapist_id !== therapistId) return false
     if (!['BOOKED', 'HELD'].includes(lock.status)) return false
+    if (lock.expires_at && new Date(lock.expires_at) <= new Date()) return false
     const lockStart = new Date(lock.start_time)
     const lockEnd = new Date(lock.end_time)
     return timeWindowsOverlap(start, end, lockStart, lockEnd)
@@ -188,7 +189,7 @@ export default function ManualSpaBookingModal({
 
         const { data: lockData } = await supabase
           .from('spa_slot_locks')
-          .select('id, therapist_id, start_time, end_time, status')
+          .select('id, therapist_id, start_time, end_time, status, expires_at')
           .in('status', ['HELD', 'BOOKED'])
 
         const newMap: Record<string, boolean> = {}

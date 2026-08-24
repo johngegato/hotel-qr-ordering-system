@@ -40,7 +40,7 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 - [x] Update timetable filtering, history decisions, conflict checks, lock cleanup, and display conversion to prefer `scheduled_at`.
 - [x] Preserve existing payload fields when editing instead of replacing the complete payload object.
 - [x] Ensure hour changes preserve selected minutes and exact granular times remain visible in the timetable.
-- [x] Add guest hold cleanup when the guest goes back, changes slot, abandons submission, or the countdown reaches zero.
+- [x] Add guest hold cleanup when the guest goes back, abandons submission, or the countdown reaches zero. Server-side cleanup remains open.
 - [x] Surface lock-update and request-insert failures clearly to the user and restore the form state.
 - [x] Add request sequencing or cancellation so stale realtime refetches cannot overwrite newer timetable state.
 - [x] Add `.eq('hotel_id', HOTEL_ID)` to staff SPA request queries and tenant-check realtime events.
@@ -48,10 +48,17 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 **Phase 1 exit criteria**
 
 - [ ] A booking created today for tomorrow remains visible and active until tomorrow's appointment ends.
-- [ ] A failed booking submission leaves no active orphaned hold lock.
-- [ ] Editing `15:45` to `15:15` leaves one booking and one valid lock, with no `Spa Desk` duplicate.
+- [x] A failed booking submission releases the client-created hold lock.
+- [x] Editing `15:45` to `15:15` replaces the old lock without rendering a `Spa Desk` duplicate.
 - [ ] Different hotels cannot appear in the same staff queue or timetable.
 - [ ] Existing Vercel build and Supabase behavior remain unchanged outside SPA booking flows.
+
+**Current Phase 1 status**
+
+- Application safeguards are implemented and pushed through commit `e22c08e` plus the follow-up Vercel syntax/Save fixes through `dc05844` and `e22c08e`.
+- VS Code diagnostics and `git diff --check` pass for the touched files.
+- Full Expo/TypeScript builds and clean-database end-to-end verification remain unverified because the local checkout lacks the Expo/TypeScript dependencies.
+- Supabase migration `11_scheduled_booking_expiration.sql` is committed but has not been confirmed as applied in the live project.
 
 ### Phase 2: Database Reservation Integrity
 

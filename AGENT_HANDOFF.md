@@ -13,19 +13,25 @@ Key goals
 
 Files changed (high level)
 - apps/staff-app/components/ManualSpaBookingModal.tsx
-  - Rewrote `handleCreate()` to: ensure `DEFAULT_ROOM_ID` exists (seed-room check), insert into `requests` using selected room or seed, insert `spa_slot_locks` referencing the new request `id`, and insert `audit_logs`.
+  - Rewrote `handleCreate()` to validate active locks, ensure `DEFAULT_ROOM_ID` exists with the deployed `rooms` schema, create a `BOOKED` lock before the request, roll the lock back if request creation fails, and insert an audit log.
+  - Added granular minute controls and `scheduled_at` to manual and quick-add payloads.
+  - Uses `maybeSingle()` for the optional fallback-room lookup and stops before request creation if room setup fails.
 
 - apps/staff-app/components/EditSpaBookingModal.tsx
   - Added `confirmOnSave?: boolean` prop (default true). When false, saving updates the `payload` only and does not auto-confirm the request (used for pre-approval edits).
   - Added normalization to store `payload.room_number` as a raw value (strip `Room ` prefix) before saving.
+  - Preserves existing payload fields and replaces the old lock when an appointment time changes, without deleting competing locks.
+  - Uses the booking's `scheduled_at` date when resolving edit and conflict windows.
 
 - apps/staff-app/components/SpaTimetable.tsx
   - Improved `convertTo24Hour()` to parse ISO datetimes and multiple time formats.
-  - Timetable fetch now prefers scheduled `payload.slot_time` when deciding whether a booking belongs to the selected day (not `created_at`).
+  - Timetable fetch now prefers `payload.scheduled_at` when deciding whether a booking belongs to the selected day (not `created_at`).
   - Handles `spa_slot_locks` and `requests` realtime events.
   - Improved room derivation: prefers the joined `rooms.room_number` relation (handles both object and array shapes), with multiple payload fallbacks.
   - Adds `rawPayload` & `rawRequest` to booking entries and a dev-only `🔧 Payload` viewer for debugging.
   - Open edit modal derives `roomNumber` from `rawRequest` when booking shows placeholder.
+  - Prevents stale realtime fetches from overwriting newer state.
+  - Keeps unmatched locks for availability blocking but hides them from appointment counts/cards, preventing misleading `Spa Desk` entries.
 
 - apps/staff-app/components/SpaQueue.tsx
   - Added Modify (opens `EditSpaBookingModal`) and Call (uses `Linking.openURL('tel:')`) buttons on pending spa request cards.
@@ -43,12 +49,15 @@ Files changed (high level)
 - Other updates
   - Added migration `packages/supabase/migrations/09_seed_default_room.sql` to create the `DEFAULT_ROOM_ID` server-side (ensure seed room exists to satisfy FK constraints).
   - Added documentation files: `AGENT_HANDOFF.md` (this file), and previously `AI_AGENT_CHECKLIST.md`.
+  - Added `packages/supabase/migrations/11_scheduled_booking_expiration.sql` to make the SLA function use `scheduled_at` plus duration for new bookings. This migration is pushed but still requires manual application in Supabase.
+  - Fixed Vercel Expo export blockers caused by duplicate declarations and malformed helper scope in `SpaTimetable.tsx` and `EditSpaBookingModal.tsx`.
 
 Why these changes
 - Some manual bookings created by staff did not create `spa_slot_locks`, causing timetable inconsistency. Adding the insert ensures locks and requests remain in sync.
-- Timetable previously filtered by `created_at`, which hid bookings scheduled for the day but created earlier. Using `payload.slot_time` fixes this.
+  - Timetable previously filtered by `created_at`, which hid bookings scheduled for the day but created earlier. Using `payload.scheduled_at` fixes this for new bookings, with legacy time-only fallback behavior.
 - Browser build errors occurred because `expo-haptics` is not available on web and because component imports were missing; guarding and fixing imports removes runtime exceptions.
-- Staff requested the ability to edit pending bookings before approving (pre-approval edits) and to call guests from the pending UI; the UI changes provide this flow and ensure edits are visible before approval.
+  - Staff requested the ability to edit pending bookings before approving (pre-approval edits) and to call guests from the pending UI; the UI changes provide this flow and ensure edits are visible before approval.
+  - A deployed room fallback mismatch caused `406`, `400`, and `409` errors. The client now uses `maybeSingle()`, valid room columns, and aborts safely when the fallback room cannot be created.
 
 How to test locally
 1. Install dependencies in workspace root (pnpm / npm):
@@ -144,7 +153,7 @@ pnpm dev
 
 **Database / Supabase notes**
 - Migrations live in [packages/supabase/migrations](packages/supabase/migrations). Apply them in your Supabase project; specifically run `09_seed_default_room.sql` to ensure `DEFAULT_ROOM_ID` exists.
-- Realtime behavior: `spa_slot_locks` and `requests` are used by the staff-app timetable; ensure RLS policies allow service-role inserts during migrations or use admin credentials for seeding.
+- Realtime behavior: `spa_slot_locks` and `requests` are used by the staff-app timetable; ensure RLS policies allow the intended inserts during migrations or use admin credentials for seeding.
 
 **Vercel / Deployment notes**
 - Vercel will install dependencies and run the configured build. After pushing to `main` the site should trigger a new deploy. If web export fails on Vercel, confirm `apps/staff-app/app.json` contains `platforms` and that `expo` is resolved via the lockfile.
@@ -215,12 +224,12 @@ If you want, I can:
 
 - **High: no atomic reservation.** Availability is checked with SELECT, then a lock is inserted separately. Two clients can pass the check simultaneously. The current UI checks reduce normal collisions, but only a database exclusion constraint or transactional RPC can guarantee uniqueness under concurrency. This requires an explicitly reviewed Supabase migration/RPC.
 - **High: locks are not linked to requests.** `spa_slot_locks` has `session_id` but no `request_id`. Staff cannot reliably identify which lock belongs to which booking, so orphaned locks appear as `Spa Desk`, and cleanup can target the wrong row. A production schema change should add a nullable request reference or use a reservation RPC.
-- **High: guest holds can become orphaned.** Going back, abandoning the page, timing out, or failing request creation does not consistently cancel/delete the held lock. The ten-minute client countdown is only UI state; it is not a server-side cleanup guarantee.
+- **High: guest holds still need server cleanup.** The client now releases holds on back navigation, timeout, unmount, and failed submission, but browser termination is not guaranteed and the database still needs server-side expiry enforcement.
 - **High: guest availability is not therapist-aware.** Guest-created locks omit `therapist_id`, while staff availability is therapist-based. This makes a guest hold either invisible to therapist conflict checks or visible only as an unassigned `Spa Desk` reservation.
-- **Medium: date and timezone ambiguity.** Most staff flows store a time plus a locally generated timestamp. The timetable still derives the selected day from `slot_time` in several places instead of preferring `scheduled_at`; a booking for tomorrow can therefore appear under the wrong day in some paths. Browser timezone and Supabase UTC conversion can also shift the displayed day.
+- **Medium: date and timezone ambiguity remains for legacy paths.** New booking rows store and use `scheduled_at`, but legacy time-only rows and some fallback paths still derive dates locally. Browser timezone and Supabase UTC conversion can also shift the displayed day.
 - **Medium: stale edit lock selection.** The edit modal identifies the old lock by overlapping time and therapist rather than a request reference. Similar adjacent bookings or changed service duration can make that heuristic ambiguous.
-- **Medium: payload replacement can lose fields.** `EditSpaBookingModal` writes a new payload object. Existing intake fields or future payload keys can disappear unless every field is copied forward or updates merge the old payload.
-- **Medium: realtime refetch races.** Every realtime event starts a full fetch without cancellation or request sequencing. A slower older fetch can overwrite newer state, and simultaneous lock/request events can briefly show duplicate or missing cards.
+- **Medium: payload compatibility depends on caller data.** `EditSpaBookingModal` now merges the payload supplied by its caller, but callers that do not pass the original payload cannot preserve fields that were never loaded.
+- **Medium: realtime burst behavior.** Timetable fetch results are version-guarded, but multiple realtime events can still cause redundant full fetches and short-lived intermediate states.
 - **Medium: queue tenant isolation.** `SpaQueue` queries and realtime handling do not consistently filter by `HOTEL_ID`. In a multi-property deployment, staff could receive another hotel’s SPA requests if RLS does not fully enforce isolation.
 - **Low: hard-coded time UX.** Guest time choices are fixed to six labels and the guest page says “Today,” while staff supports granular minutes and Today/Tomorrow. The two clients can represent the same booking differently and cannot offer a general future date.
 - **Low: history duplication.** `shouldMoveBookingToHistory()` treats guest/manual payloads as history candidates independently of appointment completion, so an active booking can be eligible for both the active timetable and history views.
@@ -232,7 +241,7 @@ If you want, I can:
 - The staff conflict map is calculated asynchronously and save can occur before the latest check completes. The final write-time check is still necessary and should be authoritative.
 - Manual and edit forms now preserve granular minutes, but the timetable grid groups cards by hour. A `15:15` booking is rendered in the `15:00` row, which is acceptable only if the card’s exact time remains prominent.
 - Cancel actions use `Alert` confirmation on native/web. This is functional but less predictable in the embedded browser than an in-modal confirmation state.
-- Orphaned locks are intentionally shown for visibility, but `Spa Desk` is confusing to staff unless the UI labels them as an unlinked reservation and provides a safe cleanup workflow.
+- Unmatched locks are now hidden from appointment cards while still blocking availability. A future staff cleanup workflow is still needed to investigate and remove verified orphaned rows.
 
 ### Recommended order of future hardening
 
