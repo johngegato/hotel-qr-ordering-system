@@ -266,8 +266,9 @@ export default function ManualSpaBookingModal({
           p_expires_at: new Date(end.getTime() + 10 * 60 * 1000).toISOString(),
         })
 
-      if (!error && data?.request_id && data?.lock_id) {
-        return { requestId: data.request_id, lockId: data.lock_id }
+      const reservation = Array.isArray(data) ? data[0] : data
+      if (!error && reservation?.request_id && reservation?.lock_id) {
+        return { requestId: reservation.request_id, lockId: reservation.lock_id }
       }
     } catch {
       // Fall back to the direct insert transaction when the RPC is not yet deployed.
