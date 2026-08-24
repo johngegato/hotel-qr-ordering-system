@@ -345,22 +345,24 @@ export default function EditSpaBookingModal({
       const therapistIds = Array.from(new Set([selectedTherapistId, originalTherapistId].filter(Boolean))) as string[]
       const { data: activeLocks, error: lockReadErr } = await supabase
         .from('spa_slot_locks')
-        .select('id, therapist_id, start_time, end_time')
+        .select('id, therapist_id, start_time, end_time, request_id')
         .in('therapist_id', therapistIds)
         .in('status', ['HELD', 'BOOKED'])
 
       if (lockReadErr) throw lockReadErr
 
+      const exactRequestLocks = (activeLocks || []).filter((lock: any) => lock.request_id === booking.id)
       const [originalHour, originalMinute] = normalizeTimeTo24Hour(booking.startTime)
         .split(':').map((value) => parseInt(value, 10))
       const originalStart = getBookingBaseDate(booking)
       originalStart.setHours(originalHour || 0, originalMinute || 0, 0, 0)
       const originalDuration = Number(booking.payload?.duration_mins || serviceDuration)
       const originalEnd = new Date(originalStart.getTime() + originalDuration * 60 * 1000)
-      const oldLock = (activeLocks || []).find((lock: any) =>
+      const overlapOldLock = (activeLocks || []).find((lock: any) =>
         lock.therapist_id === originalTherapistId &&
         timeWindowsOverlap(originalStart, originalEnd, new Date(lock.start_time), new Date(lock.end_time))
       )
+      const oldLock = exactRequestLocks[0] || overlapOldLock
 
       // Keep the current booking's existing lock when its therapist and time
       // are unchanged. Never delete all overlapping locks: that can remove a
@@ -398,11 +400,14 @@ export default function EditSpaBookingModal({
         throw lockErr
       }
 
-      if (oldLock && !currentLock && newLock?.id) {
-        await (supabase as any)
-          .from('spa_slot_locks')
-          .delete()
-          .eq('id', oldLock.id)
+      if (oldLock && !currentLock) {
+        const lockIdsToRemove = [oldLock.id, ...((activeLocks || []).filter((lock: any) => lock.request_id === booking.id && lock.id !== oldLock.id).map((lock: any) => lock.id))]
+        if (lockIdsToRemove.length > 0) {
+          await (supabase as any)
+            .from('spa_slot_locks')
+            .delete()
+            .in('id', lockIdsToRemove)
+        }
       }
       // ─────────────────────────────────────────────────────────────────────────
 
