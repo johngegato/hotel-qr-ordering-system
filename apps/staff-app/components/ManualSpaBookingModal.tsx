@@ -43,6 +43,24 @@ const FALLBACK_THERAPISTS = [
   { id: '20000000-0000-0000-0000-000000000002', full_name: 'Marcus Vance (On-Call)',   is_on_call: true  },
 ]
 
+const normalizeTimeTo24Hour = (timeValue: string | null | undefined): string => {
+  if (!timeValue) return '14:00'
+  const trimmed = timeValue.trim()
+  if (/^\d{1,2}:\d{2}$/.test(trimmed)) return `${String(Number(trimmed.split(':')[0])).padStart(2, '0')}:${trimmed.split(':')[1]}`
+
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i)
+  if (!match) return '14:00'
+
+  let hours = Number(match[1])
+  const minutes = match[2]
+  const meridiem = match[3]?.toUpperCase()
+
+  if (meridiem === 'PM' && hours < 12) hours += 12
+  if (meridiem === 'AM' && hours === 12) hours = 0
+
+  return `${String(hours).padStart(2, '0')}:${minutes}`
+}
+
 function buildSlotWindow(slotTime: string, durationMins: number, day: 'today' | 'tomorrow' = 'today') {
   const [timePart, meridiem] = slotTime.split(' ')
   const [hoursText, minutesText] = timePart.split(':')
@@ -165,7 +183,7 @@ export default function ManualSpaBookingModal({
   useEffect(() => {
     if (!isOpen) return
     if (quickAddSlot) {
-      setSelectedTime(quickAddSlot.slotTime)
+      setSelectedTime(normalizeTimeTo24Hour(quickAddSlot.slotTime))
       setSelectedDay(quickAddSlot.day)
       setSelectedTherapistId(quickAddSlot.therapistId)
     } else {
@@ -226,10 +244,80 @@ export default function ManualSpaBookingModal({
   const selectedTherapist = therapists.find((t) => t.id === selectedTherapistId) ?? therapists[0]
 
   const adjustSelectedTime = (delta: number) => {
-    const [hoursText, minutesText] = selectedTime.split(':')
+    const normalizedSelectedTime = normalizeTimeTo24Hour(selectedTime)
+    const [hoursText, minutesText] = normalizedSelectedTime.split(':')
     const currentMinutes = Number(hoursText || 0) * 60 + Number(minutesText || 0)
     const nextMinutes = Math.max(0, Math.min(23 * 60 + 59, currentMinutes + delta))
     setSelectedTime(`${String(Math.floor(nextMinutes / 60)).padStart(2, '0')}:${String(nextMinutes % 60).padStart(2, '0')}`)
+  }
+
+  const createStaffReservation = async (requestPayload: Record<string, any>, start: Date, end: Date) => {
+    try {
+      const { data, error } = await (supabase as any)
+        .rpc('create_spa_reservation', {
+          p_hotel_id: HOTEL_ID,
+          p_room_id: selectedRoomId ?? DEFAULT_ROOM_ID,
+          p_session_id: null,
+          p_therapist_id: selectedTherapistId,
+          p_request_status: 'CONFIRMED',
+          p_payload: requestPayload,
+          p_start_time: start.toISOString(),
+          p_end_time: end.toISOString(),
+          p_expires_at: new Date(end.getTime() + 10 * 60 * 1000).toISOString(),
+        })
+
+      if (!error && data?.request_id && data?.lock_id) {
+        return { requestId: data.request_id, lockId: data.lock_id }
+      }
+    } catch {
+      // Fall back to the direct insert transaction when the RPC is not yet deployed.
+    }
+
+    const { data: lockData, error: lockErr } = await (supabase as any)
+      .from('spa_slot_locks')
+      .insert([{
+        hotel_id: HOTEL_ID,
+        therapist_id: selectedTherapistId,
+        session_id: null,
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        status: 'BOOKED',
+        expires_at: new Date(end.getTime() + 10 * 60 * 1000).toISOString(),
+      }])
+      .select('id')
+      .single()
+
+    if (lockErr || !lockData?.id) throw lockErr || new Error('The selected slot could not be reserved.')
+
+    const { data: reqData, error: reqErr } = await (supabase as any)
+      .from('requests')
+      .insert([{
+        hotel_id: HOTEL_ID,
+        room_id: selectedRoomId ?? DEFAULT_ROOM_ID,
+        request_type: 'SPA_BOOKING',
+        status: 'CONFIRMED',
+        payload: requestPayload,
+      }])
+      .select('id')
+      .single()
+
+    if (reqErr || !reqData?.id) {
+      await (supabase as any).from('spa_slot_locks').delete().eq('id', lockData.id)
+      throw reqErr || new Error('The booking request could not be created.')
+    }
+
+    const { error: lockLinkErr } = await (supabase as any)
+      .from('spa_slot_locks')
+      .update({ request_id: reqData.id })
+      .eq('id', lockData.id)
+
+    if (lockLinkErr) {
+      await (supabase as any).from('requests').update({ status: 'CANCELLED' }).eq('id', reqData.id)
+      await (supabase as any).from('spa_slot_locks').delete().eq('id', lockData.id)
+      throw lockLinkErr
+    }
+
+    return { requestId: reqData.id, lockId: lockData.id }
   }
 
   const handleCreate = async () => {
@@ -340,54 +428,7 @@ export default function ManualSpaBookingModal({
         throw new Error('This therapist already has an active booking for that time slot.')
       }
 
-      const { data: lockData, error: lockErr } = await (supabase as any)
-        .from('spa_slot_locks')
-        .insert([{
-          hotel_id: HOTEL_ID,
-          therapist_id: selectedTherapistId,
-          session_id: null,
-          start_time: start.toISOString(),
-          end_time: end.toISOString(),
-          status: 'BOOKED',
-          expires_at: new Date(end.getTime() + 10 * 60 * 1000).toISOString(),
-        }])
-        .select('id')
-        .single()
-
-      if (lockErr || !lockData?.id) {
-        throw lockErr || new Error('The selected slot could not be reserved.')
-      }
-
-      // Create the request only after the slot lock succeeds. Roll the lock
-      // back if the request insert fails so the slot is not stranded.
-      const { data: reqData, error: reqErr } = await (supabase as any)
-        .from('requests')
-        .insert([{
-          hotel_id: HOTEL_ID,
-          room_id: selectedRoomId ?? DEFAULT_ROOM_ID,
-          request_type: 'SPA_BOOKING',
-          status: 'CONFIRMED',
-          payload,
-        }])
-        .select('id')
-        .single()
-
-      if (reqErr || !reqData?.id) {
-        await (supabase as any).from('spa_slot_locks').delete().eq('id', lockData.id)
-        console.error('requests.insert error:', reqErr)
-        throw reqErr || new Error('The booking request could not be created.')
-      }
-
-      const { error: lockRequestLinkError } = await (supabase as any)
-        .from('spa_slot_locks')
-        .update({ request_id: reqData.id })
-        .eq('id', lockData.id)
-
-      if (lockRequestLinkError) {
-        await (supabase as any).from('requests').update({ status: 'CANCELLED' }).eq('id', reqData.id)
-        await (supabase as any).from('spa_slot_locks').delete().eq('id', lockData.id)
-        throw lockRequestLinkError
-      }
+      const { requestId } = await createStaffReservation(payload, start, end)
 
       // Audit log
       try {
@@ -395,7 +436,7 @@ export default function ManualSpaBookingModal({
           .from('audit_logs')
           .insert([{
             hotel_id: HOTEL_ID,
-            request_id: reqData.id,
+            request_id: requestId,
             action: 'MANUAL_BOOKING_CREATED',
             details: {
               source: 'staff_manual',
@@ -609,21 +650,28 @@ export default function ManualSpaBookingModal({
                 ))}
               </View>
               <View style={styles.minuteControlRow}>
-                {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map((minute) => (
-                  <TouchableOpacity
-                    key={minute}
-                    style={[styles.minuteChip, selectedTime.split(':')[1] === minute && styles.minuteChipActive]}
-                    onPress={() => setSelectedTime(`${selectedTime.split(':')[0]}:${minute}`)}
-                  >
-                    <Text style={[styles.minuteChipText, selectedTime.split(':')[1] === minute && styles.minuteChipTextActive]}>:{minute}</Text>
-                  </TouchableOpacity>
-                ))}
+                {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map((minute) => {
+                  const normalizedSelectedTime = normalizeTimeTo24Hour(selectedTime)
+                  return (
+                    <TouchableOpacity
+                      key={minute}
+                      style={[styles.minuteChip, normalizedSelectedTime.split(':')[1] === minute && styles.minuteChipActive]}
+                      onPress={() => {
+                        const [hour] = normalizedSelectedTime.split(':')
+                        setSelectedTime(`${hour}:${minute}`)
+                      }}
+                    >
+                      <Text style={[styles.minuteChipText, normalizedSelectedTime.split(':')[1] === minute && styles.minuteChipTextActive]}>:{minute}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.timeRow}>
                   {TIME_SLOTS.map((t) => {
+                    const normalizedSelectedTime = normalizeTimeTo24Hour(selectedTime)
                     const isBlocked = !!slotAvailabilityMap[selectedTherapistId]?.[t]
-                    const isActiveHour = selectedTime.split(':')[0] === t.split(':')[0]
+                    const isActiveHour = normalizedSelectedTime.split(':')[0] === t.split(':')[0]
                     return (
                       <TouchableOpacity
                         key={t}
@@ -634,7 +682,7 @@ export default function ManualSpaBookingModal({
                         ]}
                         onPress={() => {
                           if (!isBlocked) {
-                            const currentMinute = selectedTime.split(':')[1] || '00'
+                            const currentMinute = normalizedSelectedTime.split(':')[1] || '00'
                             setSelectedTime(`${t.split(':')[0]}:${currentMinute}`)
                           }
                         }}

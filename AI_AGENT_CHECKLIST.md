@@ -64,13 +64,13 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 
 **Production gate: review and approve before applying to Supabase.**
 
-- [ ] Add a nullable `request_id` foreign key to `spa_slot_locks`.
-- [ ] Create a transactional reservation RPC that checks overlapping `HELD`/`BOOKED` locks and creates the request plus lock atomically.
-- [ ] Move guest, manual, quick-add, and edit reservation writes to the RPC.
-- [ ] Make cancellation, completion, and edit operations target the exact linked lock.
-- [ ] Add server-side handling for expired holds using `expires_at`.
-- [ ] Add a database index supporting hotel, therapist, status, and time-window lookups.
-- [ ] Backfill or safely classify existing orphaned locks before enabling cleanup automation.
+- [x] Add a nullable `request_id` foreign key to `spa_slot_locks`.
+- [x] Create a transactional reservation RPC that checks overlapping `HELD`/`BOOKED` locks and creates the request plus lock atomically.
+- [x] Move guest, manual, quick-add, and edit reservation writes to the RPC.
+- [x] Make cancellation, completion, and edit operations target the exact linked lock.
+- [x] Add server-side handling for expired holds using `expires_at`.
+- [x] Add a database index supporting hotel, therapist, status, and time-window lookups.
+- [x] Backfill or safely classify existing orphaned locks before enabling cleanup automation.
 
 **Phase 2 exit criteria**
 

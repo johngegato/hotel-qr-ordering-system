@@ -176,6 +176,51 @@ function GuestSpaContent() {
   }
 
   // Handle slot selection and 10-minute hold lock
+  const createHoldLock = async (slotTime: string) => {
+    const durationMinutes = selectedService?.duration_mins || 60
+    const { start, end } = getSlotWindow(slotTime, durationMinutes)
+
+    try {
+      const { data, error } = await (supabase as any)
+        .rpc('create_spa_reservation', {
+          p_hotel_id: defaultHotelId,
+          p_room_id: roomId,
+          p_session_id: null,
+          p_therapist_id: null,
+          p_request_status: 'PENDING',
+          p_payload: {
+            service_name: selectedService?.name || 'Spa Service',
+            slot_time: convertDisplayTimeTo24Hour(slotTime),
+            scheduled_at: start.toISOString(),
+            source: 'guest_hold',
+          },
+          p_start_time: start.toISOString(),
+          p_end_time: end.toISOString(),
+          p_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        })
+
+      if (!error && data?.lock_id) return data.lock_id
+    } catch {
+      // Fall back to direct insert when the database function is not available.
+    }
+
+    const { data, error } = await (supabase.from('spa_slot_locks') as any)
+      .insert([
+        {
+          hotel_id: defaultHotelId,
+          start_time: start.toISOString(),
+          end_time: end.toISOString(),
+          status: 'HELD',
+          expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        },
+      ])
+      .select('id')
+      .single()
+
+    if (error || !data?.id) throw error || new Error('This slot is no longer available.')
+    return data.id
+  }
+
   const handleSelectSlot = async (slotTime: string) => {
     const normalizedSlotTime = convertDisplayTimeTo24Hour(slotTime)
     setSelectedSlotTime(normalizedSlotTime)
@@ -184,25 +229,11 @@ function GuestSpaContent() {
 
     try {
       const durationMinutes = selectedService?.duration_mins || 60
-      const { start, end } = getSlotWindow(slotTime, durationMinutes)
+      const { start } = getSlotWindow(slotTime, durationMinutes)
       setSelectedScheduledAt(start.toISOString())
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.from('spa_slot_locks') as any)
-        .insert([
-          {
-            hotel_id: defaultHotelId,
-            start_time: start.toISOString(),
-            end_time: end.toISOString(),
-            status: 'HELD',
-            expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-          },
-        ])
-        .select('id')
-        .single()
-
-      if (error || !data?.id) throw error || new Error('This slot is no longer available.')
-      setHoldLockId(data.id)
+      const lockId = await createHoldLock(slotTime)
+      setHoldLockId(lockId)
     } catch (err) {
       console.error('Failed to create slot lock:', err)
       setHoldLockId(null)
