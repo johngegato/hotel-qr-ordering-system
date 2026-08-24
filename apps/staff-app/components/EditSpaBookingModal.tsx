@@ -85,6 +85,7 @@ export interface EditableBooking {
   therapistName: string
   isOnCall: boolean
   status: string
+  payload?: Record<string, any>
 }
 
 interface Therapist {
@@ -296,7 +297,8 @@ export default function EditSpaBookingModal({
       const lockEnd = new Date(lockStart.getTime() + durationMins * 60 * 1000)
       const expiresAt = new Date(lockEnd.getTime() + 10 * 60 * 1000)
       const updatePayload: any = {
-        payload: {
+          payload: {
+            ...(booking.payload || {}),
           service_name: selectedService,
           slot_time: normalizedSelectedTime,
           scheduled_at: lockStart.toISOString(),
@@ -330,19 +332,31 @@ export default function EditSpaBookingModal({
 
       if (lockReadErr) throw lockReadErr
 
+      const [originalHour, originalMinute] = normalizeTimeTo24Hour(booking.startTime)
+        .split(':').map((value) => parseInt(value, 10))
+      const originalStart = new Date(lockStart)
+      originalStart.setHours(originalHour || 0, originalMinute || 0, 0, 0)
+      if (originalStart.getTime() < Date.now()) originalStart.setDate(originalStart.getDate() + 1)
+      const originalEnd = new Date(originalStart.getTime() + serviceDuration * 60 * 1000)
+      const oldLock = (overlappingLocks || []).find((lock: any) =>
+        selectedTherapistId === originalTherapistId &&
+        timeWindowsOverlap(originalStart, originalEnd, new Date(lock.start_time), new Date(lock.end_time))
+      )
+
       // Keep the current booking's existing lock when its therapist and time
       // are unchanged. Never delete all overlapping locks: that can remove a
       // different guest's reservation and enable a double booking.
-      const currentLock = selectedTherapistId === originalTherapistId &&
+      const currentLock = oldLock && selectedTherapistId === originalTherapistId &&
         normalizeTimeTo24Hour(booking.startTime) === normalizedSelectedTime
-        ? (overlappingLocks || [])[0]
+        ? oldLock
         : undefined
 
-      if (!currentLock && (overlappingLocks || []).length > 0) {
+      const competingLocks = (overlappingLocks || []).filter((lock: any) => lock.id !== oldLock?.id)
+      if (competingLocks.length > 0) {
         throw new Error('This therapist already has an active booking for that time slot.')
       }
 
-      const { error: lockErr } = currentLock ? { error: null } : await supabase
+      const { data: newLock, error: lockErr } = currentLock ? { data: null, error: null } : await supabase
         .from('spa_slot_locks')
         .insert([
           {
@@ -359,6 +373,13 @@ export default function EditSpaBookingModal({
       if (lockErr) {
         console.error('[EditSpaBookingModal] Failed to create slot lock:', lockErr)
         throw lockErr
+      }
+
+      if (oldLock && !currentLock && newLock?.id) {
+        await (supabase as any)
+          .from('spa_slot_locks')
+          .delete()
+          .eq('id', oldLock.id)
       }
       // ─────────────────────────────────────────────────────────────────────────
 

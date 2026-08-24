@@ -12,6 +12,8 @@ import {
 import EditSpaBookingModal from './EditSpaBookingModal'
 import { supabase } from '../lib/supabase'
 
+const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
+
 interface SpaRequestItem {
   id: string
   room_id: string
@@ -46,6 +48,7 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from('requests') as any)
         .select('*, rooms(room_number)')
+        .eq('hotel_id', HOTEL_ID)
         .eq('request_type', 'SPA_BOOKING')
         .in('status', ['PENDING', 'PENDING_ON_CALL'])
         .order('created_at', { ascending: true })
@@ -76,6 +79,7 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
           if (payload.eventType === 'INSERT') {
             const newReq = payload.new as SpaRequestItem
             if (
+              newReq.hotel_id === HOTEL_ID &&
               newReq.request_type === 'SPA_BOOKING' &&
               ['PENDING', 'PENDING_ON_CALL'].includes(newReq.status)
             ) {
@@ -83,6 +87,7 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
             }
           } else if (payload.eventType === 'UPDATE') {
             const updatedReq = payload.new as SpaRequestItem
+            if (updatedReq.hotel_id !== HOTEL_ID) return
             if (!['PENDING', 'PENDING_ON_CALL'].includes(updatedReq.status)) {
               setRequests((prev) => prev.filter((r) => r.id !== updatedReq.id))
             } else {
@@ -225,6 +230,7 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
                         therapistName: item.payload?.assigned_therapist || '',
                         isOnCall: item.status === 'PENDING_ON_CALL' || item.payload?.is_on_call === true,
                         status: item.status,
+                        payload: item.payload,
                       }
                       setEditBooking(editable)
                       setIsEditOpen(true)

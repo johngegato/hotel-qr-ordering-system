@@ -608,22 +608,26 @@ export default function ManualSpaBookingModal({
                 <View style={styles.timeRow}>
                   {TIME_SLOTS.map((t) => {
                     const isBlocked = !!slotAvailabilityMap[selectedTherapistId]?.[t]
+                    const isActiveHour = selectedTime.split(':')[0] === t.split(':')[0]
                     return (
                       <TouchableOpacity
                         key={t}
                         style={[
                           styles.timeChip,
-                          selectedTime === t && styles.timeChipActive,
+                          isActiveHour && styles.timeChipActive,
                           isBlocked && styles.timeChipDisabled,
                         ]}
                         onPress={() => {
-                          if (!isBlocked) setSelectedTime(t)
+                          if (!isBlocked) {
+                            const currentMinute = selectedTime.split(':')[1] || '00'
+                            setSelectedTime(`${t.split(':')[0]}:${currentMinute}`)
+                          }
                         }}
                         disabled={isBlocked}
                       >
                         <Text style={[
                           styles.timeChipText,
-                          selectedTime === t && styles.timeChipTextActive,
+                          isActiveHour && styles.timeChipTextActive,
                           isBlocked && styles.timeChipTextDisabled,
                         ]}>
                           {t}

@@ -53,6 +53,14 @@ function GuestSpaContent() {
   const [loading, setLoading] = useState(true)
   const [showPhoneModal, setShowPhoneModal] = useState(false)
 
+  const releaseHeldLock = async (lockId: string | null) => {
+    if (!lockId) return
+    await (supabase.from('spa_slot_locks') as any)
+      .update({ status: 'EXPIRED', expires_at: new Date().toISOString() })
+      .eq('id', lockId)
+      .eq('status', 'HELD')
+  }
+
   // Fetch available services & slot locks
   useEffect(() => {
     async function loadCatalog() {
@@ -90,6 +98,19 @@ function GuestSpaContent() {
     }
     return () => clearInterval(timer)
   }, [step, holdCountdown])
+
+  useEffect(() => {
+    if (step !== 3 || holdCountdown > 0 || !holdLockId) return
+    releaseHeldLock(holdLockId).catch((err) => console.error('Failed to expire spa hold:', err))
+    setHoldLockId(null)
+    setStep(2)
+  }, [step, holdCountdown, holdLockId])
+
+  useEffect(() => () => {
+    if (holdLockId && step === 3) {
+      releaseHeldLock(holdLockId).catch((err) => console.error('Failed to release spa hold:', err))
+    }
+  }, [holdLockId, step])
 
   // Note: Realtime subscription (set up in executeConfirmBooking) handles
   // status updates via WebSocket — no polling needed.
@@ -165,11 +186,13 @@ function GuestSpaContent() {
         .select('id')
         .single()
 
-      if (!error && data) {
-        setHoldLockId(data.id)
-      }
+      if (error || !data?.id) throw error || new Error('This slot is no longer available.')
+      setHoldLockId(data.id)
     } catch (err) {
       console.error('Failed to create slot lock:', err)
+      setHoldLockId(null)
+      setStep(2)
+      return
     }
 
     setHoldCountdown(600)
@@ -183,6 +206,7 @@ function GuestSpaContent() {
     setIsSubmitting(true)
     const initialStatus = isOnCallSlot ? 'PENDING_ON_CALL' : 'PENDING'
     setBookingStatus(initialStatus)
+    let createdRequestId: string | null = null
 
     try {
       const roomLookup = await (supabase as any)
@@ -224,6 +248,7 @@ function GuestSpaContent() {
 
       if (reqData?.id) {
         const requestId = reqData.id
+        createdRequestId = requestId
         setActiveRequestId(requestId)
 
         // Subscribe IMMEDIATELY — before setStep(4) — to avoid race where
@@ -248,7 +273,7 @@ function GuestSpaContent() {
         const { start, end } = getSlotWindow(selectedSlotTime, durationMinutes)
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase as any)
+        const { error: lockUpdateError } = await (supabase as any)
           .from('spa_slot_locks')
           .update({
             status: 'BOOKED',
@@ -257,11 +282,17 @@ function GuestSpaContent() {
             expires_at: new Date(end.getTime() + 10 * 60 * 1000).toISOString(),
           })
           .eq('id', holdLockId)
+        if (lockUpdateError) throw lockUpdateError
       }
 
       setStep(4)
     } catch (err) {
       console.error('Error submitting spa booking:', err)
+      await releaseHeldLock(holdLockId)
+      setHoldLockId(null)
+      if (createdRequestId) {
+        await (supabase as any).from('requests').update({ status: 'CANCELLED' }).eq('id', createdRequestId)
+      }
     } finally {
       setIsSubmitting(false)
     }

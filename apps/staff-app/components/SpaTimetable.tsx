@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   StyleSheet,
   Text,
@@ -161,13 +161,12 @@ const shouldMoveBookingToHistory = (request: any, selectedDay: 'today' | 'tomorr
     const payload = request?.payload || {}
     if (!payload || typeof payload !== 'object') return false
 
-    const isGuestFlow = Boolean(payload.manual_booking || payload.guest_phone || payload.phone || payload.guest_name)
-    if (isGuestFlow) return true
-
-    const slotTime = payload.slot_time || payload.display_time || '14:00'
+    const slotTime = payload.scheduled_at || payload.slot_time || payload.display_time || '14:00'
     const durationMins = Number(payload.duration_mins || payload.duration || 60)
-    const window = buildSlotWindow(slotTime, durationMins, selectedDay)
-    return new Date() > window.end || status !== 'PENDING'
+    const window = payload.scheduled_at
+      ? { start: new Date(payload.scheduled_at), end: new Date(new Date(payload.scheduled_at).getTime() + durationMins * 60 * 1000) }
+      : buildSlotWindow(slotTime, durationMins, selectedDay)
+    return new Date() > window.end
   }
 
   return false
@@ -237,10 +236,12 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
   const [quickAddSlot, setQuickAddSlot] = useState<QuickAddSlot | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const fetchVersion = useRef(0)
 
   // ─── Fetch ──────────────────────────────────────────────────────────────────
 
   const fetchTimetableData = useCallback(async () => {
+    const currentFetch = ++fetchVersion.current
     try {
       setLoading(true)
       const { from, to } = getDateRange(selectedDay)
@@ -313,7 +314,11 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
         requestData.forEach((req: any) => {
           const payload = req.payload || {}
           const rawSlot = payload.slot_time || payload.display_time || '14:00'
-          const startTime = convertTo24Hour(String(rawSlot))
+          const scheduledDate = payload.scheduled_at ? new Date(payload.scheduled_at) : null
+          const hasScheduledDate = Boolean(scheduledDate && !isNaN(scheduledDate.getTime()))
+          const startTime = hasScheduledDate
+            ? convertTo24Hour(scheduledDate!.toISOString())
+            : convertTo24Hour(String(rawSlot))
 
           // Prefer filtering by the scheduled slot datetime (derived from slot_time)
           // instead of the request `created_at`. This ensures bookings created
@@ -324,12 +329,16 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
           const dayTo = new Date(to)
           let withinDay = false
           try {
+            if (hasScheduledDate) {
+              withinDay = scheduledDate! >= dayFrom && scheduledDate! < dayTo
+            } else {
             const [hhStr, mmStr] = startTime.split(':')
             const hh = Number(hhStr || '14')
             const mm = Number(mmStr || '0')
             const slotDate = new Date(dayFrom)
             slotDate.setHours(hh, mm, 0, 0)
             withinDay = slotDate >= dayFrom && slotDate < dayTo
+            }
           } catch (e) {
             // if parsing fails, fall back to created_at based heuristic
             const createdAt = new Date(req.created_at)
@@ -440,11 +449,11 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
         })
       }
 
-      setBookings(slotBookings)
+      if (currentFetch === fetchVersion.current) setBookings(slotBookings)
     } catch (err) {
       console.error('Error fetching spa timetable:', err)
     } finally {
-      setLoading(false)
+      if (currentFetch === fetchVersion.current) setLoading(false)
     }
   }, [selectedDay])
 
@@ -603,6 +612,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
       therapistName: b.therapistName,
       isOnCall: b.isOnCall,
       status: b.status,
+      payload: b.rawPayload,
     })
     setIsEditOpen(true)
   }
