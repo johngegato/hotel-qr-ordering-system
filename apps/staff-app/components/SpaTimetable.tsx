@@ -175,15 +175,12 @@ const shouldMoveBookingToHistory = (request: any, selectedDay: 'today' | 'tomorr
 const timeWindowsOverlap = (startA: Date, endA: Date, startB: Date, endB: Date) =>
   startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime()
 
-const releaseSpaLockForWindow = async (therapistId: string | null, slotTime: string, durationMins: number) => {
 const releaseSpaLockForWindow = async (therapistId: string | null, slotTime: string, durationMins: number, scheduledAt?: string) => {
   if (!therapistId || !slotTime) return
   const scheduledDate = scheduledAt ? new Date(scheduledAt) : null
   const { start, end } = scheduledDate && !isNaN(scheduledDate.getTime())
     ? { start: scheduledDate, end: new Date(scheduledDate.getTime() + durationMins * 60 * 1000) }
     : buildSlotWindow(slotTime, durationMins, 'today')
-    await releaseSpaLockForWindow(booking.therapistId, booking.startTime, Number((booking as any).rawRequest?.payload?.duration_mins || 60), (booking as any).rawRequest?.payload?.scheduled_at)
-    await releaseSpaLockForWindow(therapistId, slotTime, durationMins, payload.scheduled_at)
   const now = new Date()
   const safeEnd = new Date(Math.max(end.getTime(), now.getTime()))
 
@@ -522,7 +519,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
           .update({ status: 'CANCELLED' })
           .eq('id', booking.id)
 
-        await releaseSpaLockForWindow(booking.therapistId, booking.startTime, Number((booking as any).rawRequest?.payload?.duration_mins || 60))
+        await releaseSpaLockForWindow(booking.therapistId, booking.startTime, Number((booking as any).rawRequest?.payload?.duration_mins || 60), (booking as any).rawRequest?.payload?.scheduled_at)
       } else {
         await (supabase as any)
           .from('spa_slot_locks')
@@ -568,7 +565,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
         .eq('id', item.id)
 
       if (therapistId) {
-        await releaseSpaLockForWindow(therapistId, slotTime, durationMins)
+        await releaseSpaLockForWindow(therapistId, slotTime, durationMins, payload.scheduled_at)
       }
 
       await (supabase as any)
