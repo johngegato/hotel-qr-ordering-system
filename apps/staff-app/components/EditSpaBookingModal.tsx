@@ -301,7 +301,6 @@ export default function EditSpaBookingModal({
       // whether this save is a pre-approval edit or the actual approve action.
       const normalizedSelectedTime = normalizeTimeTo24Hour(selectedTime)
       const [timeH, timeM] = normalizedSelectedTime.split(':').map((v) => parseInt(v, 10))
-      const lockStart = new Date()
       const lockStart = getBookingBaseDate(booking)
       lockStart.setHours(timeH || 0, timeM || 0, 0, 0)
       const matchedService = services.find((svc: CatalogService) => svc.name === selectedService)
