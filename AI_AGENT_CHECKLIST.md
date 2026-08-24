@@ -36,8 +36,8 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 
 ### Phase 1: Application-Safe Consistency
 
-- [ ] Make `scheduled_at` the canonical SPA appointment timestamp in guest, staff manual, quick-add, and edit flows.
-- [ ] Update timetable filtering, history decisions, conflict checks, lock cleanup, and display conversion to prefer `scheduled_at`.
+- [x] Make `scheduled_at` the canonical SPA appointment timestamp in guest, staff manual, quick-add, and edit flows.
+- [x] Update timetable filtering, history decisions, conflict checks, lock cleanup, and display conversion to prefer `scheduled_at`.
 - [x] Preserve existing payload fields when editing instead of replacing the complete payload object.
 - [x] Ensure hour changes preserve selected minutes and exact granular times remain visible in the timetable.
 - [x] Add guest hold cleanup when the guest goes back, changes slot, abandons submission, or the countdown reaches zero.

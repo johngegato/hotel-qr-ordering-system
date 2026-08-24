@@ -176,8 +176,14 @@ const timeWindowsOverlap = (startA: Date, endA: Date, startB: Date, endB: Date) 
   startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime()
 
 const releaseSpaLockForWindow = async (therapistId: string | null, slotTime: string, durationMins: number) => {
+const releaseSpaLockForWindow = async (therapistId: string | null, slotTime: string, durationMins: number, scheduledAt?: string) => {
   if (!therapistId || !slotTime) return
-  const { start, end } = buildSlotWindow(slotTime, durationMins, 'today')
+  const scheduledDate = scheduledAt ? new Date(scheduledAt) : null
+  const { start, end } = scheduledDate && !isNaN(scheduledDate.getTime())
+    ? { start: scheduledDate, end: new Date(scheduledDate.getTime() + durationMins * 60 * 1000) }
+    : buildSlotWindow(slotTime, durationMins, 'today')
+    await releaseSpaLockForWindow(booking.therapistId, booking.startTime, Number((booking as any).rawRequest?.payload?.duration_mins || 60), (booking as any).rawRequest?.payload?.scheduled_at)
+    await releaseSpaLockForWindow(therapistId, slotTime, durationMins, payload.scheduled_at)
   const now = new Date()
   const safeEnd = new Date(Math.max(end.getTime(), now.getTime()))
 

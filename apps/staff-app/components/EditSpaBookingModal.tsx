@@ -56,6 +56,15 @@ const FALLBACK_THERAPISTS = [
 ]
 
 function buildSlotWindow(slotTime: string, durationMins: number) {
+
+  function getBookingBaseDate(booking: EditableBooking): Date {
+    const scheduledAt = booking.payload?.scheduled_at
+    if (scheduledAt) {
+      const parsed = new Date(scheduledAt)
+      if (!isNaN(parsed.getTime())) return parsed
+    }
+    return new Date()
+  }
   const [timePart] = slotTime.split(' ')
   const [hoursText, minutesText] = timePart.split(':')
   let hours = Number(hoursText || '0')
@@ -235,6 +244,9 @@ export default function EditSpaBookingModal({
           const perSlot: Record<string, boolean> = {}
           for (const slot of TIME_SLOTS) {
             const candidate = buildSlotWindow(slot, durationMins)
+                        const baseDate = getBookingBaseDate(booking)
+                        candidate.start.setFullYear(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate())
+                        candidate.end.setTime(candidate.start.getTime() + durationMins * 60 * 1000)
             const isCurrentBooking = originalTherapistId && t.id === originalTherapistId && slot === selectedTime
             perSlot[slot] = isCurrentBooking
               ? false
@@ -290,8 +302,8 @@ export default function EditSpaBookingModal({
       const normalizedSelectedTime = normalizeTimeTo24Hour(selectedTime)
       const [timeH, timeM] = normalizedSelectedTime.split(':').map((v) => parseInt(v, 10))
       const lockStart = new Date()
+      const lockStart = getBookingBaseDate(booking)
       lockStart.setHours(timeH || 0, timeM || 0, 0, 0)
-      if (lockStart.getTime() < Date.now()) lockStart.setDate(lockStart.getDate() + 1)
       const matchedService = services.find((svc: CatalogService) => svc.name === selectedService)
       const durationMins = matchedService?.duration_mins ?? 60
       const lockEnd = new Date(lockStart.getTime() + durationMins * 60 * 1000)
@@ -335,8 +347,8 @@ export default function EditSpaBookingModal({
       const [originalHour, originalMinute] = normalizeTimeTo24Hour(booking.startTime)
         .split(':').map((value) => parseInt(value, 10))
       const originalStart = new Date(lockStart)
+      const originalStart = getBookingBaseDate(booking)
       originalStart.setHours(originalHour || 0, originalMinute || 0, 0, 0)
-      if (originalStart.getTime() < Date.now()) originalStart.setDate(originalStart.getDate() + 1)
       const originalEnd = new Date(originalStart.getTime() + serviceDuration * 60 * 1000)
       const oldLock = (overlappingLocks || []).find((lock: any) =>
         selectedTherapistId === originalTherapistId &&

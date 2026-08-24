@@ -20,7 +20,9 @@ interface SpaService {
 interface SlotLock {
   id: string
   start_time: string
+  end_time: string
   status: string
+  expires_at: string
 }
 
 const FALLBACK_SERVICES: SpaService[] = [
@@ -74,7 +76,7 @@ function GuestSpaContent() {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: lockData } = await (supabase.from('spa_slot_locks') as any)
-          .select('id, start_time, status')
+          .select('id, start_time, end_time, status, expires_at')
           .in('status', ['HELD', 'BOOKED'])
 
         if (svcData && svcData.length > 0) setServices(svcData)
@@ -401,6 +403,12 @@ function GuestSpaContent() {
               <div className="grid grid-cols-2 gap-3">
                 {timeSlots.map((slot) => {
                   const isLocked = lockedSlots.some((l) => l.start_time.includes(slot))
+                                    const slotWindow = getSlotWindow(slot, selectedService.duration_mins)
+                                    const isLocked = lockedSlots.some((lock) => {
+                                      if (!['HELD', 'BOOKED'].includes(lock.status)) return false
+                                      if (lock.expires_at && new Date(lock.expires_at) <= new Date()) return false
+                                      return new Date(lock.start_time) < slotWindow.end && new Date(lock.end_time) > slotWindow.start
+                                    })
                   const isOnCall = selectedService.requires_on_call || slot === '05:30 PM'
 
                   return (
@@ -495,6 +503,18 @@ function GuestSpaContent() {
                 }}
               >
                 {isSubmitting ? 'Submitting Request...' : 'Confirm Spa Appointment'}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await releaseHeldLock(holdLockId)
+                  setHoldLockId(null)
+                  setStep(2)
+                }}
+                disabled={isSubmitting}
+                className="w-full py-3 rounded-2xl border border-white/10 text-slate-400 text-xs font-semibold hover:bg-white/5 disabled:opacity-50"
+              >
+                Back to Time Selection
               </button>
             </div>
           </div>
