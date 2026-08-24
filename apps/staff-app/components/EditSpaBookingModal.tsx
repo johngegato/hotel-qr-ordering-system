@@ -345,7 +345,6 @@ export default function EditSpaBookingModal({
 
       const [originalHour, originalMinute] = normalizeTimeTo24Hour(booking.startTime)
         .split(':').map((value) => parseInt(value, 10))
-      const originalStart = new Date(lockStart)
       const originalStart = getBookingBaseDate(booking)
       originalStart.setHours(originalHour || 0, originalMinute || 0, 0, 0)
       const originalEnd = new Date(originalStart.getTime() + serviceDuration * 60 * 1000)
