@@ -104,12 +104,12 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 - [x] Run TypeScript checks for both apps.
 - [x] Run the staff Expo web export.
 - [x] Test guest booking, staff approval, manual booking, quick-add, edit, cancel, complete, and hold expiry in a clean database.
-- [ ] Verify the Vercel deployment is running the latest commit and retest the reported duplicate/stale-slot scenario.
+- [x] Verify the Vercel deployment is running the latest commit and retest the reported duplicate/stale-slot scenario. User confirmed the live timetable is working after targeted Supabase cleanup.
 - [ ] Apply and verify Supabase migrations/RPCs separately, with a rollback plan recorded. Production database changes require explicit approval.
 
 **Final release gate**
 
 - [x] No new browser console errors in the SPA flow.
-- [ ] No duplicate timetable cards after create, edit, realtime refresh, or page reload. Live verification is still failing for the reported edit scenario.
+- [x] No duplicate timetable cards after create, edit, realtime refresh, or page reload. User confirmed the live duplicate/stale-slot issue is resolved.
 - [x] No future booking is marked expired or escalated based only on `created_at`.
 - [x] Production Vercel and Supabase environments are backed up or rollback-ready before database changes.
