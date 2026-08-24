@@ -259,24 +259,25 @@ export default function ManualSpaBookingModal({
         return
       }
 
-      // Ensure a fallback seed room exists only if staff didn't pick an existing room
+      // Ensure a fallback room exists only if staff didn't pick an existing room.
+      // Use maybeSingle because an absent default room is expected during setup.
       if (!selectedRoomId) {
         try {
           const { data: roomData, error: roomErr } = await (supabase as any)
             .from('rooms')
             .select('id')
             .eq('id', DEFAULT_ROOM_ID)
-            .single()
+            .maybeSingle()
 
           if (roomErr || !roomData) {
             const seedRoom = {
               id: DEFAULT_ROOM_ID,
               hotel_id: HOTEL_ID,
-              room_number: `seed-${roomNumber.trim() || '302'}`,
+              room_number: roomNumber.trim(),
+              floor: null,
+              room_type: 'STANDARD',
               qr_auth_hash: `seed-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              is_seed: true,
-              is_active: false,
-              created_by: 'system-seed',
+              is_active: true,
             }
             const { error: insRoomErr } = await (supabase as any)
               .from('rooms')
@@ -284,6 +285,7 @@ export default function ManualSpaBookingModal({
 
             if (insRoomErr) {
               console.warn('Failed to ensure DEFAULT_ROOM_ID exists:', insRoomErr)
+              throw insRoomErr
             } else {
               try {
                 await (supabase as any)
@@ -299,7 +301,8 @@ export default function ManualSpaBookingModal({
             }
           }
         } catch (roomCheckErr) {
-          console.warn('Room existence check failed (continuing):', roomCheckErr)
+          console.warn('Room existence check failed:', roomCheckErr)
+          throw roomCheckErr
         }
       }
 
