@@ -282,8 +282,9 @@ function GuestSpaContent() {
           .subscribe()
       }
 
-      // 2. Update slot lock to BOOKED using the actual chosen slot window
-      if (holdLockId) {
+      // 2. Update slot lock to BOOKED using the actual chosen slot window and
+      // attach the owning request so the lock can be tracked reliably.
+      if (holdLockId && createdRequestId) {
         const durationMinutes = selectedService.duration_mins || 60
         const { start, end } = getSlotWindow(selectedSlotTime, durationMinutes)
 
@@ -295,6 +296,7 @@ function GuestSpaContent() {
             start_time: start.toISOString(),
             end_time: end.toISOString(),
             expires_at: new Date(end.getTime() + 10 * 60 * 1000).toISOString(),
+            request_id: createdRequestId,
           })
           .eq('id', holdLockId)
         if (lockUpdateError) throw lockUpdateError

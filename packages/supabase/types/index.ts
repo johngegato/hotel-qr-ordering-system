@@ -142,6 +142,7 @@ export interface SpaSlotLock {
   id: string
   hotel_id: string
   therapist_id: string | null
+  request_id: string | null
   session_id: string | null
   start_time: string
   end_time: string

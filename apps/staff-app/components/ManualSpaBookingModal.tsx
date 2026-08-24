@@ -378,6 +378,17 @@ export default function ManualSpaBookingModal({
         throw reqErr || new Error('The booking request could not be created.')
       }
 
+      const { error: lockRequestLinkError } = await (supabase as any)
+        .from('spa_slot_locks')
+        .update({ request_id: reqData.id })
+        .eq('id', lockData.id)
+
+      if (lockRequestLinkError) {
+        await (supabase as any).from('requests').update({ status: 'CANCELLED' }).eq('id', reqData.id)
+        await (supabase as any).from('spa_slot_locks').delete().eq('id', lockData.id)
+        throw lockRequestLinkError
+      }
+
       // Audit log
       try {
         await (supabase as any)

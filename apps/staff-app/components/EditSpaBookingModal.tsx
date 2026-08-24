@@ -422,6 +422,17 @@ export default function EditSpaBookingModal({
         throw reqErr
       }
 
+      if (newLock?.id) {
+        const { error: linkErr } = await (supabase as any)
+          .from('spa_slot_locks')
+          .update({ request_id: booking.id })
+          .eq('id', newLock.id)
+
+        if (linkErr) {
+          console.warn('[EditSpaBookingModal] Failed to link new lock to request:', linkErr)
+        }
+      }
+
       // Explicit audit log for edit action
       await (supabase as any)
         .from('audit_logs')
