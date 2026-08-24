@@ -56,15 +56,6 @@ const FALLBACK_THERAPISTS = [
 ]
 
 function buildSlotWindow(slotTime: string, durationMins: number) {
-
-  function getBookingBaseDate(booking: EditableBooking): Date {
-    const scheduledAt = booking.payload?.scheduled_at
-    if (scheduledAt) {
-      const parsed = new Date(scheduledAt)
-      if (!isNaN(parsed.getTime())) return parsed
-    }
-    return new Date()
-  }
   const [timePart] = slotTime.split(' ')
   const [hoursText, minutesText] = timePart.split(':')
   let hours = Number(hoursText || '0')
@@ -76,6 +67,15 @@ function buildSlotWindow(slotTime: string, durationMins: number) {
 
   const end = new Date(start.getTime() + (durationMins || 60) * 60 * 1000)
   return { start, end }
+}
+
+function getBookingBaseDate(booking: EditableBooking): Date {
+  const scheduledAt = booking.payload?.scheduled_at
+  if (scheduledAt) {
+    const parsed = new Date(scheduledAt)
+    if (!isNaN(parsed.getTime())) return parsed
+  }
+  return new Date()
 }
 
 const timeWindowsOverlap = (startA: Date, endA: Date, startB: Date, endB: Date) =>
