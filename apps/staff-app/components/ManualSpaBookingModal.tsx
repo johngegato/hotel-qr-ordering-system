@@ -295,6 +295,7 @@ export default function ManualSpaBookingModal({
         service_id: selectedService.id,
         service_name: selectedService.name,
         slot_time: selectedTime,
+        scheduled_at: start.toISOString(),
         display_time: selectedTime,
         price: selectedService.price,
         duration_mins: selectedService.duration_mins,

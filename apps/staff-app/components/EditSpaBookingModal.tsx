@@ -291,6 +291,7 @@ export default function EditSpaBookingModal({
         payload: {
           service_name: selectedService,
           slot_time: normalizedSelectedTime,
+          scheduled_at: lockStart.toISOString(),
           room_number: booking.roomNumber,
           assigned_therapist: therapistName,
           therapist_id: selectedTherapistId,

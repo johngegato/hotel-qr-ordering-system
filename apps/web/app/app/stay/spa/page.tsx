@@ -42,6 +42,7 @@ function GuestSpaContent() {
   const [selectedService, setSelectedService] = useState<SpaService | null>(null)
   const [lockedSlots, setLockedSlots] = useState<SlotLock[]>([])
   const [selectedSlotTime, setSelectedSlotTime] = useState<string | null>(null)
+  const [selectedScheduledAt, setSelectedScheduledAt] = useState<string | null>(null)
   const [isOnCallSlot, setIsOnCallSlot] = useState<boolean>(false)
   const [holdLockId, setHoldLockId] = useState<string | null>(null)
   const [holdCountdown, setHoldCountdown] = useState<number>(600) // 10 mins
@@ -148,6 +149,7 @@ function GuestSpaContent() {
     try {
       const durationMinutes = selectedService?.duration_mins || 60
       const { start, end } = getSlotWindow(slotTime, durationMinutes)
+      setSelectedScheduledAt(start.toISOString())
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from('spa_slot_locks') as any)
@@ -190,6 +192,8 @@ function GuestSpaContent() {
         .maybeSingle()
 
       const roomNumber = roomLookup?.data?.room_number ?? ''
+      const scheduledAt = selectedScheduledAt
+        || getSlotWindow(selectedSlotTime, selectedService.duration_mins).start.toISOString()
 
       // 1. Insert booking request into requests table
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -204,6 +208,7 @@ function GuestSpaContent() {
             service_id: selectedService.id,
             service_name: selectedService.name,
             slot_time: selectedSlotTime,
+            scheduled_at: scheduledAt,
             room_number: roomNumber,
             price: selectedService.price,
             duration_mins: selectedService.duration_mins,
