@@ -307,7 +307,42 @@ export default function ManualSpaBookingModal({
         manual_booking: true,
       }
 
-      // Insert request
+      // Acquire the lock before creating the request. A booking without a lock
+      // can be accepted by another staff session immediately afterward.
+      const { start, end } = buildSlotWindow(selectedTime, selectedService.duration_mins || 60)
+      const { data: finalLocks, error: finalLockReadError } = await supabase
+        .from('spa_slot_locks')
+        .select('id')
+        .eq('therapist_id', selectedTherapistId)
+        .in('status', ['HELD', 'BOOKED'])
+        .lt('start_time', end.toISOString())
+        .gt('end_time', start.toISOString())
+
+      if (finalLockReadError) throw finalLockReadError
+      if ((finalLocks || []).length > 0) {
+        throw new Error('This therapist already has an active booking for that time slot.')
+      }
+
+      const { data: lockData, error: lockErr } = await (supabase as any)
+        .from('spa_slot_locks')
+        .insert([{
+          hotel_id: HOTEL_ID,
+          therapist_id: selectedTherapistId,
+          session_id: null,
+          start_time: start.toISOString(),
+          end_time: end.toISOString(),
+          status: 'BOOKED',
+          expires_at: new Date(end.getTime() + 10 * 60 * 1000).toISOString(),
+        }])
+        .select('id')
+        .single()
+
+      if (lockErr || !lockData?.id) {
+        throw lockErr || new Error('The selected slot could not be reserved.')
+      }
+
+      // Create the request only after the slot lock succeeds. Roll the lock
+      // back if the request insert fails so the slot is not stranded.
       const { data: reqData, error: reqErr } = await (supabase as any)
         .from('requests')
         .insert([{
@@ -320,9 +355,10 @@ export default function ManualSpaBookingModal({
         .select('id')
         .single()
 
-      if (reqErr) {
+      if (reqErr || !reqData?.id) {
+        await (supabase as any).from('spa_slot_locks').delete().eq('id', lockData.id)
         console.error('requests.insert error:', reqErr)
-        throw reqErr
+        throw reqErr || new Error('The booking request could not be created.')
       }
 
       // Audit log
@@ -331,7 +367,7 @@ export default function ManualSpaBookingModal({
           .from('audit_logs')
           .insert([{
             hotel_id: HOTEL_ID,
-            request_id: reqData?.id ?? null,
+            request_id: reqData.id,
             action: 'MANUAL_BOOKING_CREATED',
             details: {
               source: 'staff_manual',
@@ -344,37 +380,6 @@ export default function ManualSpaBookingModal({
           }])
       } catch (e) {
         // non-fatal
-      }
-
-      // Create slot lock against the selected therapist/time using the actual slot window
-      try {
-        const { start, end } = buildSlotWindow(selectedTime, selectedService.duration_mins || 60)
-
-        const { data: existingLocks } = await supabase
-          .from('spa_slot_locks')
-          .select('id')
-          .eq('therapist_id', selectedTherapistId)
-          .in('status', ['HELD', 'BOOKED'])
-          .lt('start_time', end.toISOString())
-          .gt('end_time', start.toISOString())
-
-        if ((existingLocks || []).length > 0) {
-          throw new Error('This therapist already has an active booking for that time slot.')
-        }
-
-        await (supabase as any)
-          .from('spa_slot_locks')
-          .insert([{
-            hotel_id: HOTEL_ID,
-            therapist_id: selectedTherapistId,
-            session_id: null,
-            start_time: start.toISOString(),
-            end_time: end.toISOString(),
-            status: 'BOOKED',
-            expires_at: new Date(end.getTime() + 10 * 60 * 1000).toISOString(),
-          }])
-      } catch (e) {
-        console.warn('Failed to create spa_slot_lock for manual booking:', e)
       }
 
       // Reset form

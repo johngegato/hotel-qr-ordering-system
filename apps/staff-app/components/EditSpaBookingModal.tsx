@@ -310,12 +310,70 @@ export default function EditSpaBookingModal({
         : rawRoomValue
       updatePayload.payload = { ...updatePayload.payload, room_number: normalizedRoom }
 
+      // ─── Manage spa_slot_locks ──────────────────────────────────────────────
+      const [timeH, timeM] = selectedTime.split(':').map((v) => parseInt(v, 10))
+      const lockStart = new Date()
+      lockStart.setHours(timeH || 0, timeM || 0, 0, 0)
+      if (lockStart.getTime() < Date.now()) lockStart.setDate(lockStart.getDate() + 1)
+      const matchedService = services.find((svc: CatalogService) => svc.name === selectedService)
+      const durationMins = matchedService?.duration_mins ?? 60
+      const lockEnd = new Date(lockStart.getTime() + durationMins * 60 * 1000)
+      const expiresAt = new Date(lockEnd.getTime() + 10 * 60 * 1000)
+
+      const { data: overlappingLocks, error: lockReadErr } = await supabase
+        .from('spa_slot_locks')
+        .select('id, start_time, end_time')
+        .eq('therapist_id', selectedTherapistId)
+        .in('status', ['HELD', 'BOOKED'])
+        .lt('start_time', lockEnd.toISOString())
+        .gt('end_time', lockStart.toISOString())
+
+      if (lockReadErr) throw lockReadErr
+
+      // Keep the current booking's existing lock when its therapist and time
+      // are unchanged. Never delete all overlapping locks: that can remove a
+      // different guest's reservation and enable a double booking.
+      const currentLock = selectedTherapistId === originalTherapistId &&
+        normalizeTimeTo24Hour(booking.startTime) === normalizedSelectedTime
+        ? (overlappingLocks || [])[0]
+        : undefined
+
+      if (!currentLock && (overlappingLocks || []).length > 0) {
+        throw new Error('This therapist already has an active booking for that time slot.')
+      }
+
+      const { error: lockErr } = currentLock ? { error: null } : await supabase
+        .from('spa_slot_locks')
+        .insert([
+          {
+            hotel_id: HOTEL_ID,
+            therapist_id: selectedTherapistId,
+            session_id: null,
+            start_time: lockStart.toISOString(),
+            end_time: lockEnd.toISOString(),
+            status: 'BOOKED',
+            expires_at: expiresAt.toISOString(),
+          },
+        ])
+
+      if (lockErr) {
+        console.error('[EditSpaBookingModal] Failed to create slot lock:', lockErr)
+        throw lockErr
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
       const { error: reqErr } = await supabase
         .from('requests')
         .update(updatePayload)
         .eq('id', booking.id)
 
       if (reqErr) {
+        if (!currentLock) {
+          await (supabase as any).from('spa_slot_locks').delete()
+            .eq('therapist_id', selectedTherapistId)
+            .eq('start_time', lockStart.toISOString())
+            .eq('end_time', lockEnd.toISOString())
+        }
         console.error('[EditSpaBookingModal] Failed to update booking:', reqErr)
         throw reqErr
       }
@@ -336,43 +394,6 @@ export default function EditSpaBookingModal({
             price: services.find((s) => s.name === selectedService)?.price ?? 0,
           },
         }])
-
-      // ─── Manage spa_slot_locks ──────────────────────────────────────────────
-      const [timeH, timeM] = selectedTime.split(':').map((v) => parseInt(v, 10))
-      const lockStart = new Date()
-      lockStart.setHours(timeH || 0, timeM || 0, 0, 0)
-      if (lockStart.getTime() < Date.now()) lockStart.setDate(lockStart.getDate() + 1)
-      const matchedService = services.find((svc: CatalogService) => svc.name === selectedService)
-      const durationMins = matchedService?.duration_mins ?? 60
-      const lockEnd = new Date(lockStart.getTime() + durationMins * 60 * 1000)
-      const expiresAt = new Date(lockEnd.getTime() + 10 * 60 * 1000)
-
-      await supabase
-        .from('spa_slot_locks')
-        .delete()
-        .eq('therapist_id', selectedTherapistId)
-        .in('status', ['HELD', 'BOOKED'])
-        .lt('start_time', lockEnd.toISOString())
-        .gt('end_time', lockStart.toISOString())
-
-      const { error: lockErr } = await supabase
-        .from('spa_slot_locks')
-        .insert([
-          {
-            hotel_id: HOTEL_ID,
-            therapist_id: selectedTherapistId,
-            session_id: null,
-            start_time: lockStart.toISOString(),
-            end_time: lockEnd.toISOString(),
-            status: 'BOOKED',
-            expires_at: expiresAt.toISOString(),
-          },
-        ])
-
-      if (lockErr) {
-        console.error('[EditSpaBookingModal] Failed to create slot lock:', lockErr)
-      }
-      // ─────────────────────────────────────────────────────────────────────────
 
       onSaved()
       onClose()
