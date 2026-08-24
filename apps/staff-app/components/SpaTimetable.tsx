@@ -286,7 +286,27 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
         .limit(60)
 
       const filteredHistory = (doneData || []).filter((request: any) => shouldMoveBookingToHistory(request, selectedDay))
-      setHistoryBookings(filteredHistory)
+      const uniqueHistory = filteredHistory.filter((request: any, index: number, arr: any[]) => {
+        const payload = request?.payload || {}
+        const key = [
+          request.id,
+          payload.therapist_id || 'none',
+          payload.room_number || payload.room || 'none',
+          payload.scheduled_at || payload.slot_time || 'none',
+          payload.service_name || 'none',
+        ].join('|')
+        return arr.findIndex((item: any) => {
+          const itemPayload = item?.payload || {}
+          return [
+            item.id,
+            itemPayload.therapist_id || 'none',
+            itemPayload.room_number || itemPayload.room || 'none',
+            itemPayload.scheduled_at || itemPayload.slot_time || 'none',
+            itemPayload.service_name || 'none',
+          ].join('|') === key
+        }) === index
+      })
+      setHistoryBookings(uniqueHistory)
 
       // 4. Expire stale locks for booking windows that have already passed or were cancelled.
       const { data: staleLocks } = await (supabase as any)
@@ -443,19 +463,20 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
           if (!alreadyCovered) {
             const startHour = lockStart.getHours()
             const therapist = loadedTherapists.find(t => t.id === lock.therapist_id)
+            const isUnlinkedLock = !lock.request_id
             slotBookings.push({
               id: lock.id,
               therapistId: lock.therapist_id,
               therapistName: therapist?.full_name || 'Unknown Therapist',
-              serviceName: 'Slot Reserved',
-              roomNumber: 'Spa Desk',
+              serviceName: isUnlinkedLock ? 'Unlinked reservation' : 'Slot Reserved',
+              roomNumber: isUnlinkedLock ? 'Unlinked lock' : 'Spa Desk',
               guestPhone: '',
               startTime: `${String(startHour).padStart(2, '0')}:00`,
               endTime: `${String(startHour + 1).padStart(2, '0')}:00`,
               status: lock.status,
               isOnCall: false,
               source: 'lock',
-              isVisible: false,
+              isVisible: !isUnlinkedLock,
             })
           }
         })

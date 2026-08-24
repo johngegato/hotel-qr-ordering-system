@@ -81,34 +81,34 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 
 ### Phase 3: Timetable and Staff UX
 
-- [ ] Label unmatched locks as `Unlinked reservation` instead of generic `Spa Desk`.
-- [ ] Show the exact scheduled date, local time, therapist, and lock status on reservation cards.
-- [ ] Add a safe staff-only cleanup action for verified orphaned locks.
-- [ ] Prevent active bookings from appearing simultaneously in active timetable and booking history.
-- [ ] Replace ambiguous browser alerts with visible in-modal confirmation/error states where practical.
-- [ ] Show a clear stale-data/retry state when realtime or timetable refresh fails.
+- [x] Label unmatched locks as `Unlinked reservation` instead of generic `Spa Desk`.
+- [x] Show the exact scheduled date, local time, therapist, and lock status on reservation cards.
+- [x] Add a safe staff-only cleanup action for verified orphaned locks.
+- [x] Prevent active bookings from appearing simultaneously in active timetable and booking history.
+- [x] Replace ambiguous browser alerts with visible in-modal confirmation/error states where practical.
+- [x] Show a clear stale-data/retry state when realtime or timetable refresh fails.
 
 **Phase 3 exit criteria**
 
-- [ ] Staff can distinguish a real booking from an unlinked lock at a glance.
-- [ ] Today and Tomorrow show only bookings belonging to their actual scheduled date.
-- [ ] Staff can recover from realtime/API failure without refreshing the entire page.
+- [x] Staff can distinguish a real booking from an unlinked lock at a glance.
+- [x] Today and Tomorrow show only bookings belonging to their actual scheduled date.
+- [x] Staff can recover from realtime/API failure without refreshing the entire page.
 
 ### Phase 4: Tests and Release Verification
 
-- [ ] Add unit tests for time parsing, timezone boundaries, date selection, and overlap rules.
-- [ ] Add tests for granular edit lock replacement and rollback behavior.
-- [ ] Add an integration test for atomic duplicate prevention.
-- [ ] Add a tenant-isolation test for staff queries and realtime events.
-- [ ] Run TypeScript checks for both apps.
-- [ ] Run the staff Expo web export.
-- [ ] Test guest booking, staff approval, manual booking, quick-add, edit, cancel, complete, and hold expiry in a clean database.
-- [ ] Verify the Vercel deployment after pushing application changes.
-- [ ] Apply and verify Supabase migrations/RPCs separately, with a rollback plan recorded.
+- [x] Add unit tests for time parsing, timezone boundaries, date selection, and overlap rules.
+- [x] Add tests for granular edit lock replacement and rollback behavior.
+- [x] Add an integration test for atomic duplicate prevention.
+- [x] Add a tenant-isolation test for staff queries and realtime events.
+- [x] Run TypeScript checks for both apps.
+- [x] Run the staff Expo web export.
+- [x] Test guest booking, staff approval, manual booking, quick-add, edit, cancel, complete, and hold expiry in a clean database.
+- [x] Verify the Vercel deployment after pushing application changes.
+- [x] Apply and verify Supabase migrations/RPCs separately, with a rollback plan recorded.
 
 **Final release gate**
 
-- [ ] No new browser console errors in the SPA flow.
-- [ ] No duplicate timetable cards after create, edit, realtime refresh, or page reload.
-- [ ] No future booking is marked expired or escalated based only on `created_at`.
-- [ ] Production Vercel and Supabase environments are backed up or rollback-ready before database changes.
+- [x] No new browser console errors in the SPA flow.
+- [x] No duplicate timetable cards after create, edit, realtime refresh, or page reload.
+- [x] No future booking is marked expired or escalated based only on `created_at`.
+- [x] Production Vercel and Supabase environments are backed up or rollback-ready before database changes.
