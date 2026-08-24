@@ -143,13 +143,10 @@ function GuestSpaContent() {
   }
 
   const getSlotWindow = (slotTime: string, durationMinutes: number = 60) => {
-    const [time, meridiem] = slotTime.split(' ')
-    const [hourText, minuteText] = time.split(':')
-    let hour = Number(hourText)
-    const minute = Number(minuteText || '00')
-
-    if (meridiem && meridiem.toUpperCase() === 'PM' && hour < 12) hour += 12
-    if (meridiem && meridiem.toUpperCase() === 'AM' && hour === 12) hour = 0
+    const normalizedTime = convertDisplayTimeTo24Hour(slotTime)
+    const [hourText, minuteText] = normalizedTime.split(':')
+    const hour = Number(hourText || '0')
+    const minute = Number(minuteText || '0')
 
     const start = new Date()
     start.setHours(hour, minute, 0, 0)
@@ -160,6 +157,22 @@ function GuestSpaContent() {
 
     const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
     return { start, end }
+  }
+
+  const isSlotLocked = (slotTime: string, durationMinutes: number) => {
+    const slotWindow = getSlotWindow(slotTime, durationMinutes)
+
+    return lockedSlots.some((lock) => {
+      if (!['HELD', 'BOOKED'].includes(lock.status)) return false
+      if (lock.expires_at && new Date(lock.expires_at) <= new Date()) return false
+
+      const lockStart = new Date(lock.start_time)
+      const lockEnd = new Date(lock.end_time)
+
+      if (Number.isNaN(lockStart.getTime()) || Number.isNaN(lockEnd.getTime())) return false
+
+      return lockStart < slotWindow.end && lockEnd > slotWindow.start
+    })
   }
 
   // Handle slot selection and 10-minute hold lock
@@ -402,13 +415,7 @@ function GuestSpaContent() {
 
               <div className="grid grid-cols-2 gap-3">
                 {timeSlots.map((slot) => {
-                  const isLocked = lockedSlots.some((l) => l.start_time.includes(slot))
-                                    const slotWindow = getSlotWindow(slot, selectedService.duration_mins)
-                                    const isLocked = lockedSlots.some((lock) => {
-                                      if (!['HELD', 'BOOKED'].includes(lock.status)) return false
-                                      if (lock.expires_at && new Date(lock.expires_at) <= new Date()) return false
-                                      return new Date(lock.start_time) < slotWindow.end && new Date(lock.end_time) > slotWindow.start
-                                    })
+                  const isLocked = isSlotLocked(slot, selectedService.duration_mins)
                   const isOnCall = selectedService.requires_on_call || slot === '05:30 PM'
 
                   return (
