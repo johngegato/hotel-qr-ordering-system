@@ -57,6 +57,7 @@ function formatRelativeTime(isoString?: string): string {
 export default function RequestHistory() {
   const [requests, setRequests] = useState<HistoricalRequest[]>([])
   const [loading, setLoading] = useState(true)
+  const [staffMap, setStaffMap] = useState<Record<string, string>>({})
   const [roomSort, setRoomSort] = useState<RoomSortOrder>('asc')
   const [dateSort, setDateSort] = useState<DateSortOrder>('desc')
   const [activeSortType, setActiveSortType] = useState<'DATE' | 'ROOM'>('DATE')
@@ -67,6 +68,22 @@ export default function RequestHistory() {
   const [selectedRequest, setSelectedRequest] = useState<HistoricalRequest | null>(null)
   const [auditTrail, setAuditTrail] = useState<AuditLog[]>([])
   const [loadingAudit, setLoadingAudit] = useState(false)
+
+  const fetchStaffMap = useCallback(async () => {
+    try {
+      const { data } = await (supabase as any)
+        .from('staff_users')
+        .select('id, full_name')
+        .eq('hotel_id', HOTEL_ID)
+      if (data) {
+        const map: Record<string, string> = {}
+        ;(data as any[]).forEach((s) => { if (s.id && s.full_name) map[s.id] = s.full_name })
+        setStaffMap(map)
+      }
+    } catch (err) {
+      console.warn('[RequestHistory] staff_users fetch non-fatal:', err)
+    }
+  }, [])
 
   const fetchHistory = useCallback(async () => {
     setLoading(true)
@@ -87,6 +104,7 @@ export default function RequestHistory() {
   }, [])
 
   useEffect(() => {
+    fetchStaffMap()
     fetchHistory()
 
     const channel = supabase
@@ -99,7 +117,7 @@ export default function RequestHistory() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [fetchHistory])
+  }, [fetchHistory, fetchStaffMap])
 
   const handleSelectRequest = async (req: HistoricalRequest) => {
     setSelectedRequest(req)
@@ -179,11 +197,13 @@ export default function RequestHistory() {
   // Resolve actor from audit trail or request payload
   const resolveActorFromRequest = (req: HistoricalRequest) => {
     const p = req.payload as any
+    // Resolve claimed_by UUID to a real staff name via staffMap
+    const claimedName = req.claimed_by ? (staffMap[req.claimed_by] || null) : null
     const name =
       p?.last_modified_by ||
       p?.booked_by ||
       p?.claimed_by_name ||
-      (req.claimed_by ? `Staff #${req.claimed_by.slice(0, 8)}` : null) ||
+      claimedName ||
       (p?.manual_booking ? 'Front Desk Staff' : null) ||
       null
     const role = p?.manual_booking ? 'FRONT_DESK' : req.claimed_by ? 'STAFF' : 'GUEST'
