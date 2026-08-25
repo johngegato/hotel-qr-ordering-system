@@ -484,6 +484,16 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
 - **Login UI (`AdminLoginForm.tsx`)**: Luxury dark-glass design, password reveal toggle, live error feedback, and loading indicators.
 - **Global Admin Header**: Renders persistent navigation bar across desktop and mobile, active user profile pill (`[Name] · [ROLE]`), and one-click **Sign Out** button.
 
+### 8. Guest Spa Slot Availability & Day Selection Fix (`apps/web/app/app/stay/spa/page.tsx`)
+- **Root Cause of Inactive Slots**: The guest app previously compared time windows against *all* locks in the database (including stale/past locks) without checking active therapist count, and improperly shifted timestamps forward when earlier than current time.
+- **Resolution**:
+  - Added **`📅 Today` vs `📅 Tomorrow`** date selection tabs matching the Staff App's Master Timetable.
+  - Corrected slot window date calculation to accurately align with the selected target day.
+  - Filtered out expired locks (`end_time < NOW()`).
+  - Integrated therapist capacity: slots are now only marked "Fully Booked" if active locks equal or exceed the total count of active therapists.
+  - Differentiated between **`Passed`** (for earlier times today), **`Booked`**, **`⚠️ On-Call Request`**, and **`✓ Available`**.
+  - Added real-time listener on `spa_slot_locks` so staff modifications in `SpaTimetable` reflect immediately on the guest booking screen.
+
 ---
 
 ### Remaining Open Items
