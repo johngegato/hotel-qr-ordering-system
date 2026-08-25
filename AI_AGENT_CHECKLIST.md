@@ -36,6 +36,11 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Android Notification Channel `urgent_guest_requests` configured with `MAX` importance, custom vibration, and `ALARM` audio stream.
   - Updated `apps/staff-app/app.json` with permissions (`WAKE_LOCK`, `USE_FULL_SCREEN_INTENT`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE`, `RECEIVE_BOOT_COMPLETED`).
   - Wired native notification triggers & push token synchronization to `staff_users` in `apps/staff-app/App.tsx`.
+- [x] Persistent 5-Minute Recurring Alert System for Unhandled Requests (`apps/staff-app`):
+  - Tracks all pending requests across: Call requests (`CALL_REQUEST`), Spa bookings (`SPA_BOOKING`), Room tasks (`TASK`), and Dining orders (`FOOD_ORDER`).
+  - Automatically queries unhandled requests on a 5-minute interval (`setInterval`) and upon staff login.
+  - Displays `PendingRequestsReminderModal` popup with breakdown chips, live elapsed waiting timer per request, flashing alert border, audio chimes, and haptic feedback.
+  - Automatically synchronizes with Realtime updates when requests are claimed, resolved, or modified.
 - [x] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
 - [ ] Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments and Android APK.

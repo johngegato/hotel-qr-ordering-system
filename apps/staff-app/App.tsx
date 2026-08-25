@@ -22,6 +22,7 @@ import { StaffUser } from './components/UserManagement'
 import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
 import IncomingRequestAlert, { type IncomingRequest } from './components/IncomingRequestAlert'
+import PendingRequestsReminderModal, { type PendingRequestItem } from './components/PendingRequestsReminderModal'
 import { Platform } from 'react-native'
 import {
   setupNotificationChannels,
@@ -149,6 +150,7 @@ export default function App() {
   const [resolvedToday, setResolvedToday] = useState(0)
   const [activeStaffUser, setActiveStaffUser] = useState<StaffUser | null>(null)
   const [incomingAlert, setIncomingAlert] = useState<IncomingRequest | null>(null)
+  const [unhandledPendingList, setUnhandledPendingList] = useState<PendingRequestItem[] | null>(null)
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
   const [isLoggingIn, setIsLoggingIn] = useState(false)
@@ -157,6 +159,42 @@ export default function App() {
   const slideAnim = React.useRef(new Animated.Value(30)).current
 
   const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
+
+  // ─── 5-Minute Recurring Check for Unhandled Requests ────────
+  const checkUnhandledRequests = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('requests')
+        .select('id, request_type, status, payload, created_at, room_id, rooms(room_number)')
+        .eq('hotel_id', HOTEL_ID)
+        .in('request_type', ['CALL_REQUEST', 'SPA_BOOKING', 'TASK', 'FOOD_ORDER'])
+        .in('status', ['PENDING', 'PENDING_ON_CALL'])
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        console.warn('[PendingReminder] Failed to query unhandled requests:', error)
+        return
+      }
+
+      if (data && data.length > 0) {
+        setUnhandledPendingList(data as PendingRequestItem[])
+        // Trigger native notification if on mobile/tablet
+        if (Platform.OS !== 'web') {
+          triggerAggressiveAlert({
+            title: `${data.length} Unhandled Requests Pending`,
+            body: `Reminder: ${data.length} pending guest requests require staff attention!`,
+            requestId: data[0].id,
+            roomNumber: 'Multiple Rooms',
+            requestType: 'PENDING_REMINDER',
+          })
+        }
+      } else {
+        setUnhandledPendingList(null)
+      }
+    } catch (err) {
+      console.warn('[PendingReminder] Check error:', err)
+    }
+  }, [HOTEL_ID])
 
   const fetchStats = async () => {
     const todayStart = new Date()
@@ -351,6 +389,21 @@ export default function App() {
     }
   }, [activeStaffUser?.id])
 
+  // ─── 5-Minute Recurring Interval for Unhandled Pending Requests ──
+  useEffect(() => {
+    if (!activeStaffUser) return
+
+    // Run check immediately on login / mount
+    checkUnhandledRequests()
+
+    // Setup 5-minute recurring timer (300,000 ms)
+    const timer = setInterval(() => {
+      checkUnhandledRequests()
+    }, 5 * 60 * 1000)
+
+    return () => clearInterval(timer)
+  }, [activeStaffUser, checkUnhandledRequests])
+
   useEffect(() => {
     fetchData()
 
@@ -360,6 +413,10 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
         fetchStats()
         setRefreshKey(k => k + 1)
+        // If an update or deletion resolved pending items, re-evaluate unhandled list
+        if (payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
+          checkUnhandledRequests()
+        }
         // Fire aggressive alert on every new PENDING request
         if (payload.eventType === 'INSERT' && (payload.new as any)?.status === 'PENDING') {
           hydrateIncomingAlert(payload.new as any)
@@ -387,7 +444,7 @@ export default function App() {
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [])
+  }, [checkUnhandledRequests])
 
   if (!activeStaffUser && status !== 'error' && status === 'connected') {
     return (
@@ -454,6 +511,15 @@ export default function App() {
         request={incomingAlert}
         onDismiss={() => {
           setIncomingAlert(null)
+          setRefreshKey(k => k + 1)
+        }}
+      />
+
+      {/* 🔔 5-Minute Recurring Reminder for Unhandled Pending Requests */}
+      <PendingRequestsReminderModal
+        pendingRequests={unhandledPendingList}
+        onDismiss={() => {
+          setUnhandledPendingList(null)
           setRefreshKey(k => k + 1)
         }}
       />
