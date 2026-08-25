@@ -1,4 +1,19 @@
 You can use this to review exactly where we left off:
+Open a NEW terminal (critical — env vars won't load in old windows), then run:
+
+powershell
+# Navigate to android folder
+cd C:\Users\ADMIN\Pictures\antigravity2\hotel-qr-ordering-system\apps\staff-app\android
+# Run the build
+.\gradlew assembleRelease
+Or via Expo:
+
+powershell
+cd C:\Users\ADMIN\Pictures\antigravity2\hotel-qr-ordering-system\apps\staff-app
+npx expo run:android --variant release
+The APK will be at:
+
+android\app\build\outputs\apk\release\app-release.apk
 
 📦 Monorepo Foundation
  Workspace Configuration: Set up a pnpm monorepo using pnpm-workspace.yaml.
