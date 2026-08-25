@@ -79,6 +79,19 @@ export interface CatalogItem {
   created_at: string
 }
 
+export type StaffRole = 'FRONT_DESK' | 'KITCHEN' | 'HOUSEKEEPING' | 'SPA' | 'MANAGER'
+
+export interface StaffUser {
+  id: string
+  hotel_id: string
+  full_name: string
+  email: string
+  password?: string
+  role: StaffRole
+  is_active: boolean
+  created_at: string
+}
+
 // ── F&B Cart Types ────────────────────────────────────────────
 
 export interface CartItem {

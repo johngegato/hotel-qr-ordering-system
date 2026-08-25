@@ -12,12 +12,21 @@ Key goals
 - Fix Expo/TS/web build issues (typed catches, haptics on web, undefined imports).
 
 Files changed (high level)
+- apps/web/app/admin/users/page.tsx [NEW]
+  - Full CRUD User Account Control module for the Admin Web Portal (`/admin/users`).
+  - Read: Comprehensive table displaying all staff accounts (Name with avatar initials, Email, Role pill with icons/custom themes, Status pill, and Created date) with live KPI cards, search by name/email, role filtering chips, and status filtering.
+  - Create: Modal form to add a new staff user (Full Name, Email, Password with show/hide toggle, Role selection chips, and Active status toggle).
+  - Update: Edit modal to modify existing user details, change departmental roles, toggle active status, and optionally reset passwords.
+  - Delete / Deactivate: 1-click Activate/Deactivate quick action button and permanent delete confirmation modal.
+  - Real-time sync: Subscribes to Postgres changes on `staff_users` table for live updates.
+  - Export: CSV export functionality for staff user audits.
+- apps/web/app/admin/page.tsx
+  - Added "👥 User Account Control" card to the Core Portal Modules grid (`MODULES` array) linking to `/admin/users`.
+  - Added "👥 Staff Control" quick action button to the top header bar.
+- packages/supabase/types/index.ts
+  - Added `StaffRole` and `StaffUser` type definitions.
 - apps/staff-app/components/UserAccountControl.tsx [NEW]
-  - Full CRUD User Account Control module for the Admin dashboard.
-  - Read: Real-time list of staff accounts with search by name/email, role filtering pills, active status pills, and summary statistics strip.
-  - Create: Modal form to add staff users (Full Name, Email, Password, Role selector with icons/chips, and Active toggle) targeting `staff_users` table with hotel tenant isolation.
-  - Update: Edit modal to update name, email, role, active status, and optionally reset passwords.
-  - Delete/Deactivate: Safe activation/deactivation toggle and permanent deletion action with web-safe confirmation dialogs and self-deactivation/self-deletion safeguards.
+  - Full CRUD User Account Control module for the staff-app tablet dashboard.
 - apps/staff-app/App.tsx
   - Imported and rendered `<UserAccountControl activeUserId={activeStaffUser?.id} />` in the admin/staff tablet view below `<RequestHistory />`.
 - apps/staff-app/components/ManualSpaBookingModal.tsx

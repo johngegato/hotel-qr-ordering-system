@@ -66,6 +66,13 @@ const MODULES = [
     color: '#38bdf8',
     badge: 'QR Generator',
   },
+  {
+    title: '👥 User Account Control',
+    route: '/admin/users',
+    description: 'Full CRUD management of staff accounts, departmental role assignments, passwords, and access status.',
+    color: '#818cf8',
+    badge: 'Staff & Roles',
+  },
 ]
 
 export default function AdminDashboardPage() {
@@ -163,7 +170,13 @@ export default function AdminDashboardPage() {
             <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>Central management hub for operations, catalog controls, SLA metrics & audit trails.</p>
           </div>
 
-          <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <a
+              href="/admin/users"
+              style={{ background: 'rgba(129,140,248,0.12)', border: '1px solid rgba(129,140,248,0.3)', color: '#818cf8', textDecoration: 'none', borderRadius: 12, padding: '10px 18px', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              👥 Staff Control
+            </a>
             <a
               href="/admin/settings"
               style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fbbf24', textDecoration: 'none', borderRadius: 12, padding: '10px 18px', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
