@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import PhoneCaptureModal, { getStoredGuestPhone } from '../components/PhoneCaptureModal'
 import FrontDeskFAB from '../components/FrontDeskFAB'
@@ -23,6 +23,14 @@ interface SlotLock {
   end_time: string
   status: string
   expires_at: string
+  therapist_id?: string | null
+}
+
+interface Therapist {
+  id: string
+  full_name: string
+  is_on_call: boolean
+  is_active: boolean
 }
 
 const FALLBACK_SERVICES: SpaService[] = [
@@ -30,6 +38,16 @@ const FALLBACK_SERVICES: SpaService[] = [
   { id: 'spa-02', name: 'Deep Tissue Muscle Relief', description: 'Targeted deep pressure therapy for muscle tension.', price: 3200, duration_mins: 90, requires_on_call: false, is_available: true, image_url: null },
   { id: 'spa-03', name: 'Hot Stone Wellness Therapy', description: 'Warm volcanic stones to soothe stress & restore balance.', price: 3800, duration_mins: 90, requires_on_call: true, is_available: true, image_url: null },
   { id: 'spa-04', name: 'Foot & Leg Reflexology', description: 'Revitalizing foot massage restoring natural energy flow.', price: 1800, duration_mins: 45, requires_on_call: false, is_available: true, image_url: null },
+]
+
+const TIME_SLOTS = [
+  '10:00 AM',
+  '11:30 AM',
+  '01:00 PM',
+  '02:30 PM',
+  '04:00 PM',
+  '05:30 PM',
+  '07:00 PM',
 ]
 
 function GuestSpaContent() {
@@ -40,7 +58,9 @@ function GuestSpaContent() {
 
   // Booking Flow Steps: 1 = Service, 2 = Slot, 3 = Hold & Intake, 4 = Confirmed
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
+  const [selectedDay, setSelectedDay] = useState<'TODAY' | 'TOMORROW'>('TODAY')
   const [services, setServices] = useState<SpaService[]>(FALLBACK_SERVICES)
+  const [therapists, setTherapists] = useState<Therapist[]>([])
   const [selectedService, setSelectedService] = useState<SpaService | null>(null)
   const [lockedSlots, setLockedSlots] = useState<SlotLock[]>([])
   const [selectedSlotTime, setSelectedSlotTime] = useState<string | null>(null)
@@ -54,6 +74,7 @@ function GuestSpaContent() {
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [showPhoneModal, setShowPhoneModal] = useState(false)
+  const [roomNumber, setRoomNumber] = useState<string>('')
 
   const releaseHeldLock = async (lockId: string | null) => {
     if (!lockId) return
@@ -63,32 +84,65 @@ function GuestSpaContent() {
       .eq('status', 'HELD')
   }
 
-  // Fetch available services & slot locks
-  useEffect(() => {
-    async function loadCatalog() {
-      setLoading(true)
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: svcData } = await (supabase.from('catalog_items') as any)
-          .select('*')
-          .eq('department', 'SPA')
-          .eq('is_available', true)
+  // Fetch catalog, therapists & live locks
+  const loadSpaData = useCallback(async () => {
+    try {
+      // 1. Services
+      const { data: svcData } = await (supabase.from('catalog_items') as any)
+        .select('*')
+        .eq('department', 'SPA')
+        .eq('is_available', true)
+        .order('sort_order', { ascending: true })
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: lockData } = await (supabase.from('spa_slot_locks') as any)
-          .select('id, start_time, end_time, status, expires_at')
-          .in('status', ['HELD', 'BOOKED'])
+      if (svcData && svcData.length > 0) setServices(svcData)
 
-        if (svcData && svcData.length > 0) setServices(svcData)
-        if (lockData) setLockedSlots(lockData)
-      } catch (err) {
-        console.error('Error loading spa catalog:', err)
-      } finally {
-        setLoading(false)
+      // 2. Therapists
+      const { data: therData } = await (supabase.from('therapists') as any)
+        .select('id, full_name, is_on_call, is_active')
+        .eq('hotel_id', defaultHotelId)
+        .eq('is_active', true)
+
+      if (therData && therData.length > 0) setTherapists(therData)
+
+      // 3. Room lookup
+      if (roomId) {
+        const { data: rm } = await (supabase.from('rooms') as any)
+          .select('room_number')
+          .eq('id', roomId)
+          .maybeSingle()
+        if (rm?.room_number) setRoomNumber(rm.room_number)
       }
+
+      // 4. Slot locks (active locks only)
+      const nowIso = new Date().toISOString()
+      const { data: lockData } = await (supabase.from('spa_slot_locks') as any)
+        .select('id, start_time, end_time, status, expires_at, therapist_id')
+        .in('status', ['HELD', 'BOOKED'])
+        .gt('end_time', nowIso)
+
+      if (lockData) setLockedSlots(lockData)
+    } catch (err) {
+      console.error('Error loading spa data:', err)
+    } finally {
+      setLoading(false)
     }
-    loadCatalog()
-  }, [])
+  }, [roomId, defaultHotelId])
+
+  useEffect(() => {
+    loadSpaData()
+
+    // Realtime channel for lock updates
+    const channel = supabase
+      .channel('guest_spa_locks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'spa_slot_locks' }, () => {
+        loadSpaData()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [loadSpaData])
 
   // 10-Minute Hold Countdown timer
   useEffect(() => {
@@ -114,19 +168,6 @@ function GuestSpaContent() {
     }
   }, [holdLockId, step])
 
-  // Note: Realtime subscription (set up in executeConfirmBooking) handles
-  // status updates via WebSocket — no polling needed.
-
-  // Generate available hourly slots for today
-  const timeSlots = [
-    '10:00 AM',
-    '11:30 AM',
-    '01:00 PM',
-    '02:30 PM',
-    '04:00 PM',
-    '05:30 PM',
-  ]
-
   const convertDisplayTimeTo24Hour = (slotTime: string): string => {
     if (!slotTime) return '14:00'
     if (/^\d{1,2}:\d{2}$/.test(slotTime.trim())) return slotTime.trim()
@@ -142,47 +183,71 @@ function GuestSpaContent() {
     return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
   }
 
-  const getSlotWindow = (slotTime: string, durationMinutes: number = 60) => {
+  // Calculate precise window based on selected day (Today vs Tomorrow)
+  const getSlotWindow = (slotTime: string, durationMinutes: number = 60, dayTarget: 'TODAY' | 'TOMORROW' = selectedDay) => {
     const normalizedTime = convertDisplayTimeTo24Hour(slotTime)
     const [hourText, minuteText] = normalizedTime.split(':')
     const hour = Number(hourText || '0')
     const minute = Number(minuteText || '0')
 
     const start = new Date()
-    start.setHours(hour, minute, 0, 0)
-
-    if (start.getTime() < Date.now()) {
+    if (dayTarget === 'TOMORROW') {
       start.setDate(start.getDate() + 1)
     }
+    start.setHours(hour, minute, 0, 0)
 
     const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
     return { start, end }
   }
 
-  const isSlotLocked = (slotTime: string, durationMinutes: number) => {
+  // Check slot status: 'PAST' | 'LOCKED' | 'ON_CALL' | 'AVAILABLE'
+  const getSlotStatus = (slotTime: string, durationMinutes: number): {
+    status: 'PAST' | 'LOCKED' | 'ON_CALL' | 'AVAILABLE'
+    label: string
+    isSelectable: boolean
+  } => {
     const slotWindow = getSlotWindow(slotTime, durationMinutes)
+    const now = new Date()
 
-    return lockedSlots.some((lock) => {
+    // 1. If today and the time has already passed
+    if (selectedDay === 'TODAY' && slotWindow.start.getTime() < now.getTime()) {
+      return { status: 'PAST', label: 'Time Passed', isSelectable: false }
+    }
+
+    // 2. Count active overlapping locks
+    const totalActiveTherapists = Math.max(1, therapists.filter(t => t.is_active).length || 2)
+    const activeOverlappingLocks = lockedSlots.filter((lock) => {
       if (!['HELD', 'BOOKED'].includes(lock.status)) return false
-      if (lock.expires_at && new Date(lock.expires_at) <= new Date()) return false
+      if (lock.expires_at && new Date(lock.expires_at) <= now) return false
 
       const lockStart = new Date(lock.start_time)
       const lockEnd = new Date(lock.end_time)
 
       if (Number.isNaN(lockStart.getTime()) || Number.isNaN(lockEnd.getTime())) return false
 
+      // Overlap condition
       return lockStart < slotWindow.end && lockEnd > slotWindow.start
     })
+
+    // If all therapists are booked, the slot is locked
+    if (activeOverlappingLocks.length >= totalActiveTherapists) {
+      return { status: 'LOCKED', label: 'Fully Booked', isSelectable: false }
+    }
+
+    // 3. On-call check
+    const isLateEvening = slotTime === '05:30 PM' || slotTime === '07:00 PM'
+    if (selectedService?.requires_on_call || isLateEvening) {
+      return { status: 'ON_CALL', label: 'On-Call Request', isSelectable: true }
+    }
+
+    return { status: 'AVAILABLE', label: 'Available', isSelectable: true }
   }
 
-  // Handle slot selection and 10-minute hold lock
+  // Handle slot selection and hold lock
   const createHoldLock = async (slotTime: string) => {
     const durationMinutes = selectedService?.duration_mins || 60
     const { start, end } = getSlotWindow(slotTime, durationMinutes)
 
-    // A hold is lock-only. The final confirmation creates the single request
-    // and links it to this lock; using the reservation RPC here would create a
-    // request prematurely and cause confirmation to insert a duplicate.
     const { data, error } = await (supabase.from('spa_slot_locks') as any)
       .insert([
         {
@@ -203,7 +268,8 @@ function GuestSpaContent() {
   const handleSelectSlot = async (slotTime: string) => {
     const normalizedSlotTime = convertDisplayTimeTo24Hour(slotTime)
     setSelectedSlotTime(normalizedSlotTime)
-    const requiresOnCall = selectedService?.requires_on_call || slotTime === '05:30 PM'
+    const isLateEvening = slotTime === '05:30 PM' || slotTime === '07:00 PM'
+    const requiresOnCall = Boolean(selectedService?.requires_on_call || isLateEvening)
     setIsOnCallSlot(requiresOnCall)
 
     try {
@@ -234,18 +300,11 @@ function GuestSpaContent() {
     let createdRequestId: string | null = null
 
     try {
-      const roomLookup = await (supabase as any)
-        .from('rooms')
-        .select('room_number')
-        .eq('id', roomId)
-        .maybeSingle()
-
-      const roomNumber = roomLookup?.data?.room_number ?? ''
+      const roomNumberDisplay = roomNumber || 'Room —'
       const scheduledAt = selectedScheduledAt
         || getSlotWindow(selectedSlotTime, selectedService.duration_mins).start.toISOString()
 
       // 1. Insert booking request into requests table
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: reqData, error: reqErr } = await (supabase as any)
         .from('requests')
         .insert([{
@@ -258,13 +317,13 @@ function GuestSpaContent() {
             service_name: selectedService.name,
             slot_time: selectedSlotTime,
             scheduled_at: scheduledAt,
-            room_number: roomNumber,
+            room_number: roomNumberDisplay,
             price: selectedService.price,
             duration_mins: selectedService.duration_mins,
             intake_note: intakeNote.trim() || 'No special intake preferences',
             guest_phone: phoneOverride || getStoredGuestPhone() || undefined,
             is_on_call: isOnCallSlot,
-            booked_by: roomNumber ? `Guest (Room ${roomNumber})` : 'Guest',
+            booked_by: roomNumberDisplay ? `Guest (${roomNumberDisplay})` : 'Guest',
           },
         }])
         .select('id')
@@ -277,8 +336,7 @@ function GuestSpaContent() {
         createdRequestId = requestId
         setActiveRequestId(requestId)
 
-        // Subscribe IMMEDIATELY — before setStep(4) — to avoid race where
-        // staff confirms before the useEffect-based subscription fires.
+        // Realtime subscription for instant approval updates
         supabase
           .channel(`spa_booking_${requestId}`)
           .on(
@@ -292,9 +350,9 @@ function GuestSpaContent() {
           )
           .subscribe()
 
-        // Log guest booking creation in audit trail
+        // Log in audit trail
         try {
-          const guestActorName = roomNumber ? `Guest (Room ${roomNumber})` : 'Guest'
+          const guestActorName = roomNumberDisplay ? `Guest (${roomNumberDisplay})` : 'Guest'
           await (supabase as any)
             .from('audit_logs')
             .insert([{
@@ -309,7 +367,7 @@ function GuestSpaContent() {
                 service_name: selectedService.name,
                 slot_time: selectedSlotTime,
                 scheduled_at: scheduledAt,
-                room_number: roomNumber || 'Guest Room',
+                room_number: roomNumberDisplay,
                 price: selectedService.price,
                 duration_mins: selectedService.duration_mins,
                 guest_phone: phoneOverride || getStoredGuestPhone() || null,
@@ -321,14 +379,12 @@ function GuestSpaContent() {
         }
       }
 
-      // 2. Update slot lock to BOOKED using the actual chosen slot window and
-      // attach the owning request so the lock can be tracked reliably.
+      // 2. Link lock to request
       if (holdLockId && createdRequestId) {
         const durationMinutes = selectedService.duration_mins || 60
         const { start, end } = getSlotWindow(selectedSlotTime, durationMinutes)
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: lockUpdateError } = await (supabase as any)
+        await (supabase as any)
           .from('spa_slot_locks')
           .update({
             status: 'BOOKED',
@@ -338,7 +394,6 @@ function GuestSpaContent() {
             request_id: createdRequestId,
           })
           .eq('id', holdLockId)
-        if (lockUpdateError) throw lockUpdateError
       }
 
       setStep(4)
@@ -369,38 +424,57 @@ function GuestSpaContent() {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
-  return (
-    <main className="relative min-h-screen bg-slate-950 text-slate-100 px-6 py-12 flex justify-center">
-      {/* Background Orbs */}
-      <div className="bg-orb bg-orb-1" />
-      <div className="bg-orb bg-orb-2" />
+  const todayFormatted = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const tomorrowDate = new Date()
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+  const tomorrowFormatted = tomorrowDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
-      <div className="relative z-10 w-full max-w-md space-y-6">
-        {/* Header Nav */}
-        <div className="flex items-center justify-between">
+  return (
+    <main className="relative min-h-screen bg-slate-950 text-slate-100 px-4 sm:px-6 py-6 pb-28 flex justify-center">
+      {/* Background Orbs */}
+      <div className="bg-orb bg-orb-1" style={{ opacity: 0.18 }} />
+      <div className="bg-orb bg-orb-2" style={{ opacity: 0.15 }} />
+
+      <div className="relative z-10 w-full max-w-lg space-y-6">
+
+        {/* Top Prominent Back Button & Room Status Header */}
+        <div className="flex items-center justify-between gap-3 pt-1">
           <a
             href={`/app/stay?room=${roomId}&hash=${hashParam}`}
-            className="text-xs font-semibold text-slate-400 hover:text-white flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10"
+            className="inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/15 active:scale-95 border border-white/15 text-white font-bold text-sm shadow-lg transition-all"
+            style={{ backdropFilter: 'blur(10px)' }}
           >
-            ← Back to Room
+            <span className="text-base font-extrabold">←</span>
+            <span>Back to Concierge</span>
           </a>
-          <span className="text-xs font-mono font-semibold text-amber-400 uppercase tracking-widest">
-            Spa & Wellness
-          </span>
+
+          {roomNumber && (
+            <div className="px-4 py-2 rounded-2xl bg-purple-500/15 border border-purple-500/30 text-purple-200 font-extrabold text-xs tracking-wider uppercase flex items-center gap-1.5 shadow-sm">
+              <span>🚪</span> Room {roomNumber}
+            </div>
+          )}
         </div>
 
         {/* Step 1: Select Service */}
         {step === 1 && (
           <div className="space-y-6 animate-fade-up">
-            <div className="text-center space-y-1">
-              <h1 className="text-2xl font-bold text-white">Select Spa Treatment</h1>
-              <p className="text-slate-400 text-xs">Curated wellness therapies delivered in-room or at our spa sanctuary.</p>
+            <div className="text-center space-y-2 pt-2">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-purple-500/15 border border-purple-500/30 text-2xl shadow-inner mx-auto mb-1">
+                💆
+              </div>
+              <h1 className="text-3xl font-black text-white tracking-tight">Spa & Wellness</h1>
+              <p className="text-slate-400 text-sm max-w-sm mx-auto leading-relaxed">
+                Curated holistic therapies and relaxing treatments delivered in-room or at our spa sanctuary.
+              </p>
             </div>
 
             {loading ? (
-              <div className="py-12 text-center text-slate-500 text-xs">Loading available treatments...</div>
+              <div className="py-16 text-center text-slate-400 text-sm animate-pulse space-y-3">
+                <div className="text-4xl animate-bounce">💆</div>
+                <p>Loading luxury spa treatments...</p>
+              </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3.5">
                 {services.map((service) => (
                   <div
                     key={service.id}
@@ -408,24 +482,25 @@ function GuestSpaContent() {
                       setSelectedService(service)
                       setStep(2)
                     }}
-                    className="group glass-strong rounded-3xl p-5 cursor-pointer transition-all duration-200 hover:-translate-y-1 border border-white/10 hover:border-amber-500/40"
+                    className="group rounded-3xl p-5 cursor-pointer transition-all duration-200 active:scale-[0.98] border border-white/15 shadow-xl hover:border-purple-500/50"
+                    style={{ background: 'linear-gradient(150deg, rgba(168, 85, 247, 0.08), rgba(15, 23, 42, 0.9))' }}
                   >
                     <div className="flex items-start justify-between gap-4 mb-2">
                       <div>
-                        <h3 className="font-bold text-white text-base group-hover:text-amber-400 transition-colors">
+                        <h3 className="font-extrabold text-white text-base group-hover:text-purple-300 transition-colors">
                           {service.name}
                         </h3>
                         <p className="text-slate-400 text-xs mt-1 leading-relaxed">{service.description}</p>
                       </div>
-                      <span className="text-lg font-bold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-xl border border-amber-500/20">
-                        ₱{service.price.toLocaleString()}
+                      <span className="text-base font-black text-purple-300 bg-purple-500/15 px-3 py-1 rounded-xl border border-purple-500/30 flex-shrink-0">
+                        ₱{Number(service.price).toLocaleString()}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between pt-3 border-t border-white/5 text-xs text-slate-400">
-                      <span>⏱️ {service.duration_mins} Minutes</span>
-                      <span className="text-amber-400 font-semibold group-hover:translate-x-1 transition-transform">
-                        Select Time →
+                    <div className="flex items-center justify-between pt-3 border-t border-white/10 text-xs text-slate-400">
+                      <span className="font-semibold">⏱️ {service.duration_mins} Minutes</span>
+                      <span className="text-purple-300 font-extrabold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                        Select Appointment Time →
                       </span>
                     </div>
                   </div>
@@ -435,205 +510,249 @@ function GuestSpaContent() {
           </div>
         )}
 
-        {/* Step 2: Time Slot Picker */}
+        {/* Step 2: Time Slot Picker with Day Tabs */}
         {step === 2 && selectedService && (
           <div className="space-y-6 animate-fade-up">
-            <div className="flex items-center justify-between">
+            {/* Selected service summary pill */}
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/15">
               <div>
-                <h2 className="text-xl font-bold text-white">{selectedService.name}</h2>
-                <p className="text-slate-400 text-xs">₱{selectedService.price} · {selectedService.duration_mins} mins</p>
+                <h2 className="text-base font-black text-white">{selectedService.name}</h2>
+                <p className="text-slate-400 text-xs font-semibold">
+                  ₱{Number(selectedService.price).toLocaleString()} · {selectedService.duration_mins} mins
+                </p>
               </div>
               <button
                 onClick={() => setStep(1)}
-                className="text-xs text-slate-400 hover:text-white underline"
+                className="text-xs text-purple-300 hover:text-white font-bold px-3 py-1.5 rounded-xl bg-purple-500/15 border border-purple-500/30 active:scale-95"
               >
-                Change
+                Change Service
               </button>
             </div>
 
-            <div className="glass-strong rounded-3xl p-6 space-y-4">
-              <h3 className="text-sm font-semibold text-slate-300">Choose Appointment Time Today</h3>
+            <div className="rounded-3xl border border-white/15 p-6 space-y-5 shadow-2xl" style={{ background: '#0f172a' }}>
+              <div className="text-center space-y-1">
+                <h3 className="text-lg font-black text-white">Choose Appointment Date & Time</h3>
+                <p className="text-xs text-slate-400">Select your preferred slot for therapist assignment</p>
+              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                {timeSlots.map((slot) => {
-                  const isLocked = isSlotLocked(slot, selectedService.duration_mins)
-                  const isOnCall = selectedService.requires_on_call || slot === '05:30 PM'
+              {/* Day Selection Tabs (Today vs Tomorrow) */}
+              <div className="grid grid-cols-2 gap-2.5 p-1 rounded-2xl bg-black/40 border border-white/10">
+                <button
+                  onClick={() => setSelectedDay('TODAY')}
+                  className={`py-3 px-3 rounded-xl text-xs font-extrabold transition-all flex flex-col items-center gap-0.5 ${
+                    selectedDay === 'TODAY'
+                      ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/40 scale-100'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span className="text-sm">📅 Today</span>
+                  <span className="text-[10px] font-semibold opacity-80">{todayFormatted}</span>
+                </button>
+                <button
+                  onClick={() => setSelectedDay('TOMORROW')}
+                  className={`py-3 px-3 rounded-xl text-xs font-extrabold transition-all flex flex-col items-center gap-0.5 ${
+                    selectedDay === 'TOMORROW'
+                      ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/40 scale-100'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span className="text-sm">📅 Tomorrow</span>
+                  <span className="text-[10px] font-semibold opacity-80">{tomorrowFormatted}</span>
+                </button>
+              </div>
+
+              {/* Slot Grid */}
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                {TIME_SLOTS.map((slot) => {
+                  const { status, label, isSelectable } = getSlotStatus(slot, selectedService.duration_mins)
 
                   return (
                     <button
                       key={slot}
-                      onClick={() => !isLocked && handleSelectSlot(slot)}
-                      disabled={isLocked}
-                      className={`p-3.5 rounded-2xl border text-left transition-all ${
-                        isLocked
-                          ? 'bg-slate-900/40 border-slate-800 text-slate-600 cursor-not-allowed'
-                          : isOnCall
-                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
-                          : 'bg-white/5 border-white/10 text-white hover:bg-white/10 hover:border-amber-500/40'
+                      onClick={() => isSelectable && handleSelectSlot(slot)}
+                      disabled={!isSelectable}
+                      className={`p-4 rounded-2xl border text-left transition-all relative ${
+                        !isSelectable
+                          ? 'bg-slate-900/40 border-slate-800 text-slate-600 cursor-not-allowed opacity-60'
+                          : status === 'ON_CALL'
+                          ? 'bg-amber-500/10 border-amber-500/35 text-amber-300 hover:bg-amber-500/20 active:scale-95'
+                          : 'bg-white/5 border-white/15 text-white hover:bg-white/10 hover:border-purple-500/50 active:scale-95 shadow-md'
                       }`}
                     >
-                      <div className="font-mono font-bold text-sm mb-1">{slot}</div>
-                      <div className="text-[10px] font-medium">
-                        {isLocked ? (
-                          'Unavailable'
-                        ) : isOnCall ? (
-                          <span className="text-amber-400 font-semibold">On-Call Request</span>
+                      <div className="font-mono font-black text-sm mb-1">{slot}</div>
+                      <div className="text-[11px] font-bold">
+                        {status === 'PAST' ? (
+                          <span className="text-slate-600">Passed</span>
+                        ) : status === 'LOCKED' ? (
+                          <span className="text-rose-400">Booked</span>
+                        ) : status === 'ON_CALL' ? (
+                          <span className="text-amber-400 font-extrabold">⚠️ On-Call Request</span>
                         ) : (
-                          <span className="text-green-400">Available</span>
+                          <span className="text-emerald-400 font-extrabold">✓ Available</span>
                         )}
                       </div>
                     </button>
                   )
                 })}
               </div>
+
+              <div className="text-[11px] text-slate-400 text-center pt-2 leading-relaxed">
+                💡 <span className="text-slate-300 font-semibold">Instant Hold:</span> Choosing a time holds your slot for 10 minutes while you complete intake notes.
+              </div>
             </div>
           </div>
         )}
 
-        {/* Step 3: 10-Minute Hold & Intake Notes */}
+        {/* Step 3: 10-Minute Hold & Intake Form */}
         {step === 3 && selectedService && selectedSlotTime && (
-          <div className="space-y-6 animate-fade-up">
-            {/* Hold Banner */}
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-amber-400">
-              <div className="flex items-center gap-2">
-                <span className="animate-pulse">🔒</span>
-                <span className="text-xs font-semibold">Slot Held for 10 Minutes</span>
+          <div className="space-y-5 animate-fade-up">
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-amber-300 block uppercase tracking-wider">Slot Held For You</span>
+                <span className="text-xs text-slate-300 font-medium">Complete details before hold expires</span>
               </div>
-              <span className="font-mono font-bold text-sm tracking-wider">
-                {formatCountdown(holdCountdown)}
+              <span className="font-mono text-lg font-black text-amber-400 bg-amber-500/20 px-3 py-1 rounded-xl border border-amber-500/40">
+                ⏱ {formatCountdown(holdCountdown)}
               </span>
             </div>
 
-            <div className="glass-strong rounded-3xl p-6 space-y-5">
-              <h2 className="text-lg font-bold text-white">Confirm Booking & Intake</h2>
+            <div className="rounded-3xl border border-white/15 p-6 space-y-5 shadow-2xl" style={{ background: '#0f172a' }}>
+              <h2 className="text-lg font-black text-white">Booking Summary</h2>
 
-              <div className="space-y-2 text-xs bg-white/5 p-4 rounded-2xl border border-white/5">
-                <div className="flex justify-between text-slate-300">
-                  <span>Treatment:</span>
-                  <strong className="text-white">{selectedService.name}</strong>
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Treatment</span>
+                  <span className="font-bold text-white">{selectedService.name}</span>
                 </div>
-                <div className="flex justify-between text-slate-300">
-                  <span>Scheduled Time:</span>
-                  <strong className="text-amber-400">{selectedSlotTime}</strong>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Scheduled Date</span>
+                  <span className="font-bold text-white">
+                    {selectedDay === 'TODAY' ? `Today (${todayFormatted})` : `Tomorrow (${tomorrowFormatted})`}
+                  </span>
                 </div>
-                <div className="flex justify-between text-slate-300">
-                  <span>Total Price:</span>
-                  <strong className="text-white">₱{selectedService.price.toLocaleString()}</strong>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Time Slot</span>
+                  <span className="font-mono font-bold text-purple-300">{selectedSlotTime}</span>
                 </div>
-                {isOnCallSlot && (
-                  <div className="pt-2 text-amber-400 font-medium border-t border-white/5">
-                    ⚠️ Requires On-Call Therapist dispatch confirmation by front desk staff.
-                  </div>
-                )}
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Duration</span>
+                  <span className="font-bold text-white">{selectedService.duration_mins} Minutes</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-white/10 text-sm">
+                  <span className="font-bold text-slate-300">Total Price</span>
+                  <span className="font-black text-purple-300">₱{Number(selectedService.price).toLocaleString()}</span>
+                </div>
               </div>
 
-              {/* Intake Preferences */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300">
-                  Guest Intake & Focus Preferences
+              {isOnCallSlot && (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 leading-relaxed font-medium">
+                  ⚠️ <strong className="text-white">On-Call Notice:</strong> This appointment requires front desk staff confirmation with the on-call therapist.
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-2 uppercase tracking-wider">
+                  Guest Intake & Focus Areas <span className="text-slate-500">(Optional)</span>
                 </label>
                 <textarea
-                  rows={3}
-                  placeholder="e.g. Focus on neck/shoulders, light pressure, eucalyptus oil preference..."
                   value={intakeNote}
                   onChange={(e) => setIntakeNote(e.target.value)}
-                  className="w-full p-3 rounded-2xl bg-slate-900/80 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  placeholder="e.g. Focus on lower back tension, prefer light pressure, allergies..."
+                  rows={3}
+                  className="w-full p-4 rounded-2xl bg-white/5 border border-white/15 text-slate-100 placeholder:text-slate-500 text-xs focus:outline-none focus:border-purple-500"
                 />
               </div>
 
-              <button
-                onClick={handleConfirmBooking}
-                disabled={isSubmitting}
-                className="w-full py-4 rounded-2xl font-bold text-sm transition-all duration-200 hover:-translate-y-0.5 disabled:opacity-50"
-                style={{
-                  background: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)',
-                  color: '#0f172a',
-                }}
-              >
-                {isSubmitting ? 'Submitting Request...' : 'Confirm Spa Appointment'}
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  await releaseHeldLock(holdLockId)
-                  setHoldLockId(null)
-                  setStep(2)
-                }}
-                disabled={isSubmitting}
-                className="w-full py-3 rounded-2xl border border-white/10 text-slate-400 text-xs font-semibold hover:bg-white/5 disabled:opacity-50"
-              >
-                Back to Time Selection
-              </button>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    releaseHeldLock(holdLockId)
+                    setHoldLockId(null)
+                    setStep(2)
+                  }}
+                  className="flex-1 py-4 px-4 rounded-2xl bg-white/10 border border-white/15 text-slate-300 font-bold text-sm hover:bg-white/15 active:scale-95"
+                >
+                  Change Slot
+                </button>
+                <button
+                  onClick={handleConfirmBooking}
+                  disabled={isSubmitting}
+                  className="flex-[2] py-4 px-6 rounded-2xl font-black text-sm text-white shadow-xl shadow-purple-600/30 transition-all active:scale-95 flex items-center justify-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, #7c3aed, #9333ea)' }}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <span className="animate-spin">⏳</span>
+                      <span>Reserving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>💆</span>
+                      <span>Confirm Booking</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Step 4: Booking Status & Real-Time Loop Closure */}
+        {/* Step 4: Live Status View */}
         {step === 4 && (
-          <div className="glass-strong rounded-3xl p-8 text-center space-y-6 animate-fade-up">
-            {bookingStatus === 'CONFIRMED' ? (
-              <>
-                <div className="w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl bg-green-500/20 border border-green-500/40 text-green-400">
-                  ✓
-                </div>
-                <div className="space-y-2">
-                  <span className="text-xs font-bold text-green-400 uppercase tracking-widest">
-                    Appointment Confirmed
-                  </span>
-                  <h2 className="text-2xl font-bold text-white">Your Spa Session is Set!</h2>
-                  <p className="text-slate-300 text-xs leading-relaxed">
-                    Your therapist will arrive at your room for <strong>{selectedService?.name}</strong> at <strong>{selectedSlotTime}</strong>.
-                  </p>
-                </div>
-              </>
-            ) : bookingStatus === 'DECLINED' ? (
-              <>
-                <div className="w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl bg-red-500/20 border border-red-500/40 text-red-400">
-                  ✕
-                </div>
-                <div className="space-y-2">
-                  <h2 className="text-xl font-bold text-white">Slot Unavailable</h2>
-                  <p className="text-slate-300 text-xs">
-                    The requested on-call therapist is unavailable for this time. Please pick another slot.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setStep(2)}
-                  className="w-full py-3 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs"
-                >
-                  Select Another Slot
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl pulse-gold bg-amber-500/10 border border-amber-500/30">
-                  ⏳
-                </div>
-                <div className="space-y-2">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-amber-400 bg-amber-400/10 border border-amber-400/20">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
-                    </span>
-                    {isOnCallSlot ? 'Dispatching On-Call Specialist...' : 'Awaiting Staff Confirmation'}
-                  </span>
-                  <h2 className="text-xl font-bold text-white">Booking Request Sent</h2>
-                  <p className="text-slate-300 text-xs leading-relaxed">
-                    We are notifying the spa concierge team. This window will update in real time once confirmed.
-                  </p>
-                </div>
-              </>
-            )}
+          <div className="rounded-3xl border border-white/15 p-8 space-y-6 text-center shadow-2xl animate-fade-up" style={{ background: '#0f172a' }}>
+            <div className="w-16 h-16 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-3xl mx-auto shadow-inner">
+              {bookingStatus === 'CONFIRMED' ? '✅' : bookingStatus === 'DECLINED' ? '✕' : '⏳'}
+            </div>
 
-            <a
-              href={`/app/stay?room=${roomId}&hash=${hashParam}`}
-              className="block w-full py-3 rounded-xl bg-white/5 border border-white/10 text-slate-300 font-semibold text-xs hover:bg-white/10 transition-colors"
+            <div>
+              <h2 className="text-2xl font-black text-white">
+                {bookingStatus === 'CONFIRMED'
+                  ? 'Appointment Confirmed!'
+                  : bookingStatus === 'DECLINED'
+                  ? 'Booking Declined'
+                  : 'Booking Request Received'}
+              </h2>
+              <p className="text-slate-400 text-xs mt-1 leading-relaxed">
+                {bookingStatus === 'CONFIRMED'
+                  ? 'Your therapist has been scheduled. Please be in your room at the appointment time.'
+                  : bookingStatus === 'DECLINED'
+                  ? 'We could not accommodate this time slot. Please choose an alternative appointment.'
+                  : 'Front desk staff has received your booking request and is assigning your therapist.'}
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-xs space-y-2 text-left">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Treatment</span>
+                <span className="font-bold text-white">{selectedService?.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Scheduled Time</span>
+                <span className="font-mono font-bold text-purple-300">{selectedSlotTime}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Total</span>
+                <span className="font-bold text-white">₱{Number(selectedService?.price).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setStep(1)
+                setSelectedService(null)
+                setSelectedSlotTime(null)
+                setHoldLockId(null)
+              }}
+              className="w-full py-4 rounded-2xl font-black text-sm text-white shadow-xl shadow-purple-600/30"
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #9333ea)' }}
             >
-              Return to Room Dashboard
-            </a>
+              Book Another Treatment
+            </button>
           </div>
         )}
       </div>
+
+      <FrontDeskFAB roomId={roomId} roomNumber={roomNumber} hotelId={defaultHotelId} />
 
       <PhoneCaptureModal
         isOpen={showPhoneModal}
@@ -642,19 +761,16 @@ function GuestSpaContent() {
           setShowPhoneModal(false)
           executeConfirmBooking(phone)
         }}
-        roomId={roomId}
+        roomId={roomId || ''}
         hotelId={defaultHotelId}
       />
-
-      {/* Global Floating Action Button */}
-      <FrontDeskFAB roomId={roomId} />
     </main>
   )
 }
 
 export default function GuestSpaPage() {
   return (
-    <Suspense fallback={<div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>Loading Spa Services…</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-sm">Loading Spa Treatments...</div>}>
       <GuestSpaContent />
     </Suspense>
   )
