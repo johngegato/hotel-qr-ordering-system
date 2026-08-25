@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
+  Linking,
+  Alert,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
 
@@ -19,6 +21,7 @@ interface RequestItem {
   payload?: {
     room_number?: string
     note?: string
+    guest_phone?: string
   } | null
 }
 
@@ -158,6 +161,17 @@ export default function CallQueue({ activeStaffId }: { activeStaffId?: string })
           renderItem={({ item }) => {
             const roomNumber = item.payload?.room_number ?? '302'
             const isClaiming = claimingId === item.id
+            const guestPhone = item.payload?.guest_phone
+
+            const handleCallGuest = () => {
+              if (!guestPhone) {
+                Alert.alert('No Phone Number', 'This request does not have a guest phone number on file.')
+                return
+              }
+              Linking.openURL(`tel:${guestPhone}`).catch(() =>
+                Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
+              )
+            }
 
             return (
               <View style={styles.card}>
@@ -172,17 +186,33 @@ export default function CallQueue({ activeStaffId }: { activeStaffId?: string })
                   {item.payload?.note || 'Guest requested a call from the front desk'}
                 </Text>
 
-                <TouchableOpacity
-                  style={[styles.claimButton, isClaiming && styles.claimButtonDisabled]}
-                  onPress={() => handleClaim(item.id)}
-                  disabled={isClaiming}
-                >
-                  {isClaiming ? (
-                    <ActivityIndicator color="#0f172a" />
-                  ) : (
-                    <Text style={styles.claimButtonText}>✓ Claim & Call Guest</Text>
-                  )}
-                </TouchableOpacity>
+                {!!guestPhone && (
+                  <Text style={styles.phoneNumberText}>📱 {guestPhone}</Text>
+                )}
+
+                <View style={styles.actionRow}>
+                  {/* Call Guest button */}
+                  <TouchableOpacity
+                    style={[styles.callGuestButton, !guestPhone && styles.callGuestButtonDisabled]}
+                    onPress={handleCallGuest}
+                    disabled={!guestPhone}
+                  >
+                    <Text style={styles.callGuestButtonText}>📞 Call Guest</Text>
+                  </TouchableOpacity>
+
+                  {/* Claim button */}
+                  <TouchableOpacity
+                    style={[styles.claimButton, isClaiming && styles.claimButtonDisabled]}
+                    onPress={() => handleClaim(item.id)}
+                    disabled={isClaiming}
+                  >
+                    {isClaiming ? (
+                      <ActivityIndicator color="#0f172a" />
+                    ) : (
+                      <Text style={styles.claimButtonText}>✓ Claim</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
             )
           }}
@@ -292,7 +322,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 16,
   },
+  phoneNumberText: {
+    color: '#34d399',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  callGuestButton: {
+    flex: 1,
+    backgroundColor: 'rgba(52, 211, 153, 0.15)',
+    borderWidth: 1,
+    borderColor: '#34d399',
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  callGuestButtonDisabled: {
+    opacity: 0.35,
+  },
+  callGuestButtonText: {
+    color: '#34d399',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
   claimButton: {
+    flex: 1,
     backgroundColor: '#fbbf24',
     paddingVertical: 12,
     borderRadius: 14,
@@ -304,6 +362,6 @@ const styles = StyleSheet.create({
   claimButtonText: {
     color: '#0f172a',
     fontWeight: 'bold',
-    fontSize: 15,
+    fontSize: 14,
   },
 })

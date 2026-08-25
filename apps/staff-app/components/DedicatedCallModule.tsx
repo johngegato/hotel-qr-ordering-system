@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
+  Linking,
+  Alert,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
 
@@ -217,7 +219,22 @@ export default function DedicatedCallModule({ activeStaffId }: DedicatedCallModu
                 </View>
 
                 {!!item.payload?.guest_phone && (
-                  <Text style={styles.phoneText}>📱 Guest Phone: {item.payload.guest_phone}</Text>
+                  <TouchableOpacity
+                    style={styles.callGuestRow}
+                    onPress={() => {
+                      Linking.openURL(`tel:${item.payload.guest_phone}`).catch(() =>
+                        Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
+                      )
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.callGuestRowText}>📞 {item.payload.guest_phone}</Text>
+                    <Text style={styles.callGuestRowHint}>Tap to call</Text>
+                  </TouchableOpacity>
+                )}
+
+                {!item.payload?.guest_phone && (
+                  <Text style={styles.phoneText}>📱 No phone number provided</Text>
                 )}
 
                 <Text style={styles.timeText}>Requested: {new Date(item.created_at).toLocaleTimeString()}</Text>
@@ -225,13 +242,34 @@ export default function DedicatedCallModule({ activeStaffId }: DedicatedCallModu
                 {/* Actions */}
                 {!isResolved && (
                   <View style={styles.actionsRow}>
+                    {/* Call Guest Button — always visible */}
+                    <TouchableOpacity
+                      style={[
+                        styles.btn,
+                        styles.btnCallGuest,
+                        (!item.payload?.guest_phone || updating === item.id) && styles.btnDisabled,
+                      ]}
+                      onPress={() => {
+                        if (!item.payload?.guest_phone) {
+                          Alert.alert('No Phone Number', 'This request does not have a guest phone number on file.')
+                          return
+                        }
+                        Linking.openURL(`tel:${item.payload.guest_phone}`).catch(() =>
+                          Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
+                        )
+                      }}
+                      disabled={!item.payload?.guest_phone || updating === item.id}
+                    >
+                      <Text style={styles.btnCallGuestText}>📞 Call</Text>
+                    </TouchableOpacity>
+
                     {!isClaimed && (
                       <TouchableOpacity
                         style={[styles.btn, styles.btnClaim, updating === item.id && styles.btnDisabled]}
                         onPress={() => handleUpdateStatus(item.id, 'CLAIMED')}
                         disabled={updating === item.id}
                       >
-                        <Text style={styles.btnClaimText}>📞 Claim &amp; Dial</Text>
+                        <Text style={styles.btnClaimText}>✓ Claim</Text>
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity
@@ -239,7 +277,7 @@ export default function DedicatedCallModule({ activeStaffId }: DedicatedCallModu
                       onPress={() => handleUpdateStatus(item.id, 'RESOLVED')}
                       disabled={updating === item.id}
                     >
-                      <Text style={styles.btnResolveText}>✓ Resolve Call</Text>
+                      <Text style={styles.btnResolveText}>✓ Resolve</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -398,6 +436,38 @@ const styles = StyleSheet.create({
     color: '#fbbf24',
     fontWeight: '800',
     fontSize: 12,
+  },
+  btnCallGuest: {
+    backgroundColor: 'rgba(52,211,153,0.2)',
+    borderWidth: 1,
+    borderColor: '#34d399',
+  },
+  btnCallGuestText: {
+    color: '#34d399',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  callGuestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(52,211,153,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(52,211,153,0.3)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 6,
+  },
+  callGuestRowText: {
+    color: '#34d399',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  callGuestRowHint: {
+    color: '#34d399',
+    fontSize: 10,
+    opacity: 0.7,
   },
   btnResolve: {
     backgroundColor: 'rgba(34,197,94,0.2)',
