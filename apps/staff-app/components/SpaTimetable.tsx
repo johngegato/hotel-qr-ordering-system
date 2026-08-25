@@ -968,18 +968,8 @@ export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeSt
 
   // ─── Derived data ──────────────────────────────────────────────────────────
 
-  const baseSlots = configuredSlots.length > 0 ? configuredSlots : TIME_SLOTS
-
-  // Include any extra hours from bookings (ensures late-night appointments e.g. 01:30 AM are always visible)
-  const dynamicSlots = [...baseSlots]
-  bookings.forEach(b => {
-    if (b.isVisible !== false && b.startTime) {
-      const hour = slotHour(b.startTime)
-      if (!dynamicSlots.some(s => slotHour(s) === hour)) {
-        dynamicSlots.push(`${String(hour).padStart(2, '0')}:00`)
-      }
-    }
-  })
+  // Strictly use configured slots from DB; fall back to hard-coded list only when table is unseeded
+  const dynamicSlots = configuredSlots.length > 0 ? configuredSlots : TIME_SLOTS
 
   // Slots that have at least one booking (for minimized view)
   const bookedSlots = dynamicSlots.filter(slot =>
