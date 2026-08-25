@@ -574,13 +574,16 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
 
 ---
 
+### Completed Database & Integration Items
+
+- [x] ~~**Run migration `14_service_charge.sql`** on Supabase production instance to add the new columns (`service_charge_enabled`, `service_charge_pct`).~~ *(Applied to production ✅)*
+- [x] ~~Apply pending Supabase migrations (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`) in target production Supabase database.~~ *(Applied to production ✅)*
+- [x] ~~Phase 2 database reservation integrity work (atomic RPC, `request_id` FK on `spa_slot_locks`)~~ *(Completed in production ✅)*
+- [x] ~~Integration test for atomic duplicate prevention~~ *(Completed ✅)*
+
 ### Remaining Open Items
 
-- **Run migration `14_service_charge.sql`** on Supabase production instance to add the new columns.
-- Apply pending Supabase migrations (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`) in target production Supabase database.
-- Phase 2 database reservation integrity work (atomic RPC, `request_id` FK on `spa_slot_locks`) remains pending in production DB.
-- Integration test for atomic duplicate prevention is still open.
-- Production multi-hotel RLS isolation test is still open.
+- Production multi-hotel RLS isolation test.
 
 
 

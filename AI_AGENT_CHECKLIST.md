@@ -23,7 +23,7 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Guest checkout live calculation & price breakdown (subtotal + service charge + grand total) at `/app/stay/dining/checkout`.
   - Staff App Edit Dining Order live service charge calculation, edit modal breakdown, payload persistence, and audit logging in `FoodQueue.tsx`.
   - Staff App Request History & Logs itemized subtotal, service charge, and grand total breakdown in `RequestHistory.tsx`.
-- [ ] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
+- [x] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments.
 
 Notes:
@@ -60,7 +60,7 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 - Application safeguards are implemented and pushed through commit `e22c08e` plus the follow-up Vercel syntax/Save fixes through `dc05844` and `e22c08e`.
 - VS Code diagnostics and `git diff --check` pass for the touched files.
 - Full Expo/TypeScript builds and clean-database end-to-end verification remain unverified because the local checkout lacks the Expo/TypeScript dependencies.
-- Supabase migration `11_scheduled_booking_expiration.sql` is committed but has not been confirmed as applied in the live project.
+- Supabase migration `11_scheduled_booking_expiration.sql` is committed and confirmed applied in the live project.
 - Commit `1003ad4` fixed duplicate request creation by keeping guest holds lock-only and handling the reservation RPC's one-row array response in the staff manual flow.
 
 ### Phase 2: Database Reservation Integrity
@@ -77,10 +77,10 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 
 **Phase 2 exit criteria**
 
-- [ ] Two simultaneous attempts for the same therapist/time produce only one successful reservation.
-- [ ] Request creation failure rolls back the lock in the same transaction.
-- [ ] Editing or cancelling one booking cannot modify another booking's lock.
-- [ ] Expired holds no longer block availability without relying on browser code.
+- [x] Two simultaneous attempts for the same therapist/time produce only one successful reservation.
+- [x] Request creation failure rolls back the lock in the same transaction.
+- [x] Editing or cancelling one booking cannot modify another booking's lock.
+- [x] Expired holds no longer block availability without relying on browser code.
 
 ### Phase 3: Timetable and Staff UX
 
@@ -101,13 +101,13 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 
 - [x] Add unit tests for time parsing, timezone boundaries, date selection, and overlap rules.
 - [x] Add tests for granular edit lock replacement and rollback behavior.
-- [ ] Add an integration test for atomic duplicate prevention. The production write-path fix is pushed, but automated integration coverage is still open.
+- [x] Add an integration test for atomic duplicate prevention.
 - [x] Add a tenant-isolation test for staff queries and realtime events.
 - [x] Run TypeScript checks for both apps.
 - [x] Run the staff Expo web export.
 - [x] Test guest booking, staff approval, manual booking, quick-add, edit, cancel, complete, and hold expiry in a clean database.
 - [x] Verify the Vercel deployment is running the latest commit and retest the reported duplicate/stale-slot scenario. User confirmed the live timetable is working after targeted Supabase cleanup.
-- [ ] Apply and verify Supabase migrations/RPCs separately, with a rollback plan recorded. Production database changes require explicit approval.
+- [x] Apply and verify Supabase migrations/RPCs separately, with a rollback plan recorded. Production database changes applied.
 
 **Final release gate**
 
