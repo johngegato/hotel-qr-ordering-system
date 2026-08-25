@@ -501,24 +501,30 @@ export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeSt
         if (r.id) spaRequestsMap.set(r.id, r)
       })
 
-      const { data: auditLogsData } = await (supabase as any)
-        .from('audit_logs')
-        .select('*')
-        .eq('hotel_id', HOTEL_ID)
-        .order('created_at', { ascending: false })
-        .limit(100)
+      let spaAuditLogs: any[] = []
+      try {
+        const { data: auditLogsData, error: auditError } = await (supabase as any)
+          .from('audit_logs')
+          .select('*')
+          .eq('hotel_id', HOTEL_ID)
+          .order('created_at', { ascending: false })
+          .limit(100)
 
-      // Filter audit logs relevant to spa requests or spa actions
-      const spaAuditLogs = (auditLogsData || []).filter((log: any) => {
-        if (log.request_id && spaRequestsMap.has(log.request_id)) return true
-        const action = String(log.action || '')
-        const reqType = log.details?.request_type
-        return (
-          action.includes('BOOKING') ||
-          action.includes('SPA') ||
-          reqType === 'SPA_BOOKING'
-        )
-      })
+        if (!auditError && auditLogsData) {
+          spaAuditLogs = auditLogsData.filter((log: any) => {
+            if (log.request_id && spaRequestsMap.has(log.request_id)) return true
+            const action = String(log.action || '')
+            const reqType = log.details?.request_type
+            return (
+              action.includes('BOOKING') ||
+              action.includes('SPA') ||
+              reqType === 'SPA_BOOKING'
+            )
+          })
+        }
+      } catch (auditErr) {
+        console.warn('[SpaTimetable] audit_logs fetch non-fatal fallback:', auditErr)
+      }
 
       const parsedAuditItems = spaAuditLogs.map((log: any) => parseAuditHistoryItem(log, 'audit_log', spaRequestsMap))
 
@@ -838,19 +844,23 @@ export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeSt
           .eq('id', booking.id)
       }
 
-      await (supabase as any)
-        .from('audit_logs')
-        .insert([{
-          hotel_id: HOTEL_ID,
-          request_id: booking.source === 'request' ? booking.id : null,
-          action: 'BOOKING_CANCELLED',
-          details: {
-            source: 'timetable_card_delete',
-            room_number: booking.roomNumber,
-            service: booking.serviceName,
-            slot_time: booking.startTime,
-          },
-        }])
+      try {
+        await (supabase as any)
+          .from('audit_logs')
+          .insert([{
+            hotel_id: HOTEL_ID,
+            request_id: booking.source === 'request' ? booking.id : null,
+            action: 'BOOKING_CANCELLED',
+            details: {
+              source: 'timetable_card_delete',
+              room_number: booking.roomNumber,
+              service: booking.serviceName,
+              slot_time: booking.startTime,
+            },
+          }])
+      } catch (auditErr) {
+        console.warn('[SpaTimetable] Non-fatal audit log error on delete:', auditErr)
+      }
 
       fetchTimetableData()
       if (onRefreshQueue) onRefreshQueue()
@@ -880,20 +890,24 @@ export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeSt
         await releaseSpaLockForWindow(therapistId, slotTime, durationMins, payload.scheduled_at)
       }
 
-      await (supabase as any)
-        .from('audit_logs')
-        .insert([{
-          hotel_id: HOTEL_ID,
-          request_id: reqId,
-          action: 'BOOKING_COMPLETED_EARLY',
-          details: {
-            room_number: item.roomNumber || payload.room_number || item.rooms?.room_number || 'N/A',
-            service_name: item.serviceName || payload.service_name || 'Spa Treatment',
-            therapist_id: therapistId,
-            slot_time: slotTime,
-            duration_mins: durationMins,
-          },
-        }])
+      try {
+        await (supabase as any)
+          .from('audit_logs')
+          .insert([{
+            hotel_id: HOTEL_ID,
+            request_id: reqId,
+            action: 'BOOKING_COMPLETED_EARLY',
+            details: {
+              room_number: item.roomNumber || payload.room_number || item.rooms?.room_number || 'N/A',
+              service_name: item.serviceName || payload.service_name || 'Spa Treatment',
+              therapist_id: therapistId,
+              slot_time: slotTime,
+              duration_mins: durationMins,
+            },
+          }])
+      } catch (auditErr) {
+        console.warn('[SpaTimetable] Non-fatal audit log error on complete:', auditErr)
+      }
 
       setSelectedHistoryItem(null)
       await fetchTimetableData()

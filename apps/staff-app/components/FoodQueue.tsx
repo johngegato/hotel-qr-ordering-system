@@ -319,22 +319,27 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
       if (reqErr) throw reqErr
 
       // 2. Insert record into audit_logs table
-      await (supabase.from('audit_logs') as any).insert([
-        {
-          hotel_id: HOTEL_ID,
-          actor_role: 'STAFF',
-          action: 'MODIFY_DINING_ORDER',
-          details: JSON.stringify({
+      try {
+        await (supabase.from('audit_logs') as any).insert([
+          {
+            hotel_id: HOTEL_ID,
             request_id: editingOrder.id,
-            room_number: editingOrder.rooms?.room_number ?? 'Unknown',
-            original_total: editingOrder.payload.total_price,
-            new_total: newTotal,
-            modified_items: editItems.map(i => `${i.quantity}x ${i.name} (₱${i.unit_price * i.quantity})`),
-            special_instructions: editNotes.trim(),
-            timestamp: new Date().toISOString(),
-          }),
-        },
-      ])
+            action: 'MODIFY_DINING_ORDER',
+            details: {
+              actor_role: 'STAFF',
+              request_id: editingOrder.id,
+              room_number: editingOrder.rooms?.room_number ?? 'Unknown',
+              original_total: editingOrder.payload.total_price,
+              new_total: newTotal,
+              modified_items: editItems.map(i => `${i.quantity}x ${i.name} (₱${i.unit_price * i.quantity})`),
+              special_instructions: editNotes.trim(),
+              timestamp: new Date().toISOString(),
+            },
+          },
+        ])
+      } catch (auditErr) {
+        console.warn('[FoodQueue] Non-fatal audit log error:', auditErr)
+      }
 
       setEditingOrder(null)
       fetchData()
@@ -368,19 +373,24 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
         .eq('id', cancellingOrder.id)
 
       // 2. Audit log entry for rejection
-      await (supabase.from('audit_logs') as any).insert([
-        {
-          hotel_id: HOTEL_ID,
-          actor_role: 'STAFF',
-          action: 'REJECT_DINING_ORDER',
-          details: JSON.stringify({
+      try {
+        await (supabase.from('audit_logs') as any).insert([
+          {
+            hotel_id: HOTEL_ID,
             request_id: cancellingOrder.id,
-            room_number: cancellingOrder.rooms?.room_number ?? 'Unknown',
-            rejection_reason: reason,
-            timestamp: new Date().toISOString(),
-          }),
-        },
-      ])
+            action: 'REJECT_DINING_ORDER',
+            details: {
+              actor_role: 'STAFF',
+              request_id: cancellingOrder.id,
+              room_number: cancellingOrder.rooms?.room_number ?? 'Unknown',
+              rejection_reason: reason,
+              timestamp: new Date().toISOString(),
+            },
+          },
+        ])
+      } catch (auditErr) {
+        console.warn('[FoodQueue] Non-fatal audit log error:', auditErr)
+      }
 
       setCancellingOrder(null)
       fetchData()
