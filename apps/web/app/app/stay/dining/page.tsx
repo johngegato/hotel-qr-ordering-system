@@ -71,8 +71,8 @@ function GuestDiningContent() {
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   // Fetch Categories & Items
-  const fetchMenuData = useCallback(async () => {
-    setLoading(true)
+  const fetchMenuData = useCallback(async (isInitial = false) => {
+    if (isInitial) setLoading(true)
 
     // 1. Fetch Categories
     let loadedCats: MenuCategory[] = []
@@ -135,15 +135,15 @@ function GuestDiningContent() {
     }
     setCategories(loadedCats)
 
-    if (loadedCats.length > 0 && !activeCategory) {
-      setActiveCategory(loadedCats[0].name)
+    if (loadedCats.length > 0) {
+      setActiveCategory(prev => prev || loadedCats[0].name)
     }
 
     setLoading(false)
-  }, [HOTEL_ID, activeCategory])
+  }, [HOTEL_ID])
 
   useEffect(() => {
-    fetchMenuData()
+    fetchMenuData(true)
   }, [fetchMenuData])
 
   // Load cart from localStorage
@@ -155,9 +155,9 @@ function GuestDiningContent() {
   useEffect(() => {
     const ch = supabase
       .channel('guest-dining-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, fetchMenuData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_catalog' }, fetchMenuData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_categories' }, fetchMenuData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, () => fetchMenuData(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_catalog' }, () => fetchMenuData(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_categories' }, () => fetchMenuData(false))
       .subscribe()
     return () => {
       supabase.removeChannel(ch)
@@ -171,11 +171,18 @@ function GuestDiningContent() {
         for (const entry of entries) {
           if (entry.isIntersecting) {
             const cat = entry.target.getAttribute('data-category')
-            if (cat) setActiveCategory(cat)
+            if (cat) {
+              setActiveCategory(cat)
+              // Auto-scroll the horizontal category pill into view
+              const btn = document.getElementById(`cat-btn-${cat}`)
+              if (btn && catBarRef.current) {
+                btn.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' })
+              }
+            }
           }
         }
       },
-      { rootMargin: '-20% 0px -65% 0px' }
+      { rootMargin: '-15% 0px -70% 0px' }
     )
     Object.values(sectionRefs.current).forEach(el => {
       if (el) observer.observe(el)
