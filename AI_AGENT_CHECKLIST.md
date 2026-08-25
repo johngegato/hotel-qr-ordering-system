@@ -23,7 +23,9 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Guest checkout live calculation & price breakdown (subtotal + service charge + grand total) at `/app/stay/dining/checkout`.
   - Staff App Edit Dining Order live service charge calculation, edit modal breakdown, payload persistence, and audit logging in `FoodQueue.tsx`.
   - Staff App Request History & Logs itemized subtotal, service charge, and grand total breakdown in `RequestHistory.tsx`.
-- [x] Staff App Food Queue Realtime Sync & Optimistic UI Updates (`FoodQueue.tsx`): removed broken column filter on requests channel, added instant optimistic state updates across Prepare, Order Ready, Edit Save, and Decline actions.
+- [x] Staff App Food Queue Realtime Sync & Optimistic UI Updates (`FoodQueue.tsx` & `App.tsx`): removed broken column filter on requests channel, wrapped `fetchData` in `useCallback` + mutable `useRef` to eliminate stale closure bugs, wired `refreshTrigger` on incoming alert dismissal, and added instant optimistic state updates across Prepare, Order Ready, Edit Save, and Decline actions.
+- [x] Staff App Actor Attribution & Role Resolution (`RequestHistory.tsx` & `FoodQueue.tsx`): fixed inverted actor tags by prioritizing `claimed_by` UUID lookup in `staffMap` for staff roles, preventing guest payload strings (`"Guest (Room 105)"`) from rendering with the STAFF role pill, passed `activeStaffUser` to `FoodQueue`, and updated audit logs with logged-in staff names.
+- [x] Staff App Login Screen UI & Remnants Cleanup (`App.tsx`): removed demo credentials box, pre-filled default credentials, Phase 4 banner, cleaned input placeholders/error messages, and polished brand header with a gold icon ring.
 - [x] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments.
 

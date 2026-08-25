@@ -582,14 +582,41 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
 - **Root Cause of UI Stagnation & Delayed Cards**:
   - The realtime subscription in `FoodQueue.tsx` previously used `filter: request_type=eq.FOOD_ORDER`. In Supabase Postgres Realtime, column filters on non-primary-key columns cause `UPDATE` events to be dropped when tables use default replica identity.
   - Action handlers (`updateStatus` for *Prepare* and *Order Ready*, `saveModifiedOrder`, and `confirmRejection`) only updated Supabase without updating local React state optimistically or synchronously triggering state refresh.
+  - Furthermore, `fetchData` in `useEffect([])` captured a stale mount-time closure, causing realtime events to trigger an outdated closure.
 - **Resolution**:
-  - Removed the broken column filter from `supabase.channel('staff-food-queue-realtime')` to listen to all `requests` events (consistent with `TaskQueue.tsx` and `SpaQueue.tsx`).
-  - Added **instant optimistic UI updates** across all actions:
-    - *Prepare*: Instantly sets order status to `PREPARING` in UI without waiting for network response.
-    - *Order Ready*: Instantly removes the completed order from the active queue.
-    - *Edit Order Save*: Instantly updates the order's items, subtotal, service charge, grand total, and sets status to `PREPARING`.
-    - *Decline*: Instantly removes the declined order from the active queue.
-  - Incoming food orders now appear immediately upon submission without requiring a manual browser or app refresh.
+  - Removed the broken column filter from `supabase.channel('staff-food-queue-realtime')` to listen to all `requests` events.
+  - Wrapped `fetchData` in `useCallback` with a mutable `fetchDataRef` ref so the subscription always executes the latest handler.
+  - Wired `refreshTrigger` from `App.tsx` to instantly refresh `<FoodQueue>` upon dismissing incoming request alerts.
+  - Added **instant optimistic UI updates** across all actions (Prepare, Order Ready, Edit Order Save, and Decline).
+
+---
+
+### 13. Actor Attribution & Role Resolution Fix (`apps/staff-app/components/RequestHistory.tsx`)
+
+- **Root Cause of Inverted/Incorrect Actor Role Badges**:
+  - When guests placed food orders via `/app/stay/dining/checkout`, the payload saved `booked_by: "Guest (Room 105)"`.
+  - In `RequestHistory.tsx`, `resolveActorFromRequest` previously evaluated `name` using `payload.booked_by` before staff lookup, but evaluated `role` based on `req.claimed_by ? 'STAFF' : 'GUEST'`.
+  - When staff claimed or modified an order, `claimed_by` became set, resulting in the card displaying `"Guest (Room 105)"` alongside the purple `🧑‍💼 STAFF` badge.
+- **Resolution**:
+  - Rewrote `resolveActorFromRequest`:
+    1. If `req.claimed_by` is set, look up the UUID in `staffMap` to get the logged-in staff member's real name (e.g., `"John Staff"`) and assign role `'STAFF'`.
+    2. If `req.claimed_by` exists but isn't found in `staffMap`, default to `"Front Desk Staff"` with role `'STAFF'`.
+    3. If `req.claimed_by` is null (unclaimed request), derive the guest's name/room number and assign role `'GUEST'` (blue `📱 GUEST` badge).
+  - Updated `resolveActorFromLog` to prevent guest name strings from being attached to `'STAFF'` role audit logs.
+  - Passed `activeStaffUser` from `App.tsx` to `<FoodQueue>` so status updates, edits, and rejections record `activeStaffUser.full_name` in audit logs and update `last_modified_by` in the request payload.
+
+---
+
+### 14. Staff App Login Screen Polish & Remnants Cleanup (`apps/staff-app/App.tsx`)
+
+- **Cleaned Up**:
+  - Removed hardcoded pre-filled demo credentials (`frontdesk@demo.local / demo123456`) from `useState` initializers.
+  - Removed the visible `demoBox` (demo credentials box) from the login card.
+  - Removed outdated dev banner ("🚀 Phase 4 Active — Room Requests & Task Routing Loop") from the dashboard footer.
+  - Cleaned up error messages and input placeholders to remove internal hints.
+- **UI Enhancements**:
+  - Added structured brand header above login card with hotel icon inside a gold accent ring (`🏨`), "Staff Portal" heading, and "Authorized access only" subtitle.
+  - Enhanced input styling with deeper backgrounds, uppercase tracking labels, and stronger gold glow shadow on the primary submit button.
 
 ---
 
