@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import WelcomeCardClient from './components/WelcomeCardClient'
 
 export const metadata: Metadata = {
-  title: 'Welcome to Your Room',
+  title: 'Welcome to Kekehyu Hotel',
   description: 'Your personal in-room concierge is ready.',
 }
 
@@ -92,7 +92,7 @@ export default async function StayPage({ searchParams }: StayPageProps) {
   }
 
   const hotelData = room.hotels && !Array.isArray(room.hotels) ? room.hotels : null
-  const hotelName = hotelData?.name ?? 'Grand Hotel'
+  const hotelName = hotelData?.name ?? 'Kekehyu Hotel'
   const hotelPhone = hotelData?.phone ?? '+18005550100'
   const hotelLogo = hotelData?.logo_url ?? null
   const colorScheme = hotelData?.color_scheme ?? 'gold'

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Welcome — Grand Hotel',
+  title: 'Welcome — Kekehyu Hotel',
   description: 'Scan your in-room QR code to access your personal concierge experience.',
 }
 
@@ -38,7 +38,7 @@ export default function HomePage() {
 
         {/* Heading */}
         <h1 className="animate-fade-up animate-fade-up-delay-2 text-5xl font-bold mb-4 leading-tight">
-          <span className="text-gold-gradient">Grand Hotel</span>
+          <span className="text-gold-gradient">Kekehyu Hotel</span>
         </h1>
 
         <p className="animate-fade-up animate-fade-up-delay-3 text-slate-400 text-lg mb-10 leading-relaxed">

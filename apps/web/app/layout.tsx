@@ -10,14 +10,14 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Grand Hotel — In-Room Experience',
-    template: '%s | Grand Hotel',
+    default: 'Kekehyu Hotel — In-Room Experience',
+    template: '%s | Kekehyu Hotel',
   },
   description:
     'Your personal in-room concierge. Order food, book spa treatments, and request services — all from your device.',
   keywords: ['hotel', 'room service', 'spa booking', 'concierge', 'QR ordering'],
   openGraph: {
-    title: 'Grand Hotel — In-Room Experience',
+    title: 'Kekehyu Hotel — In-Room Experience',
     description: 'Your personal in-room concierge',
     type: 'website',
   },
