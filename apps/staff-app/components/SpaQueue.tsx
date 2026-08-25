@@ -271,16 +271,9 @@ export default function SpaQueue({
 
                 {/* Action Buttons */}
                 <View style={styles.actionRow}>
+                  {/* Primary: must review/edit before accepting */}
                   <TouchableOpacity
                     style={[styles.acceptBtn, isProcessing && styles.btnDisabled]}
-                    onPress={() => handleUpdateStatus(item.id, 'CONFIRMED')}
-                    disabled={isProcessing}
-                  >
-                    <Text style={styles.acceptBtnText}>✓ Accept</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.modifyBtn, isProcessing && styles.btnDisabled]}
                     onPress={() => {
                       const editable = {
                         id: item.id,
@@ -299,7 +292,7 @@ export default function SpaQueue({
                     }}
                     disabled={isProcessing}
                   >
-                    <Text style={styles.modifyBtnText}>✏️ Edit</Text>
+                    <Text style={styles.acceptBtnText}>✏️ Review & Accept</Text>
                   </TouchableOpacity>
 
                   {phone ? (

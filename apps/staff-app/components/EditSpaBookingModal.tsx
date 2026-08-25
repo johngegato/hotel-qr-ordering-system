@@ -864,7 +864,9 @@ export default function EditSpaBookingModal({
               {saving ? (
                 <ActivityIndicator size="small" color="#0f172a" />
               ) : (
-                <Text style={styles.saveBtnText}>💾 Save Changes</Text>
+                <Text style={styles.saveBtnText}>
+                  {confirmOnSave ? '✓ Confirm Booking' : '💾 Save Changes'}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
