@@ -28,8 +28,13 @@ DROP POLICY IF EXISTS "Allow public all spa_time_slots"  ON spa_time_slots;
 CREATE POLICY "Allow public read spa_time_slots" ON spa_time_slots FOR SELECT USING (true);
 CREATE POLICY "Allow public all spa_time_slots"  ON spa_time_slots FOR ALL    USING (true);
 
--- Enable Realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE spa_time_slots;
+-- Enable Realtime (safe — skips if already a member of the publication)
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE spa_time_slots;
+EXCEPTION WHEN duplicate_object THEN
+  NULL; -- already added, nothing to do
+END $$;
 
 -- Seed default initial slots for default hotel
 INSERT INTO spa_time_slots (id, hotel_id, slot_time, is_available, is_on_call, sort_order)
