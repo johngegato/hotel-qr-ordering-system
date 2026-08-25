@@ -108,7 +108,7 @@ function ArrivalTimer({ target }: { target: string }) {
   return <Text style={[styles.arrivalTimer, left < 120 && styles.arrivalTimerUrgent]}>{m}:{String(s).padStart(2, '0')}</Text>
 }
 
-export default function FoodQueue({ activeStaffId }: { activeStaffId?: string }) {
+export default function FoodQueue({ activeStaffId, refreshTrigger }: { activeStaffId?: string; refreshTrigger?: number }) {
   const [orders, setOrders] = useState<FoodRequest[]>([])
   const [catalogItems, setCatalogItems] = useState<CatalogMenuItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -134,13 +134,27 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
   // Fetch orders and STRICTLY F&B food/drink catalog items
   const fetchData = async () => {
     try {
-      // 1. Fetch pending food orders
-      const { data: orderData } = await supabase
+      // 1. Fetch pending food orders with fallback
+      let orderList: FoodRequest[] = []
+      const { data: orderData, error: orderErr } = await supabase
         .from('requests')
         .select('*, rooms(room_number)')
         .eq('request_type', 'FOOD_ORDER')
         .in('status', ['PENDING', 'PREPARING'])
         .order('created_at', { ascending: true })
+
+      if (orderErr) {
+        console.warn('Error fetching orders with rooms join, falling back to basic query:', orderErr)
+        const { data: fallbackData } = await supabase
+          .from('requests')
+          .select('*')
+          .eq('request_type', 'FOOD_ORDER')
+          .in('status', ['PENDING', 'PREPARING'])
+          .order('created_at', { ascending: true })
+        orderList = (fallbackData ?? []) as unknown as FoodRequest[]
+      } else {
+        orderList = (orderData ?? []) as unknown as FoodRequest[]
+      }
 
       // 2. Fetch ONLY F&B department items from catalog_items
       const { data: dbCatalog, error: dbCatalogErr } = await (supabase as any)
@@ -165,7 +179,7 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
           }))
         : FALLBACK_MENU
 
-      setOrders((orderData ?? []) as unknown as FoodRequest[])
+      setOrders(orderList)
       setCatalogItems(itemsList)
 
       // 3. Fetch Hotel Service Charge Setting
@@ -186,12 +200,38 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
     }
   }
 
+  // Refetch whenever parent triggers a refresh (e.g. incoming alert acknowledged)
   useEffect(() => {
     fetchData()
-    // Subscribe to all changes on requests table without column filter (which drops UPDATE events in Supabase Realtime)
+  }, [refreshTrigger])
+
+  useEffect(() => {
+    fetchData()
+    // Subscribe to all changes on requests table with instant optimistic hydration
     const ch: RealtimeChannel = supabase
       .channel('staff-food-queue-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
+        const r = (payload.new || payload.old) as any
+        if (payload.eventType === 'INSERT') {
+          if (r?.request_type === 'FOOD_ORDER' && ['PENDING', 'PREPARING'].includes(r.status)) {
+            setOrders(prev => {
+              if (prev.some(o => o.id === r.id)) return prev
+              return [r as FoodRequest, ...prev]
+            })
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          if (r?.request_type === 'FOOD_ORDER') {
+            if (!['PENDING', 'PREPARING'].includes(r.status)) {
+              setOrders(prev => prev.filter(o => o.id !== r.id))
+            } else {
+              setOrders(prev => prev.map(o => o.id === r.id ? { ...o, ...r } : o))
+            }
+          }
+        } else if (payload.eventType === 'DELETE') {
+          if (r?.id) {
+            setOrders(prev => prev.filter(o => o.id !== r.id))
+          }
+        }
         fetchData()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, fetchData)

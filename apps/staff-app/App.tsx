@@ -316,14 +316,17 @@ export default function App() {
     setLoginError('')
   }
 
+  const [refreshKey, setRefreshKey] = useState(0)
+
   useEffect(() => {
     fetchData()
 
-    // Subscribe to ALL requests changes to keep stats live
+    // Subscribe to ALL requests changes to keep stats and queues live
     const channel = supabase
       .channel('app-stats')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
         fetchStats()
+        setRefreshKey(k => k + 1)
         // Fire aggressive alert on every new PENDING request
         if (payload.eventType === 'INSERT' && (payload.new as any)?.status === 'PENDING') {
           hydrateIncomingAlert(payload.new as any)
@@ -400,7 +403,10 @@ export default function App() {
       {/* ⚠️ Aggressive incoming request alert */}
       <IncomingRequestAlert
         request={incomingAlert}
-        onDismiss={() => setIncomingAlert(null)}
+        onDismiss={() => {
+          setIncomingAlert(null)
+          setRefreshKey(k => k + 1)
+        }}
       />
 
       <ScrollView
@@ -501,7 +507,7 @@ export default function App() {
             <TaskQueue activeStaffId={activeStaffUser?.id} />
 
             {/* 4. Food Orders Queue */}
-            <FoodQueue activeStaffId={activeStaffUser?.id} />
+            <FoodQueue activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
 
             {/* 5. All Request History Logs */}
             <RequestHistory />
