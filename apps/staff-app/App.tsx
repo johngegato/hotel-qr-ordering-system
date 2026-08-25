@@ -22,6 +22,13 @@ import { StaffUser } from './components/UserManagement'
 import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
 import IncomingRequestAlert, { type IncomingRequest } from './components/IncomingRequestAlert'
+import { Platform } from 'react-native'
+import * as Notifications from 'expo-notifications'
+import {
+  setupNotificationChannels,
+  registerForPushNotifications,
+  triggerAggressiveAlert,
+} from './lib/notifications'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -318,6 +325,33 @@ export default function App() {
 
   const [refreshKey, setRefreshKey] = useState(0)
 
+  // ─── Native Notifications Setup ─────────────────────────────
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      setupNotificationChannels()
+      registerForPushNotifications().then((token) => {
+        if (token && activeStaffUser) {
+          supabase
+            .from('staff_users')
+            .update({ push_token: token } as any)
+            .eq('id', activeStaffUser.id)
+            .catch(() => {})
+        }
+      })
+
+      const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data
+        if (data?.requestId) {
+          setRefreshKey((k) => k + 1)
+        }
+      })
+
+      return () => {
+        subResponse.remove()
+      }
+    }
+  }, [activeStaffUser?.id])
+
   useEffect(() => {
     fetchData()
 
@@ -331,7 +365,20 @@ export default function App() {
         if (payload.eventType === 'INSERT' && (payload.new as any)?.status === 'PENDING') {
           hydrateIncomingAlert(payload.new as any)
             .then((nextRequest) => {
-              if (nextRequest) setIncomingAlert(nextRequest as IncomingRequest)
+              if (nextRequest) {
+                setIncomingAlert(nextRequest as IncomingRequest)
+                // Trigger Native Notification with MAX Priority & ALARM stream
+                const rType = nextRequest.request_type || 'REQUEST'
+                const rNum = (nextRequest.payload as any)?.room_number || 'Room'
+                triggerAggressiveAlert({
+                  title: `Incoming ${rType.replace('_', ' ')}`,
+                  body: `${rNum} submitted a new request requiring immediate staff attention!`,
+                  requestId: nextRequest.id,
+                  roomNumber: rNum,
+                  requestType: rType,
+                  payloadData: nextRequest.payload as any,
+                })
+              }
             })
             .catch(() => {
               setIncomingAlert(payload.new as IncomingRequest)

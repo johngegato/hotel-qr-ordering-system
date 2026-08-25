@@ -31,9 +31,14 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Admin Spa Schedule Manager at `/admin/spa`: Full CRUD, active/disabled toggling, on-call toggling, edit modal, and quick presets for Standard Day (10 AM - 7 PM) and Late Night (2 PM - 2 AM) shifts.
   - Guest Booking Page at `/app/stay/spa`: Dynamic time slot loading and live realtime synchronization with admin schedule changes.
   - Staff App Master Timetable & Modals (`SpaTimetable.tsx`, `ManualSpaBookingModal.tsx`, `EditSpaBookingModal.tsx`): Full timetable mirroring of configured slots with flexible support for evening/late-night shifts (e.g. 2:00 PM to 2:00 AM).
+- [x] Android APK High-Priority Notification System & Permissions (`apps/staff-app`):
+  - Created `apps/staff-app/lib/notifications.ts` with web-safe platform guards.
+  - Android Notification Channel `urgent_guest_requests` configured with `MAX` importance, custom vibration, and `ALARM` audio stream.
+  - Updated `apps/staff-app/app.json` with permissions (`WAKE_LOCK`, `USE_FULL_SCREEN_INTENT`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE`, `RECEIVE_BOOT_COMPLETED`).
+  - Wired native notification triggers & push token synchronization to `staff_users` in `apps/staff-app/App.tsx`.
 - [x] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
 - [ ] Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.
-- [ ] Test end-to-end guest-to-staff flow on live Vercel deployments.
+- [ ] Test end-to-end guest-to-staff flow on live Vercel deployments and Android APK.
 
 Notes:
 - Prefer server-side migrations over client-side seeds when possible.
