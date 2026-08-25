@@ -492,8 +492,8 @@ export default function App() {
             <CallQueue activeStaffId={activeStaffUser?.id} />
 
             {/* 2. Spa Timetable & Appointments Queue */}
-            <SpaTimetable />
-            <SpaQueue activeStaffId={activeStaffUser?.id} />
+            <SpaTimetable activeStaffUser={activeStaffUser} activeStaffId={activeStaffUser?.id} />
+            <SpaQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} />
 
             {/* 3. Room Task Queue */}
             <TaskQueue activeStaffId={activeStaffUser?.id} />

@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native'
 import EditSpaBookingModal from './EditSpaBookingModal'
+import { StaffUser } from './UserManagement'
 import { supabase } from '../lib/supabase'
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
@@ -34,10 +35,17 @@ interface SpaRequestItem {
     guest_phone?: string
     therapist_id?: string
     assigned_therapist?: string
+    booked_by?: string
   } | null
 }
 
-export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) {
+export default function SpaQueue({
+  activeStaffId,
+  activeStaffUser,
+}: {
+  activeStaffId?: string
+  activeStaffUser?: StaffUser | null
+}) {
   const [requests, setRequests] = useState<SpaRequestItem[]>([])
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
@@ -132,21 +140,29 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
         // Record status update in audit logs
         try {
           const p = snapshot?.payload || {}
+          const staffName = activeStaffUser?.name || 'Front Desk Staff'
+          const staffRole = activeStaffUser?.role || 'FRONT_DESK'
+          const staffId = activeStaffId || activeStaffUser?.id || null
+
           await (supabase as any)
             .from('audit_logs')
             .insert([{
               hotel_id: HOTEL_ID,
               request_id: id,
               action: newStatus === 'CONFIRMED' ? 'BOOKING_APPROVED' : 'BOOKING_DECLINED',
-              actor_id: activeStaffId || null,
+              actor_id: staffId,
               details: {
                 source: 'staff_queue',
+                actor_name: staffName,
+                actor_role: staffRole,
+                approved_by: newStatus === 'CONFIRMED' ? staffName : undefined,
+                cancelled_by: newStatus === 'DECLINED' ? staffName : undefined,
                 new_status: newStatus,
                 old_status: snapshot?.status || 'PENDING',
                 service_name: p.service_name || 'Spa Service',
                 room_number: p.room_number || snapshot?.rooms?.room_number || 'Room —',
                 slot_time: p.slot_time || '—',
-                claimed_by: activeStaffId || null,
+                claimed_by: staffId,
               },
             }])
         } catch (auditErr) {
@@ -297,6 +313,9 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
         <EditSpaBookingModal
           isOpen={isEditOpen}
           booking={editBooking}
+          activeStaffUser={activeStaffUser}
+          activeStaffId={activeStaffId}
+          activeStaffName={activeStaffUser?.name}
           onClose={() => { setIsEditOpen(false); setEditBooking(null) }}
           onSaved={async () => {
             if (editBooking?.id) {

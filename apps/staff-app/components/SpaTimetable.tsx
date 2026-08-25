@@ -11,6 +11,13 @@ import {
 import { supabase } from '../lib/supabase'
 import EditSpaBookingModal, { type EditableBooking } from './EditSpaBookingModal'
 import ManualSpaBookingModal, { type QuickAddSlot } from './ManualSpaBookingModal'
+import { StaffUser } from './UserManagement'
+
+export interface SpaTimetableProps {
+  onRefreshQueue?: () => void
+  activeStaffUser?: StaffUser | null
+  activeStaffId?: string
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,10 +58,6 @@ interface BookingSlot {
   isVisible?: boolean
   rawPayload?: any
   rawRequest?: any
-}
-
-interface SpaTimetableProps {
-  onRefreshQueue?: () => void
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -187,6 +190,9 @@ export interface AuditHistoryItem {
   timeAgo: string
   summary?: string
   status: string
+  actorName: string
+  actorRole?: string
+  actorEmail?: string
   rawRequest?: any
   rawAuditLog?: any
   details?: any
@@ -239,6 +245,31 @@ function parseAuditHistoryItem(logOrReq: any, type: 'audit_log' | 'request', spa
     const scheduledAt = details.scheduled_at || reqPayload.scheduled_at
     const summary = details.summary || (action === 'BOOKING_EDITED' ? 'Appointment details updated' : undefined)
 
+    // Robust extraction of staff member / guest identity for auditing
+    const actorName =
+      details.actor_name ||
+      details.booked_by ||
+      details.modified_by ||
+      details.approved_by ||
+      details.cancelled_by ||
+      details.completed_by ||
+      details.claimed_by_name ||
+      reqPayload.booked_by ||
+      reqPayload.last_modified_by ||
+      (action.includes('GUEST')
+        ? (roomNumber !== 'Room —' ? `Guest (${roomNumber})` : 'Guest')
+        : action.includes('MANUAL')
+        ? 'Front Desk Staff'
+        : action.includes('EDITED')
+        ? 'Staff Member'
+        : 'Hotel Staff')
+
+    const actorRole =
+      details.actor_role ||
+      (action.includes('GUEST') ? 'GUEST' : details.source === 'staff_manual' ? 'FRONT_DESK' : undefined)
+
+    const actorEmail = details.actor_email || undefined
+
     return {
       id: log.id,
       requestId: log.request_id || log.id,
@@ -256,6 +287,9 @@ function parseAuditHistoryItem(logOrReq: any, type: 'audit_log' | 'request', spa
       timeAgo: formatRelativeTime(log.created_at),
       summary,
       status: req?.status || details.new_status || 'CONFIRMED',
+      actorName,
+      actorRole,
+      actorEmail,
       rawRequest: req,
       rawAuditLog: log,
       details,
@@ -298,6 +332,12 @@ function parseAuditHistoryItem(logOrReq: any, type: 'audit_log' | 'request', spa
     const slotTime = p.slot_time || '—'
     const scheduledAt = p.scheduled_at
 
+    const actorName =
+      p.last_modified_by ||
+      p.booked_by ||
+      (p.manual_booking ? 'Front Desk Staff' : (roomNumber !== 'Room —' ? `Guest (${roomNumber})` : 'Guest'))
+    const actorRole = p.manual_booking ? 'FRONT_DESK' : 'GUEST'
+
     return {
       id: `req-${req.id}`,
       requestId: req.id,
@@ -314,6 +354,8 @@ function parseAuditHistoryItem(logOrReq: any, type: 'audit_log' | 'request', spa
       timestamp: req.created_at,
       timeAgo: formatRelativeTime(req.created_at),
       status: req.status,
+      actorName,
+      actorRole,
       rawRequest: req,
       details: p,
     }
@@ -391,7 +433,7 @@ function isSlotBlockedForTherapist(
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
+export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeStaffId }: SpaTimetableProps) {
   const [loading, setLoading] = useState(true)
   const [therapists, setTherapists] = useState<Therapist[]>(FALLBACK_THERAPISTS)
   const [bookings, setBookings] = useState<BookingSlot[]>([])
@@ -1247,6 +1289,16 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
                       <Text style={styles.historyMeta}>👤 {item.therapistName}</Text>
                       <Text style={styles.historyMeta}>🕒 {item.timeAgo}</Text>
                     </View>
+                    {/* Auditor attribution */}
+                    <View style={styles.historyActorRow}>
+                      <Text style={styles.historyActorText}>
+                        {item.actorRole === 'GUEST' ? '📱' : '🧑‍💼'}{' '}
+                        {item.actorName}
+                        {item.actorRole && item.actorRole !== 'GUEST' && item.actorRole !== 'HOTEL_STAFF'
+                          ? ` · ${item.actorRole.replace(/_/g, ' ')}`
+                          : ''}
+                      </Text>
+                    </View>
                     {item.summary && (
                       <View style={styles.historySummaryBox}>
                         <Text style={styles.historySummaryText}>📌 {item.summary}</Text>
@@ -1324,6 +1376,20 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
                       <Text style={styles.detailLabel}>Event Time</Text>
                       <Text style={styles.detailValue}>{new Date(selectedHistoryItem.timestamp).toLocaleString()}</Text>
                     </View>
+                    {/* Auditor / Actor attribution */}
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Performed By</Text>
+                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                        <Text style={[styles.detailValue, { color: selectedHistoryItem.actorRole === 'GUEST' ? '#38bdf8' : '#a78bfa', fontWeight: '700' }]}>
+                          {selectedHistoryItem.actorRole === 'GUEST' ? '📱' : '🧑‍💼'} {selectedHistoryItem.actorName}
+                        </Text>
+                        {selectedHistoryItem.actorRole && selectedHistoryItem.actorRole !== 'GUEST' && (
+                          <Text style={{ color: '#64748b', fontSize: 10 }}>
+                            {selectedHistoryItem.actorRole.replace(/_/g, ' ')}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
                     <View style={styles.detailNoteBox}>
                       <Text style={styles.detailLabel}>Notes</Text>
                       <Text style={styles.detailValue}>{p.intake_note || 'No intake notes recorded.'}</Text>
@@ -1343,6 +1409,14 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
                           {requestAuditTrail.map((log: any, idx: number) => {
                             const isLast = idx === requestAuditTrail.length - 1
                             const logDetails = log.details || {}
+                            const timelineActorName =
+                              logDetails.actor_name ||
+                              logDetails.booked_by ||
+                              logDetails.modified_by ||
+                              logDetails.approved_by ||
+                              logDetails.cancelled_by ||
+                              null
+                            const timelineActorRole = logDetails.actor_role || null
                             return (
                               <View key={log.id || idx} style={styles.timelineItem}>
                                 <View style={styles.timelineLeft}>
@@ -1355,6 +1429,12 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
                                     <Text style={styles.timelineTime}>{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
                                   </View>
                                   <Text style={styles.timelineDate}>{new Date(log.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                                  {timelineActorName && (
+                                    <Text style={[styles.timelineDetailsText, { color: timelineActorRole === 'GUEST' ? '#38bdf8' : '#a78bfa' }]}>
+                                      {timelineActorRole === 'GUEST' ? '📱' : '🧑‍💼'} {timelineActorName}
+                                      {timelineActorRole && timelineActorRole !== 'GUEST' ? ` · ${timelineActorRole.replace(/_/g, ' ')}` : ''}
+                                    </Text>
+                                  )}
                                   {logDetails.summary ? (
                                     <Text style={styles.timelineDetailsText}>{logDetails.summary}</Text>
                                   ) : logDetails.source ? (
@@ -1396,6 +1476,9 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
       <ManualSpaBookingModal
         isOpen={isManualOpen}
         quickAddSlot={quickAddSlot}
+        activeStaffUser={activeStaffUser}
+        activeStaffId={activeStaffId}
+        activeStaffName={activeStaffUser?.name}
         onClose={() => { setIsManualOpen(false); setQuickAddSlot(null) }}
         onCreated={() => {
           fetchTimetableData()
@@ -1406,6 +1489,9 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
       <EditSpaBookingModal
         isOpen={isEditOpen}
         booking={selectedBooking}
+        activeStaffUser={activeStaffUser}
+        activeStaffId={activeStaffId}
+        activeStaffName={activeStaffUser?.name}
         onClose={() => { setIsEditOpen(false); setSelectedBooking(null) }}
         onSaved={() => {
           fetchTimetableData()
@@ -2174,5 +2260,15 @@ const styles = StyleSheet.create({
   historyMeta: {
     color: '#64748b',
     fontSize: 10,
+  },
+  historyActorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  historyActorText: {
+    color: '#a78bfa',
+    fontSize: 10,
+    fontWeight: '600',
   },
 })

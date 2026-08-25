@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
+import { StaffUser } from './UserManagement'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -116,6 +117,9 @@ interface ManualSpaBookingModalProps {
   quickAddSlot?: QuickAddSlot | null
   onClose: () => void
   onCreated: () => void
+  activeStaffUser?: StaffUser | null
+  activeStaffId?: string
+  activeStaffName?: string
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -125,6 +129,9 @@ export default function ManualSpaBookingModal({
   quickAddSlot,
   onClose,
   onCreated,
+  activeStaffUser,
+  activeStaffId,
+  activeStaffName,
 }: ManualSpaBookingModalProps) {
   const [services, setServices] = useState<SpaServiceItem[]>(DEFAULT_SERVICES)
   const [therapists, setTherapists] = useState<Therapist[]>(FALLBACK_THERAPISTS)
@@ -397,6 +404,10 @@ export default function ManualSpaBookingModal({
       }
 
       const { start, end } = buildSlotWindow(selectedTime, selectedService.duration_mins || 60, selectedDay)
+      const staffName = activeStaffUser?.name || activeStaffName || 'Front Desk Staff'
+      const staffId = activeStaffUser?.id || activeStaffId || null
+      const staffRole = activeStaffUser?.role || 'FRONT_DESK'
+
       const payload = {
         service_id: selectedService.id,
         service_name: selectedService.name,
@@ -412,6 +423,8 @@ export default function ManualSpaBookingModal({
         assigned_therapist: selectedTherapist?.full_name ?? 'Unknown Therapist',
         therapist_id: selectedTherapistId,
         manual_booking: true,
+        booked_by: staffName,
+        created_by_staff_id: staffId,
       }
 
       // Acquire the lock before creating the request. A booking without a lock
@@ -439,8 +452,13 @@ export default function ManualSpaBookingModal({
             hotel_id: HOTEL_ID,
             request_id: requestId,
             action: 'MANUAL_BOOKING_CREATED',
+            actor_id: staffId,
             details: {
               source: 'staff_manual',
+              actor_name: staffName,
+              actor_role: staffRole,
+              actor_email: activeStaffUser?.email || null,
+              booked_by: staffName,
               service_name: selectedService.name,
               therapist_name: selectedTherapist?.full_name || 'Staff Assigned',
               therapist_id: selectedTherapistId,

@@ -264,6 +264,7 @@ function GuestSpaContent() {
             intake_note: intakeNote.trim() || 'No special intake preferences',
             guest_phone: phoneOverride || getStoredGuestPhone() || undefined,
             is_on_call: isOnCallSlot,
+            booked_by: roomNumber ? `Guest (Room ${roomNumber})` : 'Guest',
           },
         }])
         .select('id')
@@ -293,6 +294,7 @@ function GuestSpaContent() {
 
         // Log guest booking creation in audit trail
         try {
+          const guestActorName = roomNumber ? `Guest (Room ${roomNumber})` : 'Guest'
           await (supabase as any)
             .from('audit_logs')
             .insert([{
@@ -301,6 +303,9 @@ function GuestSpaContent() {
               action: 'GUEST_BOOKING_CREATED',
               details: {
                 source: 'guest_web',
+                actor_name: guestActorName,
+                actor_role: 'GUEST',
+                booked_by: guestActorName,
                 service_name: selectedService.name,
                 slot_time: selectedSlotTime,
                 scheduled_at: scheduledAt,

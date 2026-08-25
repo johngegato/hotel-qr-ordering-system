@@ -11,6 +11,7 @@ import {
   TextInput,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
+import { StaffUser } from './UserManagement'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -113,6 +114,9 @@ interface EditSpaBookingModalProps {
   onSaved: () => void
   /** If true, saving will set request status to CONFIRMED. When false, only payload is updated (used for pre-approval edits). */
   confirmOnSave?: boolean
+  activeStaffUser?: StaffUser | null
+  activeStaffId?: string
+  activeStaffName?: string
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -123,6 +127,9 @@ export default function EditSpaBookingModal({
   onClose,
   onSaved,
   confirmOnSave = true,
+  activeStaffUser,
+  activeStaffId,
+  activeStaffName,
 }: EditSpaBookingModalProps) {
   const [saving, setSaving] = useState(false)
   const [therapists, setTherapists] = useState<Therapist[]>([])
@@ -449,6 +456,17 @@ export default function EditSpaBookingModal({
       }
       // ─────────────────────────────────────────────────────────────────────────
 
+      const staffName = activeStaffUser?.name || activeStaffName || 'Staff Member'
+      const staffId = activeStaffUser?.id || activeStaffId || null
+      const staffRole = activeStaffUser?.role || 'STAFF'
+
+      updatePayload.payload = {
+        ...updatePayload.payload,
+        last_modified_by: staffName,
+        last_modified_by_staff_id: staffId,
+        last_modified_at: new Date().toISOString(),
+      }
+
       const { error: reqErr } = await supabase
         .from('requests')
         .update(updatePayload)
@@ -482,6 +500,10 @@ export default function EditSpaBookingModal({
       if (booking.therapistId !== selectedTherapistId) changesList.push(`Therapist changed to ${therapistName}`)
       if (booking.serviceName !== selectedService) changesList.push(`Service changed to ${selectedService}`)
 
+      const summaryText = changesList.length > 0
+        ? `${changesList.join(', ')} (by ${staffName})`
+        : `Details updated by ${staffName}`
+
       try {
         await (supabase as any)
           .from('audit_logs')
@@ -489,8 +511,13 @@ export default function EditSpaBookingModal({
             hotel_id: HOTEL_ID,
             request_id: booking.id,
             action: 'BOOKING_EDITED',
+            actor_id: staffId,
             details: {
               source: 'staff_edit_modal',
+              actor_name: staffName,
+              actor_role: staffRole,
+              actor_email: activeStaffUser?.email || null,
+              modified_by: staffName,
               service_name: selectedService,
               slot_time: selectedTime,
               scheduled_at: lockStart.toISOString(),
@@ -504,7 +531,7 @@ export default function EditSpaBookingModal({
                 therapist_name: booking.therapistName,
                 therapist_id: booking.therapistId,
               },
-              summary: changesList.length > 0 ? changesList.join(', ') : 'Details updated',
+              summary: summaryText,
             },
           }])
       } catch (auditErr) {
