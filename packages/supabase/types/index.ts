@@ -92,6 +92,17 @@ export interface StaffUser {
   created_at: string
 }
 
+export interface MenuCategory {
+  id: string
+  hotel_id: string
+  name: string
+  icon?: string
+  sort_order: number
+  is_active: boolean
+  created_at: string
+  updated_at?: string
+}
+
 // ── F&B Cart Types ────────────────────────────────────────────
 
 export interface CartItem {
