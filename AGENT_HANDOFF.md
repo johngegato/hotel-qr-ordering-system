@@ -495,12 +495,10 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
   - Added real-time listener on `spa_slot_locks` so staff modifications in `SpaTimetable` reflect immediately on the guest booking screen.
 
 ### 9. Staff App Edit Dining Order Menu Filtering & Fluid Modal Layout (`apps/staff-app/components/FoodQueue.tsx`)
-- **Root Cause of Menu Bloat & Overflow**: `FoodQueue.tsx` was querying `catalog_items` without a `department` filter, causing all hotel amenities (Spa treatments, Housekeeping tasks, Maintenance requests, and Front Desk services) to leak into the dining menu. The nested list also stretched the modal height indefinitely.
-- **Resolution**:
-  - Added `.eq('department', 'F_AND_B')` filter to ensure only restaurant food, drinks, and desserts are fetched.
-  - Dynamically extracted category tabs (e.g. `Breakfast`, `Mains`, `Desserts`, `Drinks`) from the active F&B items.
-  - Placed the restaurant menu browser inside a dedicated scroll wrapper (`height: 260`) to completely eliminate vertical modal overflow.
-  - Improved layout with clear section headers, running subtotals, item steppers (`−` / `+`), item badge counters, and a clean sticky footer.
+- **Single Source of Truth**: Removed all dual-table querying to `menu_catalog`. All dining food, drink, and dessert menus across both **Staff App** (`FoodQueue.tsx`) and **Guest Web App** (`/app/stay/dining`) now pull exclusively from `catalog_items` where `department = 'F_AND_B'`.
+- **Cleaned Data Isolation**: Amenities, Spa treatments, Housekeeping tasks, Maintenance items, and Front Desk items are completely isolated by department.
+- **Dynamic Category Tabs**: Categories are dynamically extracted from active `F_AND_B` catalog items.
+- **Fluid, Non-Overflowing Modal**: The restaurant menu browser is housed in a dedicated scroll container (`height: 260`), ensuring smooth navigation and zero layout overflow on mobile and tablet devices.
 
 ---
 
