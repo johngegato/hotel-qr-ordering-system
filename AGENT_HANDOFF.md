@@ -500,10 +500,48 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
 - **Dynamic Category Tabs**: Categories are dynamically extracted from active `F_AND_B` catalog items.
 - **Fluid, Non-Overflowing Modal**: The restaurant menu browser is housed in a dedicated scroll container (`height: 260`), ensuring smooth navigation and zero layout overflow on mobile and tablet devices.
 
+### 10. Configurable Dining Service Charge (`feat: d9a9d36`)
+
+**Goal**: Add a percentage-based service charge that applies to all dining orders only, fully controllable from the Admin Settings page.
+
+#### Database (`apps/web/supabase/migrations/14_service_charge.sql`)
+- New columns on `hotels` table:
+  - `service_charge_enabled` (boolean, default `true`)
+  - `service_charge_pct` (numeric 5,2, default `10.00`)
+- **Must be run manually on the Supabase production instance** (no automatic migration runner).
+
+#### Admin Settings (`apps/web/app/admin/settings/page.tsx`)
+- New **💳 Service Charge** card (labeled "Dining Only") in the settings form:
+  - **ON/OFF toggle**: animated pill switch with green glow when active.
+  - **Percentage input**: number field (0–100, step 0.5), grayed out when toggle is OFF.
+  - **Live preview**: shows a sample ₱500 order with computed charge and grand total, or a "charge disabled" message.
+- Reads from and PATCHes to the `hotels` table alongside existing settings.
+
+#### Dining Menu Notice (`apps/web/app/app/stay/dining/page.tsx`)
+- On mount, fetches `service_charge_enabled` + `service_charge_pct` from `hotels`.
+- When enabled, renders an amber **💳 notice banner** in the sticky header: *"All dining items are subject to a X% service charge, applied at checkout."*
+- Floating cart bar shows a small hint below the subtotal: *"+X% service charge at checkout"*.
+- Notice disappears entirely when the admin disables the charge.
+
+#### Checkout Breakdown (`apps/web/app/app/stay/dining/checkout/page.tsx`)
+- Fetches hotel service charge on mount.
+- Replaces the previous single "Total" row with a **3-row price breakdown**:
+  - Subtotal
+  - Service Charge (X%) — amber colored, hidden when disabled
+  - **Total** — orange, bold
+- An amber footnote pill below the breakdown reinforces the charge.
+- **Place Order** button label uses `grandTotal` (subtotal + charge).
+- `requests.payload` now carries:
+  - `subtotal` — raw item total
+  - `service_charge_pct` — rate applied (0 if disabled)
+  - `service_charge_amount` — computed charge
+  - `total_price` — grand total (used by staff in FoodQueue)
+
 ---
 
 ### Remaining Open Items
 
+- **Run migration `14_service_charge.sql`** on Supabase production instance to add the new columns.
 - Apply pending Supabase migrations (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`) in target production Supabase database.
 - Phase 2 database reservation integrity work (atomic RPC, `request_id` FK on `spa_slot_locks`) remains pending in production DB.
 - Integration test for atomic duplicate prevention is still open.
