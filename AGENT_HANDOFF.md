@@ -25,6 +25,7 @@ Recent session additions:
 - apps/staff-app/components/CallQueue.tsx: Added `📞 Call Guest` button using `Linking.openURL('tel:...')` that dials the guest's phone number from `payload.guest_phone`. Fallback Alert shown when no phone number is on record. Added `guest_phone` to `RequestItem` interface.
 - apps/staff-app/components/DedicatedCallModule.tsx: Added `📞 Call` action button in card action row. Phone number row is now a tappable green pill (`📞 +63xxx | Tap to call`) that directly fires the native dialer. Three-button action row: `📞 Call` → `✓ Claim` → `✓ Resolve`.
 - apps/staff-app/components/RequestHistory.tsx: Added guest phone display to `CALL_REQUEST` history list cards — tappable green pill showing phone number that opens the native dialer. Detail modal now shows a `📞 Dial Now` button with the guest phone number. No-phone-on-record state handled gracefully with informative text and Alert.
+- apps/staff-app/lib/authStorage.ts [NEW] & apps/staff-app/App.tsx: Implemented persistent auto-login session management using `@react-native-async-storage/async-storage` with `localStorage` web fallback. Automatically stores active session upon successful login, restores session on app launch/restart to bypass the login screen immediately, validates active status against Supabase in the background, and completely clears saved session upon clicking "Log Out".
 
 Files changed (high level)
 - apps/web/app/admin/users/page.tsx [NEW]

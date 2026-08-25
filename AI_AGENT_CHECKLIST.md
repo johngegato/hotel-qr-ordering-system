@@ -46,6 +46,12 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Added direct `📞 Call Guest` button in `CallQueue` with `Linking.openURL('tel:...')` opening the native dialer.
   - Added tappable phone pill + `📞 Call` button in `DedicatedCallModule` next to Claim & Resolve.
   - Added guest phone display and 1-tap call button in `RequestHistory` list cards & detail modal for callback alerts (`CALL_REQUEST`).
+- [x] Staff App Persistent Login & Auto-Session Restoration (`authStorage.ts` & `App.tsx`):
+  - Installed `@react-native-async-storage/async-storage` with dual native & `localStorage` web fallback.
+  - Persists authenticated `StaffUser` credentials securely across app minimize, background killing, and system reboots.
+  - Automatically restores session on app launch and smoothly bypasses the login screen.
+  - Performs background account verification with Supabase to handle admin deactivations.
+  - Completely clears local session upon clicking "Log Out".
 - [x] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
 - [ ] Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments and Android APK.

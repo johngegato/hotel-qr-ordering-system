@@ -30,6 +30,11 @@ import {
   triggerAggressiveAlert,
   addNotificationResponseListener,
 } from './lib/notifications'
+import {
+  saveStaffSession,
+  getSavedStaffSession,
+  clearStaffSession,
+} from './lib/authStorage'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -149,6 +154,7 @@ export default function App() {
   const [totalRequests, setTotalRequests] = useState(0)
   const [resolvedToday, setResolvedToday] = useState(0)
   const [activeStaffUser, setActiveStaffUser] = useState<StaffUser | null>(null)
+  const [isRestoringSession, setIsRestoringSession] = useState(true)
   const [incomingAlert, setIncomingAlert] = useState<IncomingRequest | null>(null)
   const [unhandledPendingList, setUnhandledPendingList] = useState<PendingRequestItem[] | null>(null)
   const [loginEmail, setLoginEmail] = useState('')
@@ -159,6 +165,61 @@ export default function App() {
   const slideAnim = React.useRef(new Animated.Value(30)).current
 
   const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
+
+  // ─── Auto-Login / Restore Saved Session on App Startup ──────
+  useEffect(() => {
+    let isMounted = true
+
+    async function restoreSession() {
+      try {
+        const savedUser = await getSavedStaffSession()
+        if (savedUser && isMounted) {
+          setActiveStaffUser(savedUser)
+
+          // Background validation to ensure account is still active in database
+          try {
+            const { data } = await supabase
+              .from('staff_users')
+              .select('id, full_name, role, is_active')
+              .eq('id', savedUser.id)
+              .maybeSingle()
+
+            if (isMounted) {
+              if (data && data.is_active === false) {
+                // Account was deactivated by administrator
+                await clearStaffSession()
+                setActiveStaffUser(null)
+              } else if (data) {
+                // Update local session with any fresh profile data
+                const updatedUser: StaffUser = {
+                  id: savedUser.id,
+                  name: data.full_name || savedUser.name,
+                  email: savedUser.email,
+                  role: data.role || savedUser.role,
+                }
+                setActiveStaffUser(updatedUser)
+                await saveStaffSession(updatedUser)
+              }
+            }
+          } catch {
+            // Network error or offline: keep user logged in with cached session
+          }
+        }
+      } catch (err) {
+        console.warn('[App] Session restoration error:', err)
+      } finally {
+        if (isMounted) {
+          setIsRestoringSession(false)
+        }
+      }
+    }
+
+    restoreSession()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   // ─── 5-Minute Recurring Check for Unhandled Requests ────────
   const checkUnhandledRequests = useCallback(async () => {
@@ -340,12 +401,14 @@ export default function App() {
         throw new Error('Invalid credentials. Please check your email and password.')
       }
 
-      setActiveStaffUser({
+      const userObj: StaffUser = {
         id: data.id,
         name: data.full_name,
         email: data.email,
         role: data.role,
-      })
+      }
+      setActiveStaffUser(userObj)
+      await saveStaffSession(userObj)
       setLoginError('')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to log in.'
@@ -356,8 +419,14 @@ export default function App() {
     }
   }, [loginEmail, loginPassword])
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await clearStaffSession()
+    } catch (err) {
+      console.warn('[App] Logout clear session error:', err)
+    }
     setActiveStaffUser(null)
+    setLoginPassword('')
     setLoginError('')
   }
 
@@ -369,11 +438,12 @@ export default function App() {
       setupNotificationChannels()
       registerForPushNotifications().then((token) => {
         if (token && activeStaffUser) {
-          supabase
-            .from('staff_users')
-            .update({ push_token: token } as any)
-            .eq('id', activeStaffUser.id)
-            .catch(() => {})
+          Promise.resolve(
+            supabase
+              .from('staff_users')
+              .update({ push_token: token } as any)
+              .eq('id', activeStaffUser.id)
+          ).catch(() => {})
         }
       })
 
@@ -445,6 +515,23 @@ export default function App() {
 
     return () => { supabase.removeChannel(channel) }
   }, [checkUnhandledRequests])
+
+  if (isRestoringSession) {
+    return (
+      <SafeAreaView style={[styles.safe, { justifyContent: 'center', alignItems: 'center' }]}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+        <View style={{ alignItems: 'center', gap: 16 }}>
+          <View style={styles.loginLogoRing}>
+            <Text style={styles.loginLogoIcon}>🏨</Text>
+          </View>
+          <ActivityIndicator size="large" color={COLORS.gold} />
+          <Text style={{ color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' }}>
+            Restoring session…
+          </Text>
+        </View>
+      </SafeAreaView>
+    )
+  }
 
   if (!activeStaffUser && status !== 'error' && status === 'connected') {
     return (
