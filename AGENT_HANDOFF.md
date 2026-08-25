@@ -494,6 +494,14 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
   - Differentiated between **`Passed`** (for earlier times today), **`Booked`**, **`⚠️ On-Call Request`**, and **`✓ Available`**.
   - Added real-time listener on `spa_slot_locks` so staff modifications in `SpaTimetable` reflect immediately on the guest booking screen.
 
+### 9. Staff App Edit Dining Order Menu Filtering & Fluid Modal Layout (`apps/staff-app/components/FoodQueue.tsx`)
+- **Root Cause of Menu Bloat & Overflow**: `FoodQueue.tsx` was querying `catalog_items` without a `department` filter, causing all hotel amenities (Spa treatments, Housekeeping tasks, Maintenance requests, and Front Desk services) to leak into the dining menu. The nested list also stretched the modal height indefinitely.
+- **Resolution**:
+  - Added `.eq('department', 'F_AND_B')` filter to ensure only restaurant food, drinks, and desserts are fetched.
+  - Dynamically extracted category tabs (e.g. `Breakfast`, `Mains`, `Desserts`, `Drinks`) from the active F&B items.
+  - Placed the restaurant menu browser inside a dedicated scroll wrapper (`height: 260`) to completely eliminate vertical modal overflow.
+  - Improved layout with clear section headers, running subtotals, item steppers (`−` / `+`), item badge counters, and a clean sticky footer.
+
 ---
 
 ### Remaining Open Items
