@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import {
   StyleSheet,
   Text,
@@ -39,6 +39,11 @@ interface SpaRequestItem {
   } | null
 }
 
+const isValidUuid = (val?: string | null): string | null => {
+  if (!val || typeof val !== 'string') return null
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim()) ? val.trim() : null
+}
+
 export default function SpaQueue({
   activeStaffId,
   activeStaffUser,
@@ -51,10 +56,9 @@ export default function SpaQueue({
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [editBooking, setEditBooking] = useState<any | null>(null)
   const [isEditOpen, setIsEditOpen] = useState(false)
-  const [editedMap, setEditedMap] = useState<Record<string, boolean>>({})
 
   // Fetch pending spa requests
-  const fetchSpaQueue = async () => {
+  const fetchSpaQueue = useCallback(async () => {
     try {
       setLoading(true)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,14 +76,14 @@ export default function SpaQueue({
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   // Subscribe to real-time WebSockets
   useEffect(() => {
     fetchSpaQueue()
 
     const channel = supabase
-      .channel('public:spa_queue')
+      .channel('public:spa_queue_realtime')
       .on(
         'postgres_changes',
         {
@@ -87,30 +91,8 @@ export default function SpaQueue({
           schema: 'public',
           table: 'requests',
         },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newReq = payload.new as SpaRequestItem
-            if (
-              newReq.hotel_id === HOTEL_ID &&
-              newReq.request_type === 'SPA_BOOKING' &&
-              ['PENDING', 'PENDING_ON_CALL'].includes(newReq.status)
-            ) {
-              setRequests((prev) => [newReq, ...prev.filter((r) => r.id !== newReq.id)])
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedReq = payload.new as SpaRequestItem
-            if (updatedReq.hotel_id !== HOTEL_ID) return
-            if (!['PENDING', 'PENDING_ON_CALL'].includes(updatedReq.status)) {
-              setRequests((prev) => prev.filter((r) => r.id !== updatedReq.id))
-            } else {
-              setRequests((prev) =>
-                prev.map((r) => (r.id === updatedReq.id ? updatedReq : r))
-              )
-            }
-          } else if (payload.eventType === 'DELETE') {
-            const oldReq = payload.old as { id: string }
-            setRequests((prev) => prev.filter((r) => r.id !== oldReq.id))
-          }
+        () => {
+          fetchSpaQueue()
         }
       )
       .subscribe()
@@ -118,22 +100,26 @@ export default function SpaQueue({
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [fetchSpaQueue])
 
   const handleUpdateStatus = async (id: string, newStatus: 'CONFIRMED' | 'DECLINED') => {
     setProcessingId(id)
-    // Optimistic removal — remove immediately so staff sees instant feedback
     const snapshot = requests.find((r) => r.id === id)
+    // Optimistic removal for instant UI feedback
     setRequests((prev) => prev.filter((r) => r.id !== id))
 
     try {
+      const safeStaffId = isValidUuid(activeStaffId || activeStaffUser?.id)
       const { error } = await supabase
         .from('requests')
-        .update({ status: newStatus, claimed_by: activeStaffId || null, claimed_at: new Date().toISOString() })
+        .update({
+          status: newStatus,
+          claimed_by: safeStaffId,
+          claimed_at: new Date().toISOString(),
+        })
         .eq('id', id)
 
       if (error) {
-        // Restore the card on failure so staff can retry
         console.error(`Failed to update spa request ${id} to ${newStatus}:`, error.message)
         if (snapshot) setRequests((prev) => [snapshot, ...prev])
       } else {
@@ -142,7 +128,6 @@ export default function SpaQueue({
           const p = snapshot?.payload || {}
           const staffName = activeStaffUser?.name || 'Front Desk Staff'
           const staffRole = activeStaffUser?.role || 'FRONT_DESK'
-          const staffId = activeStaffId || activeStaffUser?.id || null
 
           await (supabase as any)
             .from('audit_logs')
@@ -150,7 +135,7 @@ export default function SpaQueue({
               hotel_id: HOTEL_ID,
               request_id: id,
               action: newStatus === 'CONFIRMED' ? 'BOOKING_APPROVED' : 'BOOKING_DECLINED',
-              actor_id: staffId,
+              actor_id: safeStaffId,
               details: {
                 source: 'staff_queue',
                 actor_name: staffName,
@@ -162,7 +147,7 @@ export default function SpaQueue({
                 service_name: p.service_name || 'Spa Service',
                 room_number: p.room_number || snapshot?.rooms?.room_number || 'Room —',
                 slot_time: p.slot_time || '—',
-                claimed_by: staffId,
+                claimed_by: safeStaffId,
               },
             }])
         } catch (auditErr) {
@@ -173,7 +158,6 @@ export default function SpaQueue({
       console.error(`Error setting spa status to ${newStatus}:`, err)
       if (snapshot) setRequests((prev) => [snapshot, ...prev])
     } finally {
-      // Notify any timetable listeners to refresh their data (fallback to realtime)
       try {
         if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
           window.dispatchEvent(new CustomEvent('spa:revalidate'))
@@ -185,11 +169,13 @@ export default function SpaQueue({
     }
   }
 
-  if (loading) {
+  if (loading && requests.length === 0) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#a78bfa" />
-        <Text style={styles.loadingText}>Loading spa queue...</Text>
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color="#a78bfa" />
+          <Text style={styles.loadingText}>Loading spa appointment requests...</Text>
+        </View>
       </View>
     )
   }
@@ -197,17 +183,24 @@ export default function SpaQueue({
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>💆 Spa Appointments</Text>
-        <View style={styles.countBadge}>
-          <Text style={styles.countBadgeText}>{requests.length} Pending</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.title}>💆 Spa Appointment Queue</Text>
+          <View style={styles.countBadge}>
+            <Text style={styles.countBadgeText}>{requests.length} Pending</Text>
+          </View>
         </View>
+        <TouchableOpacity style={styles.refreshBtn} onPress={fetchSpaQueue}>
+          <Text style={styles.refreshBtnText}>🔄 Refresh</Text>
+        </TouchableOpacity>
       </View>
 
       {requests.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyIcon}>✨</Text>
           <Text style={styles.emptyTitle}>No Pending Spa Requests</Text>
-          <Text style={styles.emptySub}>All appointment requests have been processed.</Text>
+          <Text style={styles.emptySub}>
+            All appointment requests have been processed. New bookings from the guest app will appear here in real time.
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -221,12 +214,13 @@ export default function SpaQueue({
             const serviceName = item.payload?.service_name ?? 'Spa Treatment'
             const slotTime = item.payload?.slot_time ?? 'Scheduled Time'
             const price = item.payload?.price ?? 120
+            const duration = item.payload?.duration_mins ?? 60
             const intake = item.payload?.intake_note ?? 'None'
-            // Normalize rooms relation which may be object or array
+            const phone = item.payload?.guest_phone || ''
+
             const roomsVal = (item.rooms && typeof item.rooms === 'object')
               ? (Array.isArray(item.rooms) ? item.rooms[0]?.room_number : item.rooms.room_number)
               : undefined
-            // Prefer the joined rooms relation first (like RequestHistory), then payload
             const rawRoom = roomsVal ?? item.payload?.room_number ?? ''
             const roomDisplay = rawRoom
               ? (String(rawRoom).startsWith('Room') ? String(rawRoom) : `Room ${rawRoom}`)
@@ -234,8 +228,9 @@ export default function SpaQueue({
 
             return (
               <View style={[styles.card, isOnCall && styles.cardOnCall]}>
+                {/* Header Row */}
                 <View style={styles.cardHeader}>
-                    <View style={styles.roomBadge}>
+                  <View style={styles.roomBadge}>
                     <Text style={styles.roomText}>{roomDisplay}</Text>
                   </View>
 
@@ -251,55 +246,78 @@ export default function SpaQueue({
                 </View>
 
                 {/* Treatment Details */}
-                <Text style={styles.serviceTitle}>{serviceName}</Text>
-                <Text style={styles.slotTimeText}>🗓️ {slotTime} (₱{price.toLocaleString()})</Text>
+                <View style={styles.cardBody}>
+                  <Text style={styles.serviceTitle}>{serviceName}</Text>
+                  <View style={styles.metaPillsRow}>
+                    <View style={styles.metaPill}>
+                      <Text style={styles.metaPillText}>⏰ {slotTime}</Text>
+                    </View>
+                    <View style={styles.metaPill}>
+                      <Text style={styles.metaPillText}>⏳ {duration} mins</Text>
+                    </View>
+                    <View style={[styles.metaPill, styles.pricePill]}>
+                      <Text style={[styles.metaPillText, styles.pricePillText]}>₱{Number(price).toLocaleString()}</Text>
+                    </View>
+                  </View>
 
-                <View style={styles.intakeBox}>
-                  <Text style={styles.intakeLabel}>Guest Intake Notes:</Text>
-                  <Text style={styles.intakeText}>{intake}</Text>
+                  {/* Intake notes */}
+                  {intake && intake !== 'None' && intake !== 'No special intake preferences' && (
+                    <View style={styles.intakeBox}>
+                      <Text style={styles.intakeLabel}>📝 Intake Notes:</Text>
+                      <Text style={styles.intakeText}>{intake}</Text>
+                    </View>
+                  )}
                 </View>
 
                 {/* Action Buttons */}
                 <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    style={[styles.acceptBtn, isProcessing && styles.btnDisabled]}
+                    onPress={() => handleUpdateStatus(item.id, 'CONFIRMED')}
+                    disabled={isProcessing}
+                  >
+                    <Text style={styles.acceptBtnText}>✓ Accept</Text>
+                  </TouchableOpacity>
+
                   <TouchableOpacity
                     style={[styles.modifyBtn, isProcessing && styles.btnDisabled]}
                     onPress={() => {
                       const editable = {
                         id: item.id,
                         roomNumber: roomDisplay,
-                        guestPhone: item.payload?.guest_phone || '',
-                        serviceName: item.payload?.service_name || 'Spa Treatment',
+                        guestPhone: phone,
+                        serviceName: serviceName,
                         startTime: item.payload?.slot_time || '14:00',
                         therapistId: item.payload?.therapist_id || null,
                         therapistName: item.payload?.assigned_therapist || '',
-                        isOnCall: item.status === 'PENDING_ON_CALL' || item.payload?.is_on_call === true,
+                        isOnCall: Boolean(isOnCall),
                         status: item.status,
                         payload: item.payload,
                       }
                       setEditBooking(editable)
                       setIsEditOpen(true)
                     }}
+                    disabled={isProcessing}
                   >
                     <Text style={styles.modifyBtnText}>✏️ Edit</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={[styles.callBtn, isProcessing && styles.btnDisabled]}
-                    onPress={() => {
-                      const phone = item.payload?.guest_phone || ''
-                      if (phone) Linking.openURL(`tel:${phone}`)
-                      else Alert.alert('No Phone', 'Guest phone number not provided.')
-                    }}
-                  >
-                    <Text style={styles.callBtnText}>📞 Call</Text>
-                  </TouchableOpacity>
+                  {phone ? (
+                    <TouchableOpacity
+                      style={[styles.callBtn, isProcessing && styles.btnDisabled]}
+                      onPress={() => Linking.openURL(`tel:${phone}`).catch(() => Alert.alert('Call', `Dialing ${phone}`))}
+                      disabled={isProcessing}
+                    >
+                      <Text style={styles.callBtnText}>📞 Call</Text>
+                    </TouchableOpacity>
+                  ) : null}
 
                   <TouchableOpacity
                     style={[styles.declineBtn, isProcessing && styles.btnDisabled]}
                     onPress={() => handleUpdateStatus(item.id, 'DECLINED')}
                     disabled={isProcessing}
                   >
-                    <Text style={styles.declineBtnText}>✕ Cancel</Text>
+                    <Text style={styles.declineBtnText}>✕ Decline</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -318,10 +336,6 @@ export default function SpaQueue({
           activeStaffName={activeStaffUser?.name}
           onClose={() => { setIsEditOpen(false); setEditBooking(null) }}
           onSaved={async () => {
-            if (editBooking?.id) {
-              setEditedMap(prev => ({ ...prev, [editBooking.id]: true }))
-              setRequests(prev => prev.filter(item => item.id !== editBooking.id))
-            }
             await fetchSpaQueue()
             setIsEditOpen(false)
             setEditBooking(null)
@@ -335,165 +349,199 @@ export default function SpaQueue({
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    backgroundColor: '#0f172a',
+    borderRadius: 20,
     padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.2)',
+    marginTop: 20,
     width: '100%',
-    maxWidth: 600,
-    alignSelf: 'center',
-    marginTop: 16,
-  },
-  listContent: {
-    paddingBottom: 12,
   },
   loadingContainer: {
     padding: 32,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   loadingText: {
     color: '#94a3b8',
-    marginTop: 12,
-    fontSize: 14,
+    marginTop: 10,
+    fontSize: 13,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 14,
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
   },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '800',
     color: '#ffffff',
+    letterSpacing: 0.5,
   },
   countBadge: {
     backgroundColor: 'rgba(167, 139, 250, 0.15)',
-    borderColor: 'rgba(167, 139, 250, 0.3)',
+    borderColor: 'rgba(167, 139, 250, 0.35)',
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 14,
   },
   countBadgeText: {
     color: '#a78bfa',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  refreshBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  refreshBtnText: {
+    color: '#94a3b8',
+    fontSize: 11,
     fontWeight: '600',
-    fontSize: 13,
+  },
+  listContent: {
+    gap: 12,
   },
   emptyCard: {
-    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-    borderColor: 'rgba(167, 139, 250, 0.18)',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderColor: 'rgba(167, 139, 250, 0.15)',
     borderWidth: 1,
-    borderRadius: 24,
-    padding: 32,
+    borderRadius: 16,
+    padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 220,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.22,
-    shadowRadius: 16,
-    elevation: 6,
+    width: '100%',
   },
   emptyIcon: {
-    fontSize: 42,
-    marginBottom: 12,
-    opacity: 0.9,
+    fontSize: 32,
+    marginBottom: 8,
   },
   emptyTitle: {
     color: '#ffffff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 15,
+    fontWeight: '700',
     marginBottom: 4,
   },
   emptySub: {
     color: '#64748b',
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
+    maxWidth: 420,
   },
   card: {
-    backgroundColor: 'rgba(15, 23, 42, 0.92)',
-    borderColor: 'rgba(167, 139, 250, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderColor: 'rgba(167, 139, 250, 0.25)',
     borderWidth: 1,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    elevation: 6,
+    borderRadius: 16,
+    padding: 14,
+    width: '100%',
   },
   cardOnCall: {
-    borderColor: 'rgba(251, 191, 36, 0.5)',
-    backgroundColor: 'rgba(48, 36, 18, 0.9)',
+    borderColor: 'rgba(251, 191, 36, 0.45)',
+    backgroundColor: 'rgba(48, 36, 18, 0.4)',
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
+    flexWrap: 'wrap',
     gap: 8,
   },
   roomBadge: {
-    backgroundColor: 'rgba(167, 139, 250, 0.16)',
+    backgroundColor: 'rgba(167, 139, 250, 0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(167, 139, 250, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    flexShrink: 1,
-    maxWidth: '60%',
+    borderColor: 'rgba(167, 139, 250, 0.3)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
   },
   roomText: {
     color: '#d8ccff',
-    fontSize: 15,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '800',
   },
   onCallBadge: {
     backgroundColor: 'rgba(251, 191, 36, 0.15)',
-    borderColor: 'rgba(251, 191, 36, 0.3)',
+    borderColor: 'rgba(251, 191, 36, 0.35)',
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
-    flexShrink: 1,
+    borderRadius: 10,
   },
   onCallBadgeText: {
     color: '#fbbf24',
     fontSize: 11,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   standardBadge: {
-    backgroundColor: 'rgba(74, 222, 128, 0.15)',
+    backgroundColor: 'rgba(74, 222, 128, 0.12)',
+    borderColor: 'rgba(74, 222, 128, 0.25)',
+    borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
-    flexShrink: 1,
+    borderRadius: 10,
   },
   standardBadgeText: {
     color: '#4ade80',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  cardBody: {
+    marginBottom: 12,
   },
   serviceTitle: {
     color: '#ffffff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 6,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 8,
   },
-  slotTimeText: {
-    color: '#fbbf24',
-    fontSize: 14,
+  metaPillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  metaPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  metaPillText: {
+    color: '#cbd5e1',
+    fontSize: 12,
     fontWeight: '600',
-    marginBottom: 12,
+  },
+  pricePill: {
+    backgroundColor: 'rgba(251, 191, 36, 0.12)',
+  },
+  pricePillText: {
+    color: '#fbbf24',
+    fontWeight: '700',
   },
   intakeBox: {
-    backgroundColor: 'rgba(15, 23, 42, 0.72)',
-    borderColor: 'rgba(148, 163, 184, 0.18)',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 14,
+    borderRadius: 10,
+    padding: 8,
+    marginTop: 4,
   },
   intakeLabel: {
     color: '#94a3b8',
@@ -502,83 +550,86 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   intakeText: {
-    color: '#dfe7f5',
-    fontSize: 13,
-    lineHeight: 18,
+    color: '#e2e8f0',
+    fontSize: 12,
+    lineHeight: 16,
   },
   actionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'stretch',
+    alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+    paddingTop: 10,
+  },
+  acceptBtn: {
+    flex: 1,
+    minWidth: 90,
+    backgroundColor: '#22c55e',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptBtnText: {
+    color: '#0f172a',
+    fontWeight: '800',
+    fontSize: 12,
   },
   modifyBtn: {
     flex: 1,
-    minWidth: 0,
-    backgroundColor: 'rgba(167, 139, 250, 0.14)',
-    borderColor: 'rgba(167, 139, 250, 0.28)',
+    minWidth: 80,
+    backgroundColor: 'rgba(167, 139, 250, 0.15)',
+    borderColor: 'rgba(167, 139, 250, 0.3)',
     borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modifyBtnText: {
     color: '#d8ccff',
-    fontWeight: 'bold',
+    fontWeight: '700',
     fontSize: 12,
   },
   callBtn: {
     flex: 1,
-    minWidth: 0,
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    minWidth: 70,
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
     borderColor: 'rgba(96, 165, 250, 0.3)',
     borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   callBtnText: {
     color: '#93c5fd',
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  confirmBtn: {
-    flex: 1.2,
-    minWidth: 0,
-    backgroundColor: '#4ade80',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  confirmBtnText: {
-    color: '#0f172a',
-    fontWeight: 'bold',
+    fontWeight: '700',
     fontSize: 12,
   },
   declineBtn: {
     flex: 1,
-    minWidth: 0,
-    backgroundColor: 'rgba(248, 113, 113, 0.15)',
+    minWidth: 80,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
     borderColor: 'rgba(248, 113, 113, 0.3)',
     borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   declineBtnText: {
     color: '#f87171',
-    fontWeight: 'bold',
+    fontWeight: '700',
     fontSize: 12,
   },
   btnDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
 })
