@@ -37,7 +37,26 @@ function CheckoutContent() {
   const [orderStatus, setOrderStatus]   = useState<string | null>(null)
   const [showPhoneModal, setShowPhoneModal] = useState(false)
 
+  // ── Service Charge ──────────────────────────────────────────
+  const [serviceChargeEnabled, setServiceChargeEnabled] = useState(true)
+  const [serviceChargePct, setServiceChargePct]         = useState(10)
+
   useEffect(() => { setCart(loadCart()) }, [])
+
+  // Fetch hotel service charge settings
+  useEffect(() => {
+    ;(supabase as any)
+      .from('hotels')
+      .select('service_charge_enabled, service_charge_pct')
+      .eq('id', HOTEL_ID)
+      .maybeSingle()
+      .then(({ data }: any) => {
+        if (data) {
+          setServiceChargeEnabled(data.service_charge_enabled ?? true)
+          setServiceChargePct(Number(data.service_charge_pct ?? 10))
+        }
+      })
+  }, [])
 
   // Real-time listener for order status updates
   const subscribeToOrder = useCallback((id: string) => {
@@ -74,7 +93,10 @@ function CheckoutContent() {
     })
   }
 
-  const total = cart.reduce((s, c) => s + c.item.price * c.quantity, 0)
+  // ── Totals ────────────────────────────────────────────────────
+  const subtotal           = cart.reduce((s, c) => s + c.item.price * c.quantity, 0)
+  const serviceChargeAmt   = serviceChargeEnabled ? Math.round(subtotal * (serviceChargePct / 100) * 100) / 100 : 0
+  const grandTotal         = subtotal + serviceChargeAmt
 
   const executeSubmit = async (phoneOverride?: string) => {
     if (cart.length === 0) return
@@ -91,11 +113,21 @@ function CheckoutContent() {
       if (rm?.room_number) roomNumber = String(rm.room_number)
     }
 
-    const payload: FoodOrderPayload & { room_number?: string; guest_phone?: string; booked_by?: string } = {
+    const payload: FoodOrderPayload & {
+      room_number?: string
+      guest_phone?: string
+      booked_by?: string
+      subtotal?: number
+      service_charge_pct?: number
+      service_charge_amount?: number
+    } = {
       order_type: orderType,
       items: cart.map(c => ({ id: c.item.id, name: c.item.name, quantity: c.quantity, unit_price: c.item.price })),
       special_instructions: instructions + (phone ? ` [Guest Phone: ${phone}]` : ''),
-      total_price: total,
+      total_price: grandTotal,
+      subtotal: subtotal,
+      service_charge_pct: serviceChargeEnabled ? serviceChargePct : 0,
+      service_charge_amount: serviceChargeAmt,
       room_number: roomNumber || undefined,
       guest_phone: phone || undefined,
       booked_by: roomNumber ? `Guest (Room ${roomNumber})` : 'Guest',
@@ -210,10 +242,62 @@ function CheckoutContent() {
               ))}
             </div>
 
-            {/* Total */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 0', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 24 }}>
-              <span style={{ color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>Total</span>
-              <span style={{ color: '#fff', fontWeight: 800, fontSize: 20 }}>₱{total.toLocaleString()}</span>
+            {/* Price Breakdown */}
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 16,
+              padding: '16px 18px',
+              marginBottom: 24,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}>
+              {/* Subtotal row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, fontWeight: 600 }}>Subtotal</span>
+                <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>₱{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+
+              {/* Service Charge row */}
+              {serviceChargeEnabled && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, fontWeight: 600 }}>
+                    Service Charge ({serviceChargePct}%)
+                  </span>
+                  <span style={{ color: '#fbbf24', fontWeight: 700, fontSize: 14 }}>
+                    +₱{serviceChargeAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+
+              {/* Divider */}
+              <div style={{ borderTop: '1px dashed rgba(255,255,255,0.1)', margin: '2px 0' }} />
+
+              {/* Grand Total row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#fff', fontWeight: 800, fontSize: 16 }}>Total</span>
+                <span style={{ color: '#f97316', fontWeight: 900, fontSize: 20 }}>₱{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+
+              {/* Service charge footnote */}
+              {serviceChargeEnabled && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginTop: 2,
+                  background: 'rgba(251,191,36,0.07)',
+                  border: '1px solid rgba(251,191,36,0.2)',
+                  borderRadius: 10,
+                  padding: '7px 12px',
+                }}>
+                  <span style={{ fontSize: 13 }}>ℹ️</span>
+                  <span style={{ color: 'rgba(251,191,36,0.85)', fontSize: 12, fontWeight: 600 }}>
+                    A {serviceChargePct}% service charge is applied to all dining orders.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Fulfillment Toggle */}
@@ -280,7 +364,7 @@ function CheckoutContent() {
               onClick={handleSubmit}
               disabled={submitting || cart.length === 0}
               style={{ width: '100%', background: submitting ? 'rgba(249,115,22,0.5)' : 'linear-gradient(135deg, #f97316, #ea580c)', color: '#fff', border: 'none', borderRadius: 16, padding: '18px', fontWeight: 800, fontSize: 18, cursor: submitting ? 'not-allowed' : 'pointer', letterSpacing: '-0.3px', boxShadow: '0 8px 32px rgba(249,115,22,0.35)', transition: 'all 0.3s' }}>
-              {submitting ? '⏳ Placing order…' : `Place Order · ₱${total.toLocaleString()}`}
+              {submitting ? '⏳ Placing order…' : `Place Order · ₱${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </button>
           </>
         )}

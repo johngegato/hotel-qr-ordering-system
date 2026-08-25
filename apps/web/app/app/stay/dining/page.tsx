@@ -68,6 +68,10 @@ function GuestDiningContent() {
   const [selectedDetailItem, setSelectedDetailItem] = useState<CatalogItem | null>(null)
   const [roomNumber, setRoomNumber]             = useState<string>('')
 
+  // ── Service Charge (read from hotel settings) ─────────────────
+  const [serviceChargeEnabled, setServiceChargeEnabled] = useState(true)
+  const [serviceChargePct, setServiceChargePct]         = useState(10)
+
   const catBarRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
@@ -82,6 +86,21 @@ function GuestDiningContent() {
         if (data?.room_number) setRoomNumber(String(data.room_number))
       })
   }, [roomId])
+
+  // Fetch hotel service charge settings
+  useEffect(() => {
+    ;(supabase as any)
+      .from('hotels')
+      .select('service_charge_enabled, service_charge_pct')
+      .eq('id', HOTEL_ID)
+      .maybeSingle()
+      .then(({ data }: any) => {
+        if (data) {
+          setServiceChargeEnabled(data.service_charge_enabled ?? true)
+          setServiceChargePct(Number(data.service_charge_pct ?? 10))
+        }
+      })
+  }, [])
 
   // Fetch Categories & Items
   const fetchMenuData = useCallback(async (isInitial = false) => {
@@ -297,6 +316,25 @@ function GuestDiningContent() {
               </p>
             </div>
           </div>
+
+          {/* Service Charge Notice */}
+          {serviceChargeEnabled && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              background: 'rgba(251,191,36,0.08)',
+              border: '1px solid rgba(251,191,36,0.22)',
+              borderRadius: 12,
+              padding: '8px 14px',
+              marginBottom: 10,
+            }}>
+              <span style={{ fontSize: 14 }}>💳</span>
+              <p style={{ color: 'rgba(251,191,36,0.9)', fontSize: 12, fontWeight: 600, margin: 0 }}>
+                All dining items are subject to a <strong>{serviceChargePct}% service charge</strong>, applied at checkout.
+              </p>
+            </div>
+          )}
 
           {/* Search Bar */}
           <div style={{ position: 'relative', marginBottom: 12 }}>
@@ -736,11 +774,18 @@ function GuestDiningContent() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ color: '#ffffff', fontWeight: 900, fontSize: 18 }}>
-                ₱{cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ color: '#ffffff', fontWeight: 900, fontSize: 18 }}>
+                  ₱{cartTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <span style={{ fontSize: 18, color: '#fff' }}>→</span>
               </div>
-              <span style={{ fontSize: 18, color: '#fff' }}>→</span>
+              {serviceChargeEnabled && (
+                <span style={{ fontSize: 10, color: 'rgba(251,191,36,0.75)', fontWeight: 600 }}>
+                  +{serviceChargePct}% service charge at checkout
+                </span>
+              )}
             </div>
           </div>
         </div>

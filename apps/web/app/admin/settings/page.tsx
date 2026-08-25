@@ -23,6 +23,10 @@ export default function HotelSettingsPage() {
   const [logoUrl, setLogoUrl] = useState('https://images.unsplash.com/photo-1566073771259-6a8506099945?w=120')
   const [colorScheme, setColorScheme] = useState<GuestColorScheme>('gold')
 
+  // Service Charge Settings
+  const [serviceChargeEnabled, setServiceChargeEnabled] = useState(true)
+  const [serviceChargePct, setServiceChargePct]         = useState<number>(10)
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
@@ -36,7 +40,7 @@ export default function HotelSettingsPage() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase as any)
           .from('hotels')
-          .select('name, phone, logo_url, color_scheme')
+          .select('name, phone, logo_url, color_scheme, service_charge_enabled, service_charge_pct')
           .eq('id', HOTEL_ID)
           .single()
 
@@ -49,6 +53,8 @@ export default function HotelSettingsPage() {
           if (data.phone) setPhone(data.phone)
           if (data.logo_url) setLogoUrl(data.logo_url)
           if (data.color_scheme) setColorScheme(data.color_scheme as GuestColorScheme)
+          setServiceChargeEnabled(data.service_charge_enabled ?? true)
+          setServiceChargePct(Number(data.service_charge_pct ?? 10))
         }
       } catch (err) {
         console.error('Error loading hotel data:', err)
@@ -76,6 +82,8 @@ export default function HotelSettingsPage() {
           phone: phone.trim(),
           logo_url: logoUrl.trim(),
           color_scheme: colorScheme,
+          service_charge_enabled: serviceChargeEnabled,
+          service_charge_pct: serviceChargePct,
         })
         .eq('id', HOTEL_ID)
 
@@ -332,6 +340,124 @@ export default function HotelSettingsPage() {
                       </button>
                     )
                   })}
+                </div>
+              </div>
+
+              {/* Service Charge Box */}
+              <div style={{ background: 'rgba(30, 41, 59, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 20, padding: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>💳</span> Service Charge
+                  </h3>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#fb923c', background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.3)', padding: '2px 8px', borderRadius: 10 }}>
+                    Dining Only
+                  </span>
+                </div>
+                <p style={{ margin: '0 0 1.25rem', color: '#94a3b8', fontSize: 12 }}>
+                  When enabled, a service charge is automatically added to all dining orders at checkout. Spa and other service requests are not affected.
+                </p>
+
+                {/* Enable / Disable Toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 2 }}>Apply Service Charge</div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>Toggle off to disable for all guests</div>
+                  </div>
+                  <button
+                    type="button"
+                    id="toggle-service-charge"
+                    onClick={() => setServiceChargeEnabled(v => !v)}
+                    style={{
+                      position: 'relative',
+                      width: 52,
+                      height: 28,
+                      borderRadius: 14,
+                      border: 'none',
+                      background: serviceChargeEnabled
+                        ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                        : 'rgba(255,255,255,0.1)',
+                      cursor: 'pointer',
+                      transition: 'background 0.25s',
+                      flexShrink: 0,
+                      boxShadow: serviceChargeEnabled ? '0 0 12px rgba(34,197,94,0.35)' : 'none',
+                    }}
+                  >
+                    <span style={{
+                      position: 'absolute',
+                      top: 3,
+                      left: serviceChargeEnabled ? 27 : 3,
+                      width: 22,
+                      height: 22,
+                      borderRadius: '50%',
+                      background: '#fff',
+                      transition: 'left 0.25s',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                    }} />
+                  </button>
+                </div>
+
+                {/* Percentage Input */}
+                <div style={{ marginBottom: '1.25rem', opacity: serviceChargeEnabled ? 1 : 0.4, transition: 'opacity 0.2s' }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
+                    Service Charge Percentage (%)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <input
+                      id="input-service-charge-pct"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={serviceChargePct}
+                      disabled={!serviceChargeEnabled}
+                      onChange={(e) => setServiceChargePct(Math.min(100, Math.max(0, Number(e.target.value))))}
+                      style={{
+                        width: 100,
+                        background: 'rgba(15, 23, 42, 0.8)',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        borderRadius: 12,
+                        padding: '10px 14px',
+                        color: '#fff',
+                        fontSize: 16,
+                        fontWeight: 700,
+                        outline: 'none',
+                        textAlign: 'center',
+                      }}
+                    />
+                    <span style={{ color: '#94a3b8', fontSize: 14, fontWeight: 600 }}>% of subtotal</span>
+                  </div>
+                </div>
+
+                {/* Live Preview */}
+                <div style={{
+                  background: serviceChargeEnabled ? 'rgba(34,197,94,0.07)' : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${serviceChargeEnabled ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.08)'}`,
+                  borderRadius: 12,
+                  padding: '12px 14px',
+                  transition: 'all 0.25s',
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Live Preview</div>
+                  {serviceChargeEnabled ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8' }}>
+                        <span>Subtotal</span><span>₱500.00</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#fbbf24' }}>
+                        <span>Service Charge ({serviceChargePct}%)</span>
+                        <span>+₱{(500 * serviceChargePct / 100).toFixed(2)}</span>
+                      </div>
+                      <div style={{ borderTop: '1px dashed rgba(255,255,255,0.1)', margin: '4px 0' }} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, color: '#f97316', fontWeight: 800 }}>
+                        <span>Total</span>
+                        <span>₱{(500 + 500 * serviceChargePct / 100).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 14 }}>🚫</span>
+                      <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>Service charge disabled — guests pay subtotal only</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
