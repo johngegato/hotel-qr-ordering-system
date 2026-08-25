@@ -134,6 +134,9 @@ export interface TaskPayload {
   target_department: TargetDepartment
   catalog_item_id?: string
   is_custom?: boolean
+  room_number?: string
+  guest_phone?: string
+  booked_by?: string
 }
 
 export interface SlaEscalation {
