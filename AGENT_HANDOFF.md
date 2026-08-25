@@ -12,6 +12,14 @@ Key goals
 - Fix Expo/TS/web build issues (typed catches, haptics on web, undefined imports).
 
 Files changed (high level)
+- apps/staff-app/components/UserAccountControl.tsx [NEW]
+  - Full CRUD User Account Control module for the Admin dashboard.
+  - Read: Real-time list of staff accounts with search by name/email, role filtering pills, active status pills, and summary statistics strip.
+  - Create: Modal form to add staff users (Full Name, Email, Password, Role selector with icons/chips, and Active toggle) targeting `staff_users` table with hotel tenant isolation.
+  - Update: Edit modal to update name, email, role, active status, and optionally reset passwords.
+  - Delete/Deactivate: Safe activation/deactivation toggle and permanent deletion action with web-safe confirmation dialogs and self-deactivation/self-deletion safeguards.
+- apps/staff-app/App.tsx
+  - Imported and rendered `<UserAccountControl activeUserId={activeStaffUser?.id} />` in the admin/staff tablet view below `<RequestHistory />`.
 - apps/staff-app/components/ManualSpaBookingModal.tsx
   - Rewrote `handleCreate()` to validate active locks, ensure `DEFAULT_ROOM_ID` exists with the deployed `rooms` schema, create a `BOOKED` lock before the request, roll the lock back if request creation fails, and insert an audit log.
   - Added granular minute controls and `scheduled_at` to manual and quick-add payloads.
