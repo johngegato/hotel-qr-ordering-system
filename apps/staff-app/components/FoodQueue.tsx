@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Linking, Alert,
 } from 'react-native'
@@ -131,11 +131,12 @@ export default function FoodQueue({ activeStaffId, refreshTrigger }: { activeSta
   const [hotelServiceChargeEnabled, setHotelServiceChargeEnabled] = useState(true)
   const [hotelServiceChargePct, setHotelServiceChargePct] = useState(10)
 
-  // Fetch orders and STRICTLY F&B food/drink catalog items
-  const fetchData = async () => {
+  // ── Stable fetchData via useCallback + mutable ref ────────────────────────
+  // The ref lets the realtime subscription always call the *latest* fetchData
+  // without capturing a stale closure from the initial mount.
+  const fetchData = useCallback(async () => {
     try {
-      // 1. Fetch pending food orders with fallback
-      let orderList: FoodRequest[] = []
+      // 1. Fetch pending food orders with join fallback
       const { data: orderData, error: orderErr } = await supabase
         .from('requests')
         .select('*, rooms(room_number)')
@@ -143,15 +144,16 @@ export default function FoodQueue({ activeStaffId, refreshTrigger }: { activeSta
         .in('status', ['PENDING', 'PREPARING'])
         .order('created_at', { ascending: true })
 
+      let orderList: FoodRequest[]
       if (orderErr) {
-        console.warn('Error fetching orders with rooms join, falling back to basic query:', orderErr)
-        const { data: fallbackData } = await supabase
+        console.warn('[FoodQueue] rooms join failed, retrying without join:', orderErr.message)
+        const { data: fallback } = await supabase
           .from('requests')
           .select('*')
           .eq('request_type', 'FOOD_ORDER')
           .in('status', ['PENDING', 'PREPARING'])
           .order('created_at', { ascending: true })
-        orderList = (fallbackData ?? []) as unknown as FoodRequest[]
+        orderList = (fallback ?? []) as unknown as FoodRequest[]
       } else {
         orderList = (orderData ?? []) as unknown as FoodRequest[]
       }
@@ -164,7 +166,7 @@ export default function FoodQueue({ activeStaffId, refreshTrigger }: { activeSta
         .order('sort_order', { ascending: true })
 
       if (dbCatalogErr) {
-        console.error('Error fetching catalog_items for F_AND_B:', dbCatalogErr)
+        console.error('[FoodQueue] catalog_items error:', dbCatalogErr)
       }
 
       const itemsList: CatalogMenuItem[] = (dbCatalog && dbCatalog.length > 0)
@@ -194,51 +196,55 @@ export default function FoodQueue({ activeStaffId, refreshTrigger }: { activeSta
         setHotelServiceChargePct(Number(hotelData.service_charge_pct ?? 10))
       }
     } catch (err) {
-      console.error('Error fetching food queue data:', err)
+      console.error('[FoodQueue] fetchData error:', err)
     } finally {
       setLoading(false)
     }
-  }
+  }, []) // no deps — uses only stable supabase client and setState
 
-  // Refetch whenever parent triggers a refresh (e.g. incoming alert acknowledged)
-  useEffect(() => {
-    fetchData()
-  }, [refreshTrigger])
+  // Mutable ref always points to the latest fetchData — safe to call from
+  // the realtime subscription closure without stale-closure issues
+  const fetchDataRef = useRef(fetchData)
+  useEffect(() => { fetchDataRef.current = fetchData }, [fetchData])
 
+  // Initial load + realtime subscription (runs once on mount)
   useEffect(() => {
-    fetchData()
-    // Subscribe to all changes on requests table with instant optimistic hydration
+    fetchDataRef.current()
+
     const ch: RealtimeChannel = supabase
       .channel('staff-food-queue-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
-        const r = (payload.new || payload.old) as any
-        if (payload.eventType === 'INSERT') {
-          if (r?.request_type === 'FOOD_ORDER' && ['PENDING', 'PREPARING'].includes(r.status)) {
-            setOrders(prev => {
-              if (prev.some(o => o.id === r.id)) return prev
-              return [r as FoodRequest, ...prev]
-            })
-          }
-        } else if (payload.eventType === 'UPDATE') {
-          if (r?.request_type === 'FOOD_ORDER') {
-            if (!['PENDING', 'PREPARING'].includes(r.status)) {
-              setOrders(prev => prev.filter(o => o.id !== r.id))
-            } else {
-              setOrders(prev => prev.map(o => o.id === r.id ? { ...o, ...r } : o))
-            }
-          }
-        } else if (payload.eventType === 'DELETE') {
-          if (r?.id) {
-            setOrders(prev => prev.filter(o => o.id !== r.id))
-          }
-        }
-        fetchData()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+        // Always call via ref so we get the latest fetchData, never a stale closure
+        fetchDataRef.current()
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'hotels' }, fetchData)
-      .subscribe()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, () => {
+        fetchDataRef.current()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hotels' }, () => {
+        fetchDataRef.current()
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          // Re-fetch once the channel is confirmed active in case an order
+          // arrived between component mount and subscription confirmation
+          fetchDataRef.current()
+        }
+      })
+
     return () => { supabase.removeChannel(ch) }
   }, [])
+
+  // Whenever parent bumps refreshTrigger (e.g. incoming alert acknowledged),
+  // do an immediate re-fetch. Skip the very first render (refreshTrigger===undefined)
+  // so we don't double-fetch on mount.
+  const isFirstRefreshTrigger = useRef(true)
+  useEffect(() => {
+    if (isFirstRefreshTrigger.current) {
+      isFirstRefreshTrigger.current = false
+      return
+    }
+    fetchDataRef.current()
+  }, [refreshTrigger])
 
   // Dynamically extract categories from current F&B menu items
   const menuCategories = useMemo(() => {
