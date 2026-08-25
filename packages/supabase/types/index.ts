@@ -122,6 +122,9 @@ export interface FoodOrderPayload {
   delivery_preference?: DeliveryPreference  // Room Service only
   target_arrival_time?: ArrivalTime          // Dine-In only
   total_price: number
+  subtotal?: number
+  service_charge_pct?: number
+  service_charge_amount?: number
 }
 
 // ── Task Request Types ──────────────────────────────────────

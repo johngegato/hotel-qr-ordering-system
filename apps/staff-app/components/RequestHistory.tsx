@@ -267,19 +267,53 @@ export default function RequestHistory() {
                 <DetailRow label="Request Type" value={req.request_type.replace(/_/g, ' ')} />
                 <DetailRow label="Submitted" value={new Date(req.created_at).toLocaleString()} />
 
-                {req.request_type === 'FOOD_ORDER' && p?.items && (
-                  <View style={styles.detailRowBlock}>
-                    <Text style={styles.detailLabel}>Items</Text>
-                    <View style={styles.itemsList}>
-                      {p.items.map((item: any, i: number) => (
-                        <Text key={i} style={styles.itemRow}>
-                          • {item.quantity}× {item.name} — ₱{(item.unit_price * item.quantity).toLocaleString()}
-                        </Text>
-                      ))}
+                {req.request_type === 'FOOD_ORDER' && p?.items && (() => {
+                  const itemsSum = p.items.reduce((s: number, it: any) => s + (Number(it.unit_price || 0) * Number(it.quantity || 1)), 0)
+                  const subtotal = p.subtotal !== undefined ? Number(p.subtotal) : itemsSum
+                  const scAmt = p.service_charge_amount !== undefined ? Number(p.service_charge_amount) : (Number(p.total_price || 0) > subtotal ? Number(p.total_price) - subtotal : 0)
+                  const grandTotal = Number(p.total_price || (subtotal + scAmt))
+
+                  return (
+                    <View style={styles.detailRowBlock}>
+                      <Text style={styles.detailLabel}>Items</Text>
+                      <View style={styles.itemsList}>
+                        {p.items.map((item: any, i: number) => (
+                          <Text key={i} style={styles.itemRow}>
+                            • {item.quantity}× {item.name} — ₱{(Number(item.unit_price || 0) * Number(item.quantity || 1)).toLocaleString()}
+                          </Text>
+                        ))}
+                      </View>
+
+                      {/* Price Breakdown */}
+                      <View style={{ marginTop: 8, gap: 4, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', paddingTop: 8 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Items Subtotal</Text>
+                          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>
+                            ₱{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </Text>
+                        </View>
+
+                        {scAmt > 0 && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ color: '#fbbf24', fontSize: 13, fontWeight: '600' }}>
+                              💳 Service Charge ({p.service_charge_pct || 10}%)
+                            </Text>
+                            <Text style={{ color: '#fbbf24', fontSize: 13, fontWeight: '700' }}>
+                              +₱{scAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </Text>
+                          </View>
+                        )}
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', paddingTop: 6 }}>
+                          <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>Grand Total</Text>
+                          <Text style={{ color: '#f97316', fontSize: 16, fontWeight: '900' }}>
+                            ₱{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                    <Text style={styles.detailValue}>Total: ₱{Number(p.total_price || 0).toLocaleString()}</Text>
-                  </View>
-                )}
+                  )
+                })()}
 
                 {req.request_type === 'SPA_BOOKING' && <>
                   <DetailRow label="Service" value={p?.service_name || '—'} />
@@ -356,6 +390,11 @@ export default function RequestHistory() {
                             )}
                             {d.summary ? (
                               <Text style={styles.timelineDetails}>📌 {d.summary}</Text>
+                            ) : d.new_total !== undefined ? (
+                              <Text style={styles.timelineDetails}>
+                                📝 Order Updated: ₱{Number(d.new_total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                {d.service_charge_amount ? ` (incl. ₱${Number(d.service_charge_amount).toFixed(2)} service charge)` : ''}
+                              </Text>
                             ) : d.rejection_reason ? (
                               <Text style={styles.timelineDetails}>Reason: {d.rejection_reason}</Text>
                             ) : d.source ? (

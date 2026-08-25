@@ -22,6 +22,9 @@ interface FoodOrderPayload {
   delivery_preference?: 'HAND_TO_ME' | 'LEAVE_AT_DOOR'
   target_arrival_time?: 'IN_15_MINS' | 'IN_30_MINS' | 'IN_60_MINS' | 'CUSTOM'
   total_price: number
+  subtotal?: number
+  service_charge_pct?: number
+  service_charge_amount?: number
   room_number?: string
   guest_phone?: string
   booked_by?: string
@@ -124,6 +127,10 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
   const [selectedReason, setSelectedReason] = useState(REJECTION_REASONS[0])
   const [customReason, setCustomReason] = useState('')
 
+  // Hotel Service Charge Settings
+  const [hotelServiceChargeEnabled, setHotelServiceChargeEnabled] = useState(true)
+  const [hotelServiceChargePct, setHotelServiceChargePct] = useState(10)
+
   // Fetch orders and STRICTLY F&B food/drink catalog items
   const fetchData = async () => {
     try {
@@ -160,6 +167,18 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
 
       setOrders((orderData ?? []) as unknown as FoodRequest[])
       setCatalogItems(itemsList)
+
+      // 3. Fetch Hotel Service Charge Setting
+      const { data: hotelData } = await (supabase as any)
+        .from('hotels')
+        .select('service_charge_enabled, service_charge_pct')
+        .eq('id', HOTEL_ID)
+        .maybeSingle()
+
+      if (hotelData) {
+        setHotelServiceChargeEnabled(hotelData.service_charge_enabled ?? true)
+        setHotelServiceChargePct(Number(hotelData.service_charge_pct ?? 10))
+      }
     } catch (err) {
       console.error('Error fetching food queue data:', err)
     } finally {
@@ -173,6 +192,7 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
       .channel('staff-food-queue')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests', filter: `request_type=eq.FOOD_ORDER` }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hotels', filter: `id=eq.${HOTEL_ID}` }, fetchData)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [])
@@ -259,20 +279,53 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
     setTimeout(() => setAddedItemToast(null), 2500)
   }
 
-  // Calculate dynamic total price for edited order
-  const calculateEditTotal = (): number => {
+  // Helper to determine service charge config for current order
+  const getOrderServiceChargeConfig = () => {
+    if (editingOrder?.payload?.service_charge_pct !== undefined) {
+      const pct = Number(editingOrder.payload.service_charge_pct)
+      return { isEnabled: pct > 0, pct }
+    }
+    return {
+      isEnabled: hotelServiceChargeEnabled,
+      pct: hotelServiceChargePct,
+    }
+  }
+
+  // Calculate items subtotal for edited order
+  const calculateEditSubtotal = (): number => {
     return editItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
+  }
+
+  // Calculate service charge amount for edited order
+  const calculateEditServiceCharge = (subtotal: number): number => {
+    const { isEnabled, pct } = getOrderServiceChargeConfig()
+    if (!isEnabled || pct <= 0) return 0
+    return Math.round(subtotal * (pct / 100) * 100) / 100
+  }
+
+  // Calculate dynamic grand total price for edited order (subtotal + service charge)
+  const calculateEditTotal = (): number => {
+    const subtotal = calculateEditSubtotal()
+    const sc = calculateEditServiceCharge(subtotal)
+    return subtotal + sc
   }
 
   // Save modified order & Log to Audit Trail
   const saveModifiedOrder = async () => {
     if (!editingOrder) return
     setUpdating(editingOrder.id)
-    const newTotal = calculateEditTotal()
+
+    const subtotal = calculateEditSubtotal()
+    const { isEnabled, pct } = getOrderServiceChargeConfig()
+    const scAmt = calculateEditServiceCharge(subtotal)
+    const newTotal = subtotal + scAmt
 
     const updatedPayload: FoodOrderPayload = {
       ...editingOrder.payload,
       items: editItems,
+      subtotal: subtotal,
+      service_charge_pct: isEnabled ? pct : 0,
+      service_charge_amount: scAmt,
       total_price: newTotal,
       special_instructions: editNotes.trim(),
       modified_by_staff: true,
@@ -301,12 +354,17 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
             action: 'MODIFY_DINING_ORDER',
             details: {
               actor_role: 'STAFF',
+              actor_name: 'Kitchen Staff',
               request_id: editingOrder.id,
               room_number: editingOrder.rooms?.room_number ?? 'Unknown',
               original_total: editingOrder.payload.total_price,
+              new_subtotal: subtotal,
+              service_charge_pct: isEnabled ? pct : 0,
+              service_charge_amount: scAmt,
               new_total: newTotal,
-              modified_items: editItems.map(i => `${i.quantity}x ${i.name} (₱${i.unit_price * i.quantity})`),
+              modified_items: editItems.map(i => `${i.quantity}x ${i.name} (₱${(i.unit_price * i.quantity).toLocaleString()})`),
               special_instructions: editNotes.trim(),
+              summary: `Order updated to ₱${newTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${scAmt > 0 ? ` (incl. ₱${scAmt.toFixed(2)} service charge)` : ''}`,
               timestamp: new Date().toISOString(),
             },
           },
@@ -466,7 +524,14 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <ElapsedTimer createdAt={order.created_at} />
-                  <Text style={styles.totalText}>₱{payload.total_price?.toLocaleString() ?? 0}</Text>
+                  <Text style={styles.totalText}>
+                    ₱{Number(payload.total_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                  {!!payload.service_charge_amount && (
+                    <Text style={{ fontSize: 11, color: '#fbbf24', fontWeight: '600', marginTop: 1 }}>
+                      incl. {payload.service_charge_pct || 10}% SC
+                    </Text>
+                  )}
                 </View>
               </View>
 
@@ -496,6 +561,18 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
                     </View>
                   )
                 })}
+
+                {/* Service Charge Row in Card Items List */}
+                {!!payload.service_charge_amount && (
+                  <View style={{ borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', paddingTop: 6, marginTop: 4, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: 'rgba(251,191,36,0.9)', fontSize: 12, fontWeight: '600' }}>
+                      💳 Service Charge ({payload.service_charge_pct || 10}%)
+                    </Text>
+                    <Text style={{ color: '#fbbf24', fontSize: 12, fontWeight: '700' }}>
+                      +₱{Number(payload.service_charge_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Delivery Preference */}
@@ -598,7 +675,9 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
               <View style={styles.sectionContainer}>
                 <View style={styles.sectionHeaderRow}>
                   <Text style={styles.sectionHeading}>🛒 Current Order ({editItems.length} items)</Text>
-                  <Text style={styles.sectionSubtotal}>Subtotal: ₱{calculateEditTotal().toLocaleString()}</Text>
+                  <Text style={styles.sectionSubtotal}>
+                    Items: ₱{calculateEditSubtotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
                 </View>
 
                 {editItems.length === 0 ? (
@@ -729,12 +808,35 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
 
             {/* Total Price & Footer Action Buttons */}
             <View style={styles.modalFooter}>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalRowLabel}>New Order Total:</Text>
-                <Text style={styles.totalRowValue}>₱{calculateEditTotal().toLocaleString()}</Text>
+              {/* Breakdown */}
+              <View style={{ gap: 4, marginBottom: 4 }}>
+                <View style={styles.totalRow}>
+                  <Text style={[styles.totalRowLabel, { fontSize: 13, color: 'rgba(255,255,255,0.6)' }]}>Items Subtotal:</Text>
+                  <Text style={[styles.totalRowValue, { fontSize: 14, color: '#fff' }]}>
+                    ₱{calculateEditSubtotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+
+                {getOrderServiceChargeConfig().isEnabled && (
+                  <View style={styles.totalRow}>
+                    <Text style={[styles.totalRowLabel, { fontSize: 13, color: '#fbbf24' }]}>
+                      Service Charge ({getOrderServiceChargeConfig().pct}%):
+                    </Text>
+                    <Text style={[styles.totalRowValue, { fontSize: 14, color: '#fbbf24' }]}>
+                      +₱{calculateEditServiceCharge(calculateEditSubtotal()).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={[styles.totalRow, { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 6, marginTop: 2 }]}>
+                  <Text style={styles.totalRowLabel}>New Order Total:</Text>
+                  <Text style={styles.totalRowValue}>
+                    ₱{calculateEditTotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
                 <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: 'rgba(255,255,255,0.1)' }]}
                   onPress={() => setEditingOrder(null)}>
