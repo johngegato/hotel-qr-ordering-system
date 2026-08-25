@@ -1,19 +1,43 @@
 import { Platform } from 'react-native'
-import * as Notifications from 'expo-notifications'
-import { Audio } from 'expo-av'
 
 export const URGENT_CHANNEL_ID = 'urgent_guest_requests'
 
+// Safe helper to get Notifications module only on native platforms
+function getNotificationsModule() {
+  if (Platform.OS === 'web') return null
+  try {
+    return require('expo-notifications')
+  } catch {
+    return null
+  }
+}
+
+// Safe helper to get Audio module
+function getAudioModule() {
+  try {
+    return require('expo-av').Audio
+  } catch {
+    return null
+  }
+}
+
 // Configure global notification presentation when app is in the foreground (Native only)
 if (Platform.OS !== 'web') {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      priority: Notifications.AndroidNotificationPriority.MAX,
-    }),
-  })
+  const Notifications = getNotificationsModule()
+  if (Notifications && typeof Notifications.setNotificationHandler === 'function') {
+    try {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          priority: Notifications.AndroidNotificationPriority?.MAX ?? 2,
+        }),
+      })
+    } catch {
+      // ignore handler setup error on web or unsupported environments
+    }
+  }
 }
 
 /**
@@ -22,18 +46,21 @@ if (Platform.OS !== 'web') {
 export async function setupNotificationChannels(): Promise<void> {
   if (Platform.OS !== 'android') return
 
+  const Notifications = getNotificationsModule()
+  if (!Notifications || typeof Notifications.setNotificationChannelAsync !== 'function') return
+
   try {
     await Notifications.setNotificationChannelAsync(URGENT_CHANNEL_ID, {
       name: '🚨 Urgent Guest Requests',
       description: 'High-priority alerts for incoming room service, calls, and bookings',
-      importance: Notifications.AndroidImportance.MAX,
+      importance: Notifications.AndroidImportance?.MAX ?? 5,
       vibrationPattern: [0, 500, 200, 500, 200, 500, 200, 800],
       lightColor: '#EF4444',
       enableLights: true,
       enableVibrate: true,
       audioAttributes: {
-        usage: Notifications.AndroidAudioUsage.ALARM, // Uses Alarm stream to bypass mute/DND
-        contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+        usage: Notifications.AndroidAudioUsage?.ALARM ?? 4, // Uses Alarm stream to bypass mute/DND
+        contentType: Notifications.AndroidAudioContentType?.SONIFICATION ?? 4,
         flags: {
           enforceAudibility: true,
           requestHardwareAudioVideoSynchronization: false,
@@ -41,7 +68,7 @@ export async function setupNotificationChannels(): Promise<void> {
       },
       bypassDnd: true,
       showBadge: true,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC ?? 1,
     })
   } catch (err) {
     console.warn('[Notifications] setupNotificationChannels failed:', err)
@@ -53,6 +80,9 @@ export async function setupNotificationChannels(): Promise<void> {
  */
 export async function registerForPushNotifications(): Promise<string | null> {
   if (Platform.OS === 'web') return null
+
+  const Notifications = getNotificationsModule()
+  if (!Notifications || typeof Notifications.getPermissionsAsync !== 'function') return null
 
   try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync()
@@ -77,18 +107,24 @@ export async function registerForPushNotifications(): Promise<string | null> {
     }
 
     // Configure Audio Mode for background & silent bypass on mobile
-    try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldRouteThroughEarpiece: false,
-      })
-    } catch {
-      // Ignore audio mode configuration failure on unsupported devices
+    const Audio = getAudioModule()
+    if (Audio && typeof Audio.setAudioModeAsync === 'function') {
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          shouldRouteThroughEarpiece: false,
+        })
+      } catch {
+        // Ignore audio mode configuration failure on unsupported devices
+      }
     }
 
-    const tokenData = await Notifications.getExpoPushTokenAsync()
-    return tokenData.data
+    if (typeof Notifications.getExpoPushTokenAsync === 'function') {
+      const tokenData = await Notifications.getExpoPushTokenAsync()
+      return tokenData.data
+    }
+    return null
   } catch (err) {
     console.warn('[Notifications] Failed to obtain push token:', err)
     return null
@@ -108,12 +144,15 @@ export async function triggerAggressiveAlert(params: {
 }): Promise<void> {
   if (Platform.OS === 'web') return
 
+  const Notifications = getNotificationsModule()
+  if (!Notifications || typeof Notifications.scheduleNotificationAsync !== 'function') return
+
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: `🚨 ${params.title} — ${params.roomNumber}`,
         body: params.body,
-        priority: Notifications.AndroidNotificationPriority.MAX,
+        priority: Notifications.AndroidNotificationPriority?.MAX ?? 2,
         vibrate: [0, 500, 200, 500, 200, 500, 200, 800],
         data: {
           requestId: params.requestId,
@@ -131,3 +170,38 @@ export async function triggerAggressiveAlert(params: {
     console.warn('[Notifications] triggerAggressiveAlert failed:', err)
   }
 }
+
+/**
+ * Safe subscription for notification tap responses
+ */
+export function addNotificationResponseListener(callback: (data: any) => void): { remove: () => void } {
+  if (Platform.OS === 'web') return { remove: () => {} }
+
+  const Notifications = getNotificationsModule()
+  if (!Notifications || typeof Notifications.addNotificationResponseReceivedListener !== 'function') {
+    return { remove: () => {} }
+  }
+
+  try {
+    const sub = Notifications.addNotificationResponseReceivedListener((response: any) => {
+      const data = response?.notification?.request?.content?.data
+      callback(data)
+    })
+    return {
+      remove: () => {
+        try {
+          if (sub && typeof sub.remove === 'function') {
+            sub.remove()
+          } else if (typeof Notifications.removeNotificationSubscription === 'function') {
+            Notifications.removeNotificationSubscription(sub)
+          }
+        } catch {
+          // ignore cleanup error
+        }
+      },
+    }
+  } catch {
+    return { remove: () => {} }
+  }
+}
+

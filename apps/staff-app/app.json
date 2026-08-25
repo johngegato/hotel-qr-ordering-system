@@ -10,15 +10,6 @@
     "ios": {
       "supportsTablet": true
     },
-    "plugins": [
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#ef4444"
-        }
-      ]
-    ],
     "android": {
       "package": "com.hotelqr.staffapp",
       "adaptiveIcon": {

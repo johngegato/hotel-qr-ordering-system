@@ -23,11 +23,11 @@ import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
 import IncomingRequestAlert, { type IncomingRequest } from './components/IncomingRequestAlert'
 import { Platform } from 'react-native'
-import * as Notifications from 'expo-notifications'
 import {
   setupNotificationChannels,
   registerForPushNotifications,
   triggerAggressiveAlert,
+  addNotificationResponseListener,
 } from './lib/notifications'
 
 // ─── Types ───────────────────────────────────────────────────
@@ -339,8 +339,7 @@ export default function App() {
         }
       })
 
-      const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
-        const data = response.notification.request.content.data
+      const subResponse = addNotificationResponseListener((data) => {
         if (data?.requestId) {
           setRefreshKey((k) => k + 1)
         }
