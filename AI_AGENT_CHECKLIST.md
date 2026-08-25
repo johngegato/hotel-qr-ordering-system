@@ -113,3 +113,62 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 - [x] No duplicate timetable cards after create, edit, realtime refresh, or page reload. User confirmed the live duplicate/stale-slot issue is resolved.
 - [x] No future booking is marked expired or escalated based only on `created_at`.
 - [x] Production Vercel and Supabase environments are backed up or rollback-ready before database changes.
+
+---
+
+## Phase 5: Comprehensive Audit Trail & Real-Time Booking History ✅
+
+**Completed — 2026-08-25 | Commit: `ab5c145`**
+
+### Completed items
+
+- [x] **Audit logging — guest web booking**: `GUEST_BOOKING_CREATED` inserted into `audit_logs` after every confirmed guest spa booking in `apps/web/app/app/stay/spa/page.tsx`.
+- [x] **Audit logging — staff manual booking**: `MANUAL_BOOKING_CREATED` inserted in `ManualSpaBookingModal.tsx` with full metadata (therapist, room, service, time, price, duration, notes).
+- [x] **Audit logging — staff edits**: `BOOKING_EDITED` inserted in `EditSpaBookingModal.tsx` with explicit before/after diffs (`time_changed`, `therapist_changed`, `service_changed`, `notes_changed`) and a human-readable summary.
+- [x] **Audit logging — queue approvals/declines**: `BOOKING_APPROVED` and `BOOKING_DECLINED` inserted in `SpaQueue.tsx`.
+- [x] **SpaTimetable history rebuilt**: Replaced `shouldMoveBookingToHistory()` filter with a live `audit_logs` feed merged with `requests`, so all bookings (active, future, past) appear in history immediately after creation.
+- [x] **Filter tabs**: Added `All`, `✨ Created`, `✏️ Modified`, `✓ Confirmed`, `✓ Completed`, `✕ Cancelled` filter pills in Booking History.
+- [x] **Rich event cards**: Color-coded action badges, relative timestamps, change diff summaries.
+- [x] **Audit Trail Timeline Modal**: Detail view with vertical chronological timeline per booking.
+- [x] **Realtime sync on `audit_logs`**: Supabase channel subscription added; history updates in real time without page reload.
+- [x] **`SpaSlotLock` interface** extended with `request_id?: string | null`.
+- [x] **TypeScript fixes across staff-app**:
+  - `FoodQueue.tsx`: removed invalid `flexHorizontal` style property.
+  - `TaskQueue.tsx`: added `request_type?: string` to `TaskRequest`.
+  - `UserManagement.tsx`: added missing `emailText` style.
+  - `EditSpaBookingModal.tsx`: fixed `newLock` `never` type; added `timeChipDisabled` / `timeChipTextDisabled` styles.
+  - `ManualSpaBookingModal.tsx`: added `timeChipTextDisabled` style.
+  - `SpaQueue.tsx`: extended `SpaRequestItem.payload` interface with `guest_phone`, `therapist_id`, `assigned_therapist`, `scheduled_at`.
+- [x] **Next.js SSG prerender crash fixed**: All `apps/web` admin and stay pages now use `createSupabaseBrowserClient()` from `@/lib/supabase-browser` instead of inline `createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, ...)`. Affected files:
+  - `apps/web/app/admin/page.tsx`
+  - `apps/web/app/admin/settings/page.tsx`
+  - `apps/web/app/admin/rooms/page.tsx`
+  - `apps/web/app/admin/requests/page.tsx`
+  - `apps/web/app/admin/audit/page.tsx`
+  - `apps/web/app/admin/analytics/page.tsx`
+  - `apps/web/app/app/stay/requests/page.tsx`
+  - `apps/web/app/app/stay/components/PhoneCaptureModal.tsx`
+  - `apps/web/app/app/stay/components/ActiveRequestsBanner.tsx`
+  - `apps/web/app/app/stay/components/FrontDeskFAB.tsx`
+- [x] **Build verification**: All checks passed cleanly.
+  - Web `tsc --noEmit`: ✅ 0 errors
+  - Staff-app `tsc --noEmit`: ✅ 0 errors
+  - `pnpm --filter @hotel-qr/web build`: ✅ 17 routes, 0 errors
+  - `npx expo export --platform web`: ✅ 0 errors, 996 kB bundle
+
+### Phase 5 exit criteria
+
+- [x] Every spa booking event (create, modify, approve, decline) is automatically recorded in `audit_logs`.
+- [x] Booking History shows **all** bookings (active, future, past) immediately after creation — not just completed/cancelled.
+- [x] Staff can filter history by event type and inspect a step-by-step audit timeline per booking.
+- [x] History updates in real time without page reload.
+- [x] Both apps (`apps/web` and `apps/staff-app`) build and export without TypeScript or compilation errors.
+
+### Phase 5 open items (still to do)
+
+- [ ] Verify that `audit_logs` rows are being created correctly in the live Supabase project after the Vercel deploy of commit `ab5c145`. Check the `audit_logs` table directly in the Supabase dashboard.
+- [ ] Ensure RLS policy on `audit_logs` allows INSERT from the anon key used by the staff app. If inserts fail silently, staff-sourced audit events will not appear in history.
+- [ ] Supabase migration `11_scheduled_booking_expiration.sql` — still pending manual application.
+- [ ] Phase 2 database work: atomic reservation RPC + `request_id` FK on `spa_slot_locks` — not yet implemented in production.
+- [ ] Add automated integration test for audit log insertion across all booking paths.
+

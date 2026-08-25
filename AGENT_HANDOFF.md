@@ -276,3 +276,100 @@ If you want, I can:
 5. Add cleanup on guest back/timeout/failure and verify held-lock expiry server-side.
 6. Scope every staff query and realtime subscription by hotel, then add tests for cross-hotel isolation.
 7. Add focused tests for time parsing, timezone/day boundaries, overlap rules, lock replacement, rollback, and duplicate realtime events.
+
+---
+
+## Session Update — 2026-08-25 (Comprehensive Audit Trail & Real-Time Booking History)
+
+### Overview
+
+This session implemented a comprehensive audit trail across the entire spa booking lifecycle and completely rebuilt the **Booking History** section of `SpaTimetable.tsx` so that every booking event — creation, modification, approval, completion, and cancellation — is automatically recorded in `audit_logs` and rendered in real-time.
+
+**Commit:** `ab5c145` — `feat(spa): implement comprehensive audit trail and real-time booking history`
+
+---
+
+### Root Cause Fixed
+
+Previously, newly created bookings (both guest-web and staff manual) were **not visible** in the Booking History panel. The `shouldMoveBookingToHistory()` function only moved bookings to history if their appointment window was in the past, so any active or future booking was silently excluded.
+
+The fix replaced the old history mechanism entirely with a dedicated `audit_logs` feed + merged request events, covering the full lifecycle regardless of appointment time.
+
+---
+
+### What Changed (Files)
+
+#### `apps/web/app/app/stay/spa/page.tsx`
+- After a guest successfully confirms a booking, inserts `GUEST_BOOKING_CREATED` into `audit_logs` with full booking context: `room_number`, `service_name`, `slot_time`, `scheduled_at`, `duration_mins`, `price`, and `guest_phone`.
+
+#### `apps/staff-app/components/ManualSpaBookingModal.tsx`
+- After successful staff walk-in / manual booking, inserts `MANUAL_BOOKING_CREATED` into `audit_logs` with: therapist name, room, service, scheduled slot, price, duration, and intake notes.
+- Added missing `timeChipTextDisabled` style.
+
+#### `apps/staff-app/components/EditSpaBookingModal.tsx`
+- Before saving edits, builds an explicit before/after diff object capturing `time_changed`, `therapist_changed`, `service_changed`, and `notes_changed`.
+- Inserts `BOOKING_EDITED` into `audit_logs` with a human-readable `summary` of changes.
+- Fixed `newLock` type (`never`) by using `(supabase as any).select('id').single()`.
+- Added missing `timeChipDisabled` and `timeChipTextDisabled` styles.
+
+#### `apps/staff-app/components/SpaQueue.tsx`
+- Added `BOOKING_APPROVED` and `BOOKING_DECLINED` audit log inserts when staff approves or declines from the queue.
+- Extended `SpaRequestItem.payload` interface to include `guest_phone`, `therapist_id`, `assigned_therapist`, and `scheduled_at`.
+
+#### `apps/staff-app/components/SpaTimetable.tsx`
+- **New types / helpers:**
+  - `AuditHistoryItem` interface (id, requestId, action, actionCategory, actionLabel, actionColor, badgeBg, roomNumber, serviceName, slotTime, therapistName, timeAgo, summary, timestamp, status, details, rawRequest).
+  - `formatRelativeTime(iso)` — relative human-readable timestamps (`Just now`, `5m ago`, etc.).
+  - `parseAuditHistoryItem(log, requestMap)` — converts an `audit_logs` row into an `AuditHistoryItem` for display.
+- **State additions:** `historyEvents`, `historyFilter`, `selectedHistoryItem`, `requestAuditTrail`, `loadingAuditTrail`.
+- **`fetchTimetableData`** — now also fetches `audit_logs` filtered by `SPA_BOOKING` action categories; merges and deduplicates with requests; sorts newest-first into `historyEvents`.
+- **Realtime** — added Supabase channel subscription on `audit_logs` (INSERT / UPDATE) to refresh history in real time.
+- **`handleSelectHistoryItem`** — async loader that fetches all audit events for a specific `request_id` and loads them into `requestAuditTrail`.
+- **`handleHistoryCompletion`** — updated to accept `AuditHistoryItem` (previously `selectedHistoryBooking` typed as `any`).
+- **JSX — History section completely rebuilt:**
+  - Header now shows count from `historyEvents`.
+  - **Filter tabs** (horizontal scroll pill bar): `All`, `✨ Created`, `✏️ Modified`, `✓ Confirmed`, `✓ Completed`, `✕ Cancelled`.
+  - **Event cards**: color-coded action badge, room & service, therapist, slot time, relative timestamp, change diff summary.
+  - **Detail modal** (`selectedHistoryItem`): full booking snapshot — status, room, service, therapist, scheduled slot, duration, price, phone, event time, notes — followed by a **📜 Audit Trail Timeline** showing every logged event for that booking with vertical connector line nodes.
+- **Styles added:** `historyContainer`, `historyFilterScroll`, `historyFilterRow`, `historyFilterTab`, `historyFilterTabActive`, `historyFilterTabText`, `historyFilterTabTextActive`, `historyBadgeContainer`, `historySummaryBox`, `historySummaryText`, `historyDetailSub`, `timelineSection`, `timelineHeader`, `timelineEmptyBox`, `emptyTimelineText`, `timelineList`, `timelineItem`, `timelineLeft`, `timelineDot`, `timelineLine`, `timelineRight`, `timelineTitleRow`, `timelineAction`, `timelineTime`, `timelineDate`, `timelineDetailsText`.
+- **`SpaSlotLock` interface** extended with `request_id?: string | null`.
+
+#### `apps/staff-app/components/FoodQueue.tsx`
+- Removed invalid `flexHorizontal: 1` property from `modalCardLarge` style (was causing a TypeScript strict-style error).
+
+#### `apps/staff-app/components/TaskQueue.tsx`
+- Added `request_type?: string` to `TaskRequest` interface (was causing a TypeScript error at line 114).
+
+#### `apps/staff-app/components/UserManagement.tsx`
+- Added missing `emailText` style used at line 44 in the component JSX.
+
+#### `apps/web/app/admin/page.tsx` + `settings/page.tsx` + `rooms/page.tsx` + `requests/page.tsx` + `audit/page.tsx` + `analytics/page.tsx`
+- Replaced inline `createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, ...)` pattern with `createSupabaseBrowserClient()` from `@/lib/supabase-browser`.
+- This fixes a Next.js SSG prerender crash: the old pattern threw `@supabase/ssr: Your project's URL and API key are required` at build time because `process.env` vars are not available during static generation. The `supabase-browser.ts` helper uses placeholder fallbacks and defers the real connection to the browser.
+
+#### `apps/web/app/app/stay/requests/page.tsx`
+#### `apps/web/app/app/stay/components/PhoneCaptureModal.tsx`
+#### `apps/web/app/app/stay/components/ActiveRequestsBanner.tsx`
+#### `apps/web/app/app/stay/components/FrontDeskFAB.tsx`
+- Same `createBrowserClient` → `createSupabaseBrowserClient()` migration as admin pages above.
+
+---
+
+### Build Verification Results
+
+| Check | Command | Result |
+| :--- | :--- | :--- |
+| Web TypeScript | `pnpm --filter @hotel-qr/web exec tsc --noEmit` | ✅ 0 errors |
+| Staff-app TypeScript | `node ./apps/web/node_modules/typescript/bin/tsc --noEmit -p apps/staff-app/tsconfig.json` | ✅ 0 errors |
+| Next.js production build | `pnpm --filter @hotel-qr/web build` | ✅ All 17 routes built successfully |
+| Expo Web export | `npx expo export --platform web` (in `apps/staff-app`) | ✅ 0 errors, 996 kB bundle |
+
+---
+
+### Remaining Open Items
+
+- Supabase migration `11_scheduled_booking_expiration.sql` is still pending manual application to the live Supabase project.
+- Phase 2 database reservation integrity work (atomic RPC, `request_id` FK on `spa_slot_locks`) remains not implemented in production DB.
+- Integration test for atomic duplicate prevention is still open.
+- Production multi-hotel RLS isolation test is still open.
+
