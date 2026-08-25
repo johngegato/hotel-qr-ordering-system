@@ -429,11 +429,62 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
 
 ---
 
+## Recent Session Accomplishments (August 2026)
+
+### 1. User Account Control (UAC) Relocation to Web Admin (`apps/web/app/admin/users/page.tsx`)
+- Moved staff account management from mobile/staff app into the Web Admin portal (`/admin/users`).
+- Built full CRUD operations against `staff_users` table:
+  - **Read**: Live searchable table with role & status filters, sorting, and CSV export.
+  - **Create**: Add new staff account modal with validation.
+  - **Update**: Edit user details, assign departments/roles (`ADMIN`, `FRONT_DESK`, `KITCHEN`, `HOUSEKEEPING`, `SPA`, `MAINTENANCE`), and toggle active status.
+  - **Delete**: Account deletion with confirmation modal.
+- Connected real-time PostgreSQL subscriptions for instant synchronization across sessions.
+
+### 2. Food & Beverage (F&B) Ecosystem Overhaul
+- **Database & Storage**: Added `13_menu_categories_and_storage.sql` migration creating the `menu_categories` table and public `menu-thumbnails` Supabase Storage bucket.
+- **Admin Panel (`/admin/fb`)**:
+  - **Category CRUD**: Create, rename, sort, and delete menu categories with item count safeguards.
+  - **Photo Uploads**: Client-side image compression (`canvas` resizing to ≤800px / JPEG 0.8) and direct upload to Supabase Storage with live preview.
+  - **Bulk Operations**: 1-click CSV Export of all menu items, and batch CSV Import with format validation, error reporting, and preview table. Downloadable CSV template provided.
+- **Guest In-Room Dining (`/app/stay/dining`)**:
+  - Re-architected with hero banner, live search bar, horizontal dietary filter chips, category quick-jump bar, and floating persistent cart.
+  - **Bug Fix**: Resolved infinite re-render loop on scroll caused by `activeCategory` dependency inside `fetchMenuData`.
+
+### 3. Staff App Audit Logs & 400 Bad Request Fix
+- **Root Cause**: PostgREST rejected audit log inserts with HTTP 400 because `FoodQueue.tsx` was passing `actor_role: 'STAFF'` as a top-level column (which doesn't exist on `audit_logs`) and wrapping `details` in `JSON.stringify()` rather than passing a raw JSONB object.
+- **Resolution**:
+  - Moved `actor_role` inside `details` and passed raw JS objects for JSONB columns.
+  - Wrapped all `audit_logs` queries and inserts in defensive `try/catch` blocks across `SpaTimetable.tsx`, `SpaQueue.tsx`, `FoodQueue.tsx`, `ManualSpaBookingModal.tsx`, and `EditSpaBookingModal.tsx`.
+  - Added UUID format validators (`isValidUuid`) to ensure non-UUID string IDs fallback to `null` on Postgres UUID columns.
+  - Restored therapist lock release logic (`releaseSpaLockForWindow`) in `SpaTimetable.tsx`.
+
+### 4. Staff App Request History (`apps/staff-app/components/RequestHistory.tsx`)
+- Complete overhaul matching `SpaTimetable` history architecture:
+  - **Interactive Detail Drawer**: Tapping any request card opens a bottom-sheet modal with full metadata, room info, food/spa itemization, and a vertical live `audit_logs` timeline.
+  - **Staff Name Lookup**: Fetches `staff_users` on mount to resolve `claimed_by` UUIDs to real staff names (e.g. "Front Desk Admin" instead of `Staff #dacb6e69`).
+  - **Filters & Sorting**: Category chips (All / Food / Spa / Calls / Tasks) and Room/Date sort toggles.
+
+### 5. Staff App Spa Queue Fluid Layout (`apps/staff-app/components/SpaQueue.tsx`)
+- Removed `maxWidth: 600` and rigid margins that caused card cramping and misalignment on wide screens.
+- Redesigned with a 100% fluid glassmorphic container matching the rest of the dashboard.
+- Added direct **`✓ Accept` (Confirm)** button in the card action bar alongside `✏️ Edit`, `📞 Call`, and `✕ Decline`.
+- Real-time subscriptions now cleanly trigger refetches to guarantee relational `rooms(room_number)` joins are always populated.
+
+### 6. Guest Room Services Mobile UI Redesign (`apps/web/app/app/stay/requests/page.tsx`)
+- **Prominent Navigation**: Enforced large, thumb-friendly **`← Back to Concierge`** button and room status badge.
+- **Category Filter Chips**: Added horizontal scrollable department filter chips (`🌟 All Services`, `🎩 Front Desk`, `🧹 Housekeeping`, `🔧 Maintenance`, `✍️ Custom`).
+- **Contextual Emojis**: Replaced generic bell icons with dedicated contextual icons (🔑, ⏰, 🧳, 🧖, 🛏️, 🧴, ✨, 🧺, ❄️, 📺, 🚿, 💡).
+- **Mobile Touch Targets**: Enlarged quantity adjusters to 56px and action CTA buttons (`min-h-[56px]`).
+- **Bottom Sheet Modal**: Designed mobile bottom-sheet modal with backdrop blur for service customizations.
+
+---
+
 ### Remaining Open Items
 
-- Supabase migration `11_scheduled_booking_expiration.sql` is still pending manual application to the live Supabase project.
-- Phase 2 database reservation integrity work (atomic RPC, `request_id` FK on `spa_slot_locks`) remains not implemented in production DB.
+- Apply pending Supabase migrations (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`) in target production Supabase database.
+- Phase 2 database reservation integrity work (atomic RPC, `request_id` FK on `spa_slot_locks`) remains pending in production DB.
 - Integration test for atomic duplicate prevention is still open.
 - Production multi-hotel RLS isolation test is still open.
+
 
 

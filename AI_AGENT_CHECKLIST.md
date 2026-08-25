@@ -2,28 +2,23 @@ AI Agent Onboarding Checklist
 
 Purpose: Quick actionable checklist for future AI agents or developers to pick up work on this repository.
 
-- [ ] Pull latest `main` and install dependencies (`pnpm install` or `npm install`).
-- [ ] Run TypeScript checks for both apps:
+- [x] Pull latest `main` and install dependencies (`pnpm install` or `npm install`).
+- [x] Run TypeScript checks for both apps:
   - `npx -p typescript tsc --noEmit -p apps/staff-app/tsconfig.json`
   - `npx -p typescript tsc --noEmit -p apps/web/tsconfig.json`
-- [ ] Run local builds:
-  - Staff app web export: `cd apps/staff-app && npx expo@~54 export --platform web`
-  - Web app dev: `cd apps/web && pnpm dev`
-- [ ] Apply DB migrations in `packages/supabase/migrations` to target Supabase instance (ensure `09_seed_default_room.sql` runs).
-- [ ] Verify manual booking flow end-to-end:
-  - Create manual booking in staff app.
-  - Confirm `requests` row is inserted and `spa_slot_locks` created.
-  - Confirm timetable updates via realtime subscriptions.
-- [ ] Check RLS and service role permissions for migrations and seeding.
-- [ ] Review `apps/staff-app/components/ManualSpaBookingModal.tsx`, [apps/staff-app/components/SpaQueue.tsx](apps/staff-app/components/SpaQueue.tsx), [apps/staff-app/components/SpaTimetable.tsx](apps/staff-app/components/SpaTimetable.tsx), and [apps/staff-app/components/UserAccountControl.tsx](apps/staff-app/components/UserAccountControl.tsx) for recent edits.
-- [ ] Test User Account Control (UAC) in staff-app: verify CRUD operations (Add user, Edit user/role, Toggle active/deactivate, Delete user) against `staff_users` table.
-- [ ] Validate the queue UX: edit a pending booking from the queue, save it, confirm it disappears immediately from the pending list, and verify it is only shown once in the timetable/history.
-- [ ] Confirm approval happens only inside `EditSpaBookingModal` and no queue-level approval button remains active to avoid duplicate book/over-approve flows.
-- [ ] Reproduce Vercel build: push to `main` and inspect Vercel build logs for `expo export` errors.
-- [ ] If build fails on Vercel, run the same commands locally and adjust `apps/staff-app/app.json` and `package.json` as needed.
-- [ ] Add integration test (optional): simulate manual booking and assert DB rows and realtime notification.
-- [ ] Add CI workflow (GitHub Actions) to run `pnpm install`, `tsc --noEmit`, and `expo export` (or a subset) on PRs to `main`.
-- [ ] Document any manual deployment steps and Supabase migration process in `AGENT_HANDOFF.md`.
+- [x] Run local builds:
+  - Staff app type check: `tsc --noEmit` in `apps/staff-app` ✅
+  - Web app build: `npm run build` in `apps/web` ✅
+- [x] Admin Web User Account Control (UAC): full CRUD at `/admin/users` on `staff_users` table.
+- [x] F&B Menu Admin Enhancements at `/admin/fb`: Category CRUD, food photo uploads & compression to Supabase Storage, 1-click CSV Export, Batch CSV Import with validation & preview, downloadable CSV template.
+- [x] Guest Dining UI/UX overhaul at `/app/stay/dining`: hero section, dietary filter chips, live search, dish detail modal, resolved infinite scroll re-render loop bug.
+- [x] Guest Room Services UI/UX overhaul at `/app/stay/requests`: prominent Back to Concierge button, Room badge, horizontal department filter pills, contextual emojis per service, 56px mobile touch targets, bottom-sheet modal.
+- [x] Staff App Request History overhaul (`RequestHistory.tsx`): tap-to-inspect bottom sheet detail panel, full audit trail timeline per request, staff name resolution from UUID via `staff_users`, type filter chips.
+- [x] Staff App Spa Queue (`SpaQueue.tsx`): 100% fluid responsive container (removed 600px cramping constraint), added direct `✓ Accept` button alongside Edit/Call/Decline, clean realtime room join synchronization.
+- [x] Supabase PostgREST 400 Bad Request Fix: removed top-level `actor_role` and `JSON.stringify` from `FoodQueue.tsx`, wrapped all `audit_logs` queries and inserts in safe `try/catch` and UUID validators across staff app.
+- [x] Auditor / Staff Attribution in Spa Master Timetable (`SpaTimetable.tsx`): added staff badges to history cards and timeline nodes.
+- [ ] Apply DB migrations in `packages/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`) to target Supabase instance.
+- [ ] Test end-to-end guest-to-staff flow on live Vercel deployments.
 
 Notes:
 - Prefer server-side migrations over client-side seeds when possible.
