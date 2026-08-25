@@ -570,7 +570,19 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
   - Structured summary and modified items itemization in audit timeline.
 
 #### Type Definitions (`packages/supabase/types/index.ts`)
-- Added optional `subtotal?: number`, `service_charge_pct?: number`, and `service_charge_amount?: number` to `FoodOrderPayload`.
+### 12. Staff App Food Queue Realtime Sync & Optimistic UI Updates (`apps/staff-app/components/FoodQueue.tsx`)
+
+- **Root Cause of UI Stagnation & Delayed Cards**:
+  - The realtime subscription in `FoodQueue.tsx` previously used `filter: request_type=eq.FOOD_ORDER`. In Supabase Postgres Realtime, column filters on non-primary-key columns cause `UPDATE` events to be dropped when tables use default replica identity.
+  - Action handlers (`updateStatus` for *Prepare* and *Order Ready*, `saveModifiedOrder`, and `confirmRejection`) only updated Supabase without updating local React state optimistically or synchronously triggering state refresh.
+- **Resolution**:
+  - Removed the broken column filter from `supabase.channel('staff-food-queue-realtime')` to listen to all `requests` events (consistent with `TaskQueue.tsx` and `SpaQueue.tsx`).
+  - Added **instant optimistic UI updates** across all actions:
+    - *Prepare*: Instantly sets order status to `PREPARING` in UI without waiting for network response.
+    - *Order Ready*: Instantly removes the completed order from the active queue.
+    - *Edit Order Save*: Instantly updates the order's items, subtotal, service charge, grand total, and sets status to `PREPARING`.
+    - *Decline*: Instantly removes the declined order from the active queue.
+  - Incoming food orders now appear immediately upon submission without requiring a manual browser or app refresh.
 
 ---
 

@@ -23,6 +23,7 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Guest checkout live calculation & price breakdown (subtotal + service charge + grand total) at `/app/stay/dining/checkout`.
   - Staff App Edit Dining Order live service charge calculation, edit modal breakdown, payload persistence, and audit logging in `FoodQueue.tsx`.
   - Staff App Request History & Logs itemized subtotal, service charge, and grand total breakdown in `RequestHistory.tsx`.
+- [x] Staff App Food Queue Realtime Sync & Optimistic UI Updates (`FoodQueue.tsx`): removed broken column filter on requests channel, added instant optimistic state updates across Prepare, Order Ready, Edit Save, and Decline actions.
 - [x] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments.
 
