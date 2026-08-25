@@ -134,22 +134,18 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
         .order('created_at', { ascending: true })
 
       // 2. Fetch ONLY F&B department items from catalog_items
-      const { data: dbCatalog } = await (supabase as any)
+      const { data: dbCatalog, error: dbCatalogErr } = await (supabase as any)
         .from('catalog_items')
         .select('id, name, price, is_available, category, description, image_url')
         .eq('department', 'F_AND_B')
         .order('sort_order', { ascending: true })
 
-      // 3. Check menu_catalog table if exists
-      const { data: menuCatalogData } = await (supabase as any)
-        .from('menu_catalog')
-        .select('id, name, price, is_available, category, description, image_url')
+      if (dbCatalogErr) {
+        console.error('Error fetching catalog_items for F_AND_B:', dbCatalogErr)
+      }
 
-      const mergedMap = new Map<string, CatalogMenuItem>()
-
-      if (dbCatalog && dbCatalog.length > 0) {
-        dbCatalog.forEach((item: any) => {
-          mergedMap.set(item.name.toLowerCase(), {
+      const itemsList: CatalogMenuItem[] = (dbCatalog && dbCatalog.length > 0)
+        ? dbCatalog.map((item: any) => ({
             id: item.id,
             name: item.name,
             price: Number(item.price),
@@ -157,31 +153,11 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
             category: item.category || 'Mains',
             description: item.description || '',
             image_url: item.image_url,
-          })
-        })
-      }
-
-      if (menuCatalogData && menuCatalogData.length > 0) {
-        menuCatalogData.forEach((item: any) => {
-          mergedMap.set(item.name.toLowerCase(), {
-            id: item.id,
-            name: item.name,
-            price: Number(item.price),
-            is_available: item.is_available ?? true,
-            category: item.category || 'Mains',
-            description: item.description || '',
-            image_url: item.image_url,
-          })
-        })
-      }
-
-      // If database returned no F&B items, use fallback items
-      if (mergedMap.size === 0) {
-        FALLBACK_MENU.forEach(item => mergedMap.set(item.name.toLowerCase(), item))
-      }
+          }))
+        : FALLBACK_MENU
 
       setOrders((orderData ?? []) as unknown as FoodRequest[])
-      setCatalogItems(Array.from(mergedMap.values()))
+      setCatalogItems(itemsList)
     } catch (err) {
       console.error('Error fetching food queue data:', err)
     } finally {

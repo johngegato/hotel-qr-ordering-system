@@ -91,7 +91,7 @@ function GuestDiningContent() {
       console.warn('[GuestDining] menu_categories table fetch fallback:', e)
     }
 
-    // 2. Fetch Menu Items (from catalog_items and fallback to menu_catalog)
+    // 2. Fetch Menu Items (exclusively from catalog_items where department = 'F_AND_B')
     let catalog: CatalogItem[] = []
     const { data: catItemsData } = await (supabase as any)
       .from('catalog_items')
@@ -104,18 +104,6 @@ function GuestDiningContent() {
 
     if (catItemsData && catItemsData.length > 0) {
       catalog = catItemsData as CatalogItem[]
-    } else {
-      const { data: menuCatalogData } = await (supabase as any)
-        .from('menu_catalog')
-        .select('*')
-        .eq('hotel_id', HOTEL_ID)
-        .eq('is_available', true)
-        .order('category')
-        .order('sort_order')
-
-      if (menuCatalogData) {
-        catalog = menuCatalogData as CatalogItem[]
-      }
     }
 
     setItems(catalog)
@@ -155,8 +143,7 @@ function GuestDiningContent() {
   useEffect(() => {
     const ch = supabase
       .channel('guest-dining-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, () => fetchMenuData(false))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_catalog' }, () => fetchMenuData(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items', filter: `department=eq.F_AND_B` }, () => fetchMenuData(false))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_categories' }, () => fetchMenuData(false))
       .subscribe()
     return () => {
