@@ -82,11 +82,23 @@ function CheckoutContent() {
 
     const phone = phoneOverride || getStoredGuestPhone()
 
-    const payload: FoodOrderPayload = {
+    let roomNumber = ''
+    if (roomId) {
+      const { data: rm } = await (supabase.from('rooms') as any)
+        .select('room_number')
+        .eq('id', roomId)
+        .maybeSingle()
+      if (rm?.room_number) roomNumber = String(rm.room_number)
+    }
+
+    const payload: FoodOrderPayload & { room_number?: string; guest_phone?: string; booked_by?: string } = {
       order_type: orderType,
       items: cart.map(c => ({ id: c.item.id, name: c.item.name, quantity: c.quantity, unit_price: c.item.price })),
       special_instructions: instructions + (phone ? ` [Guest Phone: ${phone}]` : ''),
       total_price: total,
+      room_number: roomNumber || undefined,
+      guest_phone: phone || undefined,
+      booked_by: roomNumber ? `Guest (Room ${roomNumber})` : 'Guest',
       ...(orderType === 'ROOM_SERVICE' && { delivery_preference: delivery }),
       ...(orderType === 'DINE_IN'      && { target_arrival_time: arrival }),
     }

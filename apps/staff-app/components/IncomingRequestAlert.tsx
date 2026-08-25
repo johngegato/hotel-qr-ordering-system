@@ -135,10 +135,19 @@ export default function IncomingRequestAlert({ request, onDismiss }: IncomingReq
     (request.payload?.room_no as any) ??
     (request.payload?.roomNumber as any) ??
     ''
-  const rawRoom = roomsVal ?? payloadRoom ?? ''
+
+  const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || '').trim())
+
+  let rawRoom = ''
+  if (roomsVal && roomsVal !== '—' && !isUuid(roomsVal)) {
+    rawRoom = String(roomsVal).trim()
+  } else if (payloadRoom && payloadRoom !== '—' && !isUuid(payloadRoom)) {
+    rawRoom = String(payloadRoom).trim()
+  }
+
   const roomNo = rawRoom
-    ? (String(rawRoom).startsWith('Room') ? String(rawRoom) : `Room ${rawRoom}`)
-    : '—'
+    ? (rawRoom.startsWith('Room') ? rawRoom : `Room ${rawRoom}`)
+    : 'Room —'
 
   const bgFlash = flashAnim.interpolate({
     inputRange: [0, 1],

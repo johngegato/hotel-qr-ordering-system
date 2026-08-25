@@ -22,7 +22,9 @@ interface FoodOrderPayload {
   delivery_preference?: 'HAND_TO_ME' | 'LEAVE_AT_DOOR'
   target_arrival_time?: 'IN_15_MINS' | 'IN_30_MINS' | 'IN_60_MINS' | 'CUSTOM'
   total_price: number
+  room_number?: string
   guest_phone?: string
+  booked_by?: string
   rejection_reason?: string
   modified_by_staff?: boolean
 }
@@ -455,7 +457,9 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
               {/* Header: Room & Status */}
               <View style={styles.headerRow}>
                 <View>
-                  <Text style={styles.roomNumber}>Room {order.rooms?.room_number ?? '—'}</Text>
+                  <Text style={styles.roomNumber}>
+                    Room {order.rooms?.room_number || order.payload?.room_number || '—'}
+                  </Text>
                   <View style={[styles.statusBadge, isPreparing ? styles.statusPreparing : styles.statusPending]}>
                     <Text style={styles.statusText}>{order.status}</Text>
                   </View>
@@ -470,7 +474,7 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
               {!!guestPhone && (
                 <TouchableOpacity
                   style={styles.callGuestBtn}
-                  onPress={() => callGuest(guestPhone, order.rooms?.room_number)}>
+                  onPress={() => callGuest(guestPhone, order.rooms?.room_number || order.payload?.room_number)}>
                   <Text style={styles.callGuestBtnText}>📞 Call Guest ({guestPhone})</Text>
                 </TouchableOpacity>
               )}
@@ -546,7 +550,7 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
                   <TouchableOpacity
                     style={[styles.actionBtn, styles.btnReady, updating === order.id && styles.btnDisabled]}
                     disabled={updating === order.id}
-                    onPress={() => updateStatus(order.id, 'COMPLETED')}>
+                    onPress={() => updateStatus(order.id, 'RESOLVED')}>
                     <Text style={styles.actionBtnText}>
                       {updating === order.id ? 'Completing…' : '✓ Order Ready'}
                     </Text>

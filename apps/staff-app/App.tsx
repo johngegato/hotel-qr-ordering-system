@@ -225,7 +225,7 @@ export default function App() {
   }
 
   const hydrateIncomingAlert = async (request: any): Promise<IncomingRequest | null> => {
-    if (!request || request.request_type !== 'SPA_BOOKING') return request
+    if (!request) return null
 
     const payload = request.payload || {}
     const roomFromPayload =
@@ -237,24 +237,26 @@ export default function App() {
 
     let roomNumber = typeof roomFromPayload === 'string' && roomFromPayload.trim() ? roomFromPayload.trim() : ''
 
-    if (!roomNumber && request.room_id) {
+    const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
+
+    if ((!roomNumber || isUuid(roomNumber)) && request.room_id) {
       const { data: roomData } = await supabase
         .from('rooms')
         .select('room_number')
         .eq('id', request.room_id)
         .maybeSingle()
 
-      roomNumber = roomData?.room_number ? String(roomData.room_number) : ''
+      if (roomData?.room_number) {
+        roomNumber = String(roomData.room_number)
+      }
     }
-
-    if (!roomNumber) return request
 
     return {
       ...request,
-      rooms: [{ room_number: roomNumber }],
+      rooms: { room_number: roomNumber || '—' },
       payload: {
         ...payload,
-        room_number: roomNumber,
+        room_number: roomNumber || '—',
       },
     }
   }

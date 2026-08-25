@@ -66,9 +66,22 @@ function GuestDiningContent() {
   const [searchQuery, setSearchQuery]           = useState('')
   const [selectedTag, setSelectedTag]           = useState<DietaryTag | 'ALL'>('ALL')
   const [selectedDetailItem, setSelectedDetailItem] = useState<CatalogItem | null>(null)
+  const [roomNumber, setRoomNumber]             = useState<string>('')
 
   const catBarRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  // Fetch Room Info
+  useEffect(() => {
+    if (!roomId) return
+    ;(supabase.from('rooms') as any)
+      .select('room_number')
+      .eq('id', roomId)
+      .maybeSingle()
+      .then(({ data }: any) => {
+        if (data?.room_number) setRoomNumber(String(data.room_number))
+      })
+  }, [roomId])
 
   // Fetch Categories & Items
   const fetchMenuData = useCallback(async (isInitial = false) => {
@@ -262,16 +275,16 @@ function GuestDiningContent() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <button
               onClick={() => router.push(`/app/stay?room=${roomId}&hash=${hash}`)}
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fed7aa', fontSize: 13, cursor: 'pointer', padding: '6px 14px', borderRadius: 20, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+              style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: 13, cursor: 'pointer', padding: '8px 16px', borderRadius: 20, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
             >
-              ← Room Portal
+              ← Back to Concierge
             </button>
 
-            {roomId && (
-              <div style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.35)', color: '#fb923c', fontSize: 12, padding: '4px 12px', borderRadius: 20, fontWeight: 700 }}>
-                🛎️ Room {roomId}
+            {roomNumber ? (
+              <div style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.35)', color: '#fb923c', fontSize: 12, padding: '5px 14px', borderRadius: 20, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                🚪 Room {roomNumber}
               </div>
-            )}
+            ) : null}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
