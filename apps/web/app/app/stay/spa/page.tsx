@@ -40,7 +40,7 @@ const FALLBACK_SERVICES: SpaService[] = [
   { id: 'spa-04', name: 'Foot & Leg Reflexology', description: 'Revitalizing foot massage restoring natural energy flow.', price: 1800, duration_mins: 45, requires_on_call: false, is_available: true, image_url: null },
 ]
 
-const TIME_SLOTS = [
+const FALLBACK_TIME_SLOTS = [
   '10:00 AM',
   '11:30 AM',
   '01:00 PM',
@@ -61,6 +61,7 @@ function GuestSpaContent() {
   const [selectedDay, setSelectedDay] = useState<'TODAY' | 'TOMORROW'>('TODAY')
   const [services, setServices] = useState<SpaService[]>(FALLBACK_SERVICES)
   const [therapists, setTherapists] = useState<Therapist[]>([])
+  const [timeSlots, setTimeSlots] = useState<string[]>(FALLBACK_TIME_SLOTS)
   const [selectedService, setSelectedService] = useState<SpaService | null>(null)
   const [lockedSlots, setLockedSlots] = useState<SlotLock[]>([])
   const [selectedSlotTime, setSelectedSlotTime] = useState<string | null>(null)
@@ -84,7 +85,7 @@ function GuestSpaContent() {
       .eq('status', 'HELD')
   }
 
-  // Fetch catalog, therapists & live locks
+  // Fetch catalog, therapists, time slots & live locks
   const loadSpaData = useCallback(async () => {
     try {
       // 1. Services
@@ -104,7 +105,19 @@ function GuestSpaContent() {
 
       if (therData && therData.length > 0) setTherapists(therData)
 
-      // 3. Room lookup
+      // 3. Dynamic Time Slots
+      const { data: slotData } = await (supabase.from('spa_time_slots') as any)
+        .select('slot_time, is_available, is_on_call, sort_order')
+        .eq('hotel_id', defaultHotelId)
+        .eq('is_available', true)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true })
+
+      if (slotData && slotData.length > 0) {
+        setTimeSlots(slotData.map((s: any) => s.slot_time))
+      }
+
+      // 4. Room lookup
       if (roomId) {
         const { data: rm } = await (supabase.from('rooms') as any)
           .select('room_number')
@@ -113,7 +126,7 @@ function GuestSpaContent() {
         if (rm?.room_number) setRoomNumber(rm.room_number)
       }
 
-      // 4. Slot locks (active locks only)
+      // 5. Slot locks (active locks only)
       const nowIso = new Date().toISOString()
       const { data: lockData } = await (supabase.from('spa_slot_locks') as any)
         .select('id, start_time, end_time, status, expires_at, therapist_id')
@@ -131,10 +144,13 @@ function GuestSpaContent() {
   useEffect(() => {
     loadSpaData()
 
-    // Realtime channel for lock updates
+    // Realtime channel for lock and time slot updates
     const channel = supabase
-      .channel('guest_spa_locks')
+      .channel('guest_spa_data')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'spa_slot_locks' }, () => {
+        loadSpaData()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'spa_time_slots' }, () => {
         loadSpaData()
       })
       .subscribe()
@@ -563,7 +579,7 @@ function GuestSpaContent() {
 
               {/* Slot Grid */}
               <div className="grid grid-cols-2 gap-3 pt-1">
-                {TIME_SLOTS.map((slot) => {
+                {timeSlots.map((slot) => {
                   const { status, label, isSelectable } = getSlotStatus(slot, selectedService.duration_mins)
 
                   return (

@@ -143,6 +143,7 @@ export default function EditSpaBookingModal({
   const [loadingServices, setLoadingServices] = useState(false)
 
   // Editable fields
+  const [timeSlots, setTimeSlots] = useState<string[]>(TIME_SLOTS)
   const [selectedTime, setSelectedTime] = useState<string>('14:00')
   const [selectedTherapistId, setSelectedTherapistId] = useState<string | null>(null)
   const [selectedService, setSelectedService] = useState<string>('Deep Tissue Massage')
@@ -205,25 +206,36 @@ export default function EditSpaBookingModal({
           }))
           setServices(mapped)
         }
-      } catch {
-        // keep DEFAULT_CATALOG_SERVICES
-      } finally {
-        setLoadingServices(false)
-      }
-
-      // 2. Fetch therapists
-      setLoadingTherapists(true)
-      try {
-        const { data } = await supabase
+        // 2. Fetch Therapists
+        const { data: thData } = await (supabase as any)
           .from('therapists')
-          .select('*')
+          .select('id, full_name, is_on_call')
           .eq('hotel_id', HOTEL_ID)
           .eq('is_active', true)
           .order('is_on_call', { ascending: true })
-        setTherapists(data && data.length > 0 ? data : FALLBACK_THERAPISTS)
-      } catch {
-        setTherapists(FALLBACK_THERAPISTS)
+        if (thData && thData.length > 0) setTherapists(thData)
+
+        // 3. Fetch Dynamic Time Slots from DB
+        try {
+          const { data: slotData } = await (supabase as any)
+            .from('spa_time_slots')
+            .select('slot_time, is_available, is_on_call, sort_order')
+            .eq('hotel_id', HOTEL_ID)
+            .eq('is_available', true)
+            .order('sort_order', { ascending: true })
+            .order('created_at', { ascending: true })
+
+          if (slotData && slotData.length > 0) {
+            const mapped = slotData.map((s: any) => normalizeTimeTo24Hour(s.slot_time))
+            setTimeSlots(mapped)
+          }
+        } catch (err) {
+          console.warn('[EditSpaBookingModal] Non-fatal spa_time_slots fetch:', err)
+        }
+      } catch (err) {
+        console.error('Failed to load spa edit data:', err)
       } finally {
+        setLoadingServices(false)
         setLoadingTherapists(false)
       }
     }
@@ -249,7 +261,7 @@ export default function EditSpaBookingModal({
 
         for (const t of therapists) {
           const perSlot: Record<string, boolean> = {}
-          for (const slot of TIME_SLOTS) {
+          for (const slot of timeSlots) {
             const candidate = buildSlotWindow(slot, durationMins)
                         const baseDate = getBookingBaseDate(booking)
                         candidate.start.setFullYear(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate())
@@ -286,7 +298,7 @@ export default function EditSpaBookingModal({
       }
     }
     check()
-  }, [selectedTime, selectedService, isOpen, booking, therapists, originalTherapistId])
+  }, [selectedTime, selectedService, isOpen, booking, therapists, originalTherapistId, timeSlots])
 
   const handleSave = async () => {
     if (!booking) return
@@ -729,7 +741,7 @@ export default function EditSpaBookingModal({
             {/* Hour Block Presets */}
             <Text style={styles.subSectionLabel}>Hour Block:</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-              {TIME_SLOTS.map((t) => {
+              {timeSlots.map((t) => {
                 const hourPart = t.split(':')[0]
                 const selectedHour = selectedTime.split(':')[0]
                 const isActive = selectedHour === hourPart
@@ -746,7 +758,7 @@ export default function EditSpaBookingModal({
                     disabled={isBlocked}
                   >
                     <Text style={[styles.timeChipText, isActive && styles.timeChipTextActive, isBlocked && styles.timeChipTextDisabled]}>
-                      {hourPart}:00
+                      {t}
                     </Text>
                   </TouchableOpacity>
                 )

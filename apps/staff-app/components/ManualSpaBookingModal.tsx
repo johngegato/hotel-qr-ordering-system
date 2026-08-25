@@ -142,6 +142,7 @@ export default function ManualSpaBookingModal({
   const [guestPhone, setGuestPhone] = useState('')
   const [selectedService, setSelectedService] = useState<SpaServiceItem>(DEFAULT_SERVICES[0])
   const [selectedTherapistId, setSelectedTherapistId] = useState(FALLBACK_THERAPISTS[0].id)
+  const [timeSlots, setTimeSlots] = useState<string[]>(TIME_SLOTS)
   const [selectedTime, setSelectedTime] = useState('14:00')
   const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today')
   const [intakeNote, setIntakeNote] = useState('')
@@ -182,6 +183,24 @@ export default function ManualSpaBookingModal({
         .eq('is_active', true)
         .order('is_on_call', { ascending: true })
       if (thData && thData.length > 0) setTherapists(thData)
+
+      // 3. Fetch Dynamic Time Slots from DB
+      try {
+        const { data: slotData } = await (supabase as any)
+          .from('spa_time_slots')
+          .select('slot_time, is_available, is_on_call, sort_order')
+          .eq('hotel_id', HOTEL_ID)
+          .eq('is_available', true)
+          .order('sort_order', { ascending: true })
+          .order('created_at', { ascending: true })
+
+        if (slotData && slotData.length > 0) {
+          const mapped = slotData.map((s: any) => normalizeTimeTo24Hour(s.slot_time))
+          setTimeSlots(mapped)
+        }
+      } catch (err) {
+        console.warn('[ManualSpaBookingModal] Non-fatal spa_time_slots fetch:', err)
+      }
     }
     loadData()
   }, [])
@@ -692,7 +711,7 @@ export default function ManualSpaBookingModal({
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.timeRow}>
-                  {TIME_SLOTS.map((t) => {
+                  {timeSlots.map((t) => {
                     const normalizedSelectedTime = normalizeTimeTo24Hour(selectedTime)
                     const isBlocked = !!slotAvailabilityMap[selectedTherapistId]?.[t]
                     const isActiveHour = normalizedSelectedTime.split(':')[0] === t.split(':')[0]

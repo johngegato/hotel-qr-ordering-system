@@ -437,6 +437,7 @@ export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeSt
   const [loading, setLoading] = useState(true)
   const [therapists, setTherapists] = useState<Therapist[]>(FALLBACK_THERAPISTS)
   const [bookings, setBookings] = useState<BookingSlot[]>([])
+  const [configuredSlots, setConfiguredSlots] = useState<string[]>([])
   const [debugOpenMap, setDebugOpenMap] = useState<Record<string, boolean>>({})
   const [historyEvents, setHistoryEvents] = useState<AuditHistoryItem[]>([])
   const [historyFilter, setHistoryFilter] = useState<'ALL' | 'CREATED' | 'EDITED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED'>('ALL')
@@ -463,6 +464,23 @@ export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeSt
     try {
       setLoading(true)
       const { from, to } = getDateRange(selectedDay)
+
+      // 0. Dynamic Time Slots from DB
+      try {
+        const { data: slotData } = await (supabase as any)
+          .from('spa_time_slots')
+          .select('slot_time, is_available, is_on_call, sort_order')
+          .eq('hotel_id', HOTEL_ID)
+          .eq('is_available', true)
+          .order('sort_order', { ascending: true })
+          .order('created_at', { ascending: true })
+
+        if (slotData && slotData.length > 0) {
+          setConfiguredSlots(slotData.map((s: any) => convertTo24Hour(s.slot_time)))
+        }
+      } catch (slotErr) {
+        console.warn('[SpaTimetable] spa_time_slots fetch non-fatal fallback:', slotErr)
+      }
 
       // 1. Therapists
       const { data: therapistData } = await supabase
@@ -758,6 +776,8 @@ export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeSt
     channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, () => fetchTimetableData())
     channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'audit_logs' }, () => fetchTimetableData())
 
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'spa_time_slots' }, () => fetchTimetableData())
+
     channel.subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -948,12 +968,25 @@ export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeSt
 
   // ─── Derived data ──────────────────────────────────────────────────────────
 
+  const baseSlots = configuredSlots.length > 0 ? configuredSlots : TIME_SLOTS
+
+  // Include any extra hours from bookings (ensures late-night appointments e.g. 01:30 AM are always visible)
+  const dynamicSlots = [...baseSlots]
+  bookings.forEach(b => {
+    if (b.isVisible !== false && b.startTime) {
+      const hour = slotHour(b.startTime)
+      if (!dynamicSlots.some(s => slotHour(s) === hour)) {
+        dynamicSlots.push(`${String(hour).padStart(2, '0')}:00`)
+      }
+    }
+  })
+
   // Slots that have at least one booking (for minimized view)
-  const bookedSlots = TIME_SLOTS.filter(slot =>
+  const bookedSlots = dynamicSlots.filter(slot =>
     bookings.some(b => b.isVisible !== false && slotHour(b.startTime) === slotHour(slot))
   )
 
-  const displaySlots = isExpanded ? TIME_SLOTS : bookedSlots
+  const displaySlots = isExpanded ? dynamicSlots : bookedSlots
 
   const visibleBookings = bookings.filter(b => b.isVisible !== false)
   const totalBooked = visibleBookings.length
@@ -1099,7 +1132,7 @@ export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeSt
       <View style={styles.viewModeBanner}>
         {isExpanded ? (
           <Text style={styles.viewModeText}>
-            📋 Full timetable — {TIME_SLOTS.length} slots · tap empty slot to quick-add
+            📋 Full timetable — {dynamicSlots.length} slots · tap empty slot to quick-add
           </Text>
         ) : (
           <Text style={styles.viewModeText}>

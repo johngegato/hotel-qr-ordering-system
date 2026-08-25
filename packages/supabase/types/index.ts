@@ -103,6 +103,16 @@ export interface MenuCategory {
   updated_at?: string
 }
 
+export interface SpaTimeSlot {
+  id: string
+  hotel_id: string
+  slot_time: string
+  is_available: boolean
+  is_on_call: boolean
+  sort_order: number
+  created_at: string
+}
+
 // ── F&B Cart Types ────────────────────────────────────────────
 
 export interface CartItem {

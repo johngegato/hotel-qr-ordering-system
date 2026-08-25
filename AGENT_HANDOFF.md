@@ -620,12 +620,35 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
 
 ---
 
+### 15. Customizable Spa Appointment Time Slots & Shift Scheduling (`/admin/spa`, `/app/stay/spa`, `SpaTimetable.tsx`)
+
+- **Database Migration (`apps/web/supabase/migrations/15_spa_time_slots.sql`)**:
+  - Creates `spa_time_slots` table with `slot_time`, `is_available`, `is_on_call`, `sort_order`, and `hotel_id`.
+  - Configures RLS policies and enables realtime publication.
+- **Admin Portal (`/admin/spa`)**:
+  - Full CRUD management of appointment time slots.
+  - 1-click availability toggling (`Active` vs `Disabled`) and on-call requirement toggling (`In-House` vs `On-Call`).
+  - Inline / form edit capability and deletion with confirmation.
+  - Quick-seed preset shortcuts for **Standard Day Shift (10:00 AM – 07:00 PM)** and **Late Night Shift (02:00 PM – 02:00 AM)**.
+  - Realtime subscription to `spa_time_slots`.
+- **Guest Booking Page (`/app/stay/spa`)**:
+  - Dynamically loads active time slots (`is_available = true`) in configured sequence.
+  - Realtime subscription on `spa_time_slots` ensures guest slots update immediately when modified or disabled by admin.
+  - Graceful fallback to default slots when offline or unseeded.
+- **Staff Master Timetable & Modals (`SpaTimetable.tsx`, `ManualSpaBookingModal.tsx`, `EditSpaBookingModal.tsx`)**:
+  - `SpaTimetable.tsx` dynamically renders the timetable rows based on configured slots from `spa_time_slots`, supporting afternoon-to-midnight-to-early-morning shifts (e.g. 2:00 PM to 2:00 AM).
+  - Automatically incorporates any unlisted appointment hours so late-night bookings are never hidden.
+  - Booking modals mirror the dynamic slot list with 24-hour granular time pickers.
+
+---
+
 ### Completed Database & Integration Items
 
 - [x] ~~**Run migration `14_service_charge.sql`** on Supabase production instance to add the new columns (`service_charge_enabled`, `service_charge_pct`).~~ *(Applied to production ✅)*
 - [x] ~~Apply pending Supabase migrations (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`) in target production Supabase database.~~ *(Applied to production ✅)*
 - [x] ~~Phase 2 database reservation integrity work (atomic RPC, `request_id` FK on `spa_slot_locks`)~~ *(Completed in production ✅)*
 - [x] ~~Integration test for atomic duplicate prevention~~ *(Completed ✅)*
+- [ ] Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.
 
 ### Remaining Open Items
 
