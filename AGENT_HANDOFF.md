@@ -537,6 +537,41 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
   - `service_charge_amount` — computed charge
   - `total_price` — grand total (used by staff in FoodQueue)
 
+### 11. Staff App Service Charge Integration in Edit Orders, History & Audit Logs (`apps/staff-app`)
+
+**Goal**: Full alignment of the dining service charge across the staff dashboard, including modified dining orders, pending card badges, detailed request history drawers, and audit log timelines.
+
+#### Staff App Edit Order Modal (`apps/staff-app/components/FoodQueue.tsx`)
+- **Live Configuration Fetch**: Reads `service_charge_enabled` and `service_charge_pct` from `hotels` table, with real-time updates when hotel settings change.
+- **Dynamic Service Charge Computation**: When adding/removing items or modifying quantities in the *Edit Dining Order* modal:
+  - Computes `itemsSubtotal`
+  - Applies order's `service_charge_pct` (or hotel's active percentage if not yet set)
+  - Computes `serviceChargeAmt` and `newTotal`
+- **Modal Footer Breakdown**: Displays:
+  - *Items Subtotal*: `₱[Subtotal]`
+  - *Service Charge (X%)*: `+₱[SC]` (amber colored, hidden when disabled)
+  - *New Order Total*: `₱[Grand Total]`
+- **Payload & Database Update**: `saveModifiedOrder` updates `requests.payload` with:
+  - `subtotal`
+  - `service_charge_pct`
+  - `service_charge_amount`
+  - `total_price` (grand total)
+- **Pending Order Cards**:
+  - Displays formatted total with 2 decimal places.
+  - Shows an amber badge `incl. X% SC` next to total and itemized `💳 Service Charge (X%)` line in the items list.
+
+#### Staff App Request History & Logs (`apps/staff-app/components/RequestHistory.tsx`)
+- **Detail Modal Breakdown**: In the request drawer for dining orders, replaced raw total text with structured breakdown:
+  - *Items Subtotal*: `₱[Subtotal]`
+  - *Service Charge (X%)*: `+₱[SC]` (amber colored)
+  - *Grand Total*: `₱[Total]` (bold orange)
+- **Audit Trail Formatting**: Formats `MODIFY_DINING_ORDER` log entries to clearly show:
+  - `📝 Order Updated: ₱[New Total] (incl. ₱[SC] service charge)`
+  - Structured summary and modified items itemization in audit timeline.
+
+#### Type Definitions (`packages/supabase/types/index.ts`)
+- Added optional `subtotal?: number`, `service_charge_pct?: number`, and `service_charge_amount?: number` to `FoodOrderPayload`.
+
 ---
 
 ### Remaining Open Items

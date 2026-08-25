@@ -16,8 +16,14 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
 - [x] Staff App Request History overhaul (`RequestHistory.tsx`): tap-to-inspect bottom sheet detail panel, full audit trail timeline per request, staff name resolution from UUID via `staff_users`, type filter chips.
 - [x] Staff App Spa Queue (`SpaQueue.tsx`): 100% fluid responsive container (removed 600px cramping constraint), added direct `✓ Accept` button alongside Edit/Call/Decline, clean realtime room join synchronization.
 - [x] Supabase PostgREST 400 Bad Request Fix: removed top-level `actor_role` and `JSON.stringify` from `FoodQueue.tsx`, wrapped all `audit_logs` queries and inserts in safe `try/catch` and UUID validators across staff app.
-- [x] Auditor / Staff Attribution in Spa Master Timetable (`SpaTimetable.tsx`): added staff badges to history cards and timeline nodes.
-- [ ] Apply DB migrations in `packages/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`) to target Supabase instance.
+- [x] Configurable Dining Service Charge:
+  - Database schema: `apps/web/supabase/migrations/14_service_charge.sql` (`service_charge_enabled`, `service_charge_pct` on `hotels`).
+  - Admin settings toggle & percentage control with live preview at `/admin/settings`.
+  - Guest dining menu notice banner & floating cart hint at `/app/stay/dining`.
+  - Guest checkout live calculation & price breakdown (subtotal + service charge + grand total) at `/app/stay/dining/checkout`.
+  - Staff App Edit Dining Order live service charge calculation, edit modal breakdown, payload persistence, and audit logging in `FoodQueue.tsx`.
+  - Staff App Request History & Logs itemized subtotal, service charge, and grand total breakdown in `RequestHistory.tsx`.
+- [ ] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments.
 
 Notes:
