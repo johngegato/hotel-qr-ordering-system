@@ -142,8 +142,8 @@ export default function App() {
   const [resolvedToday, setResolvedToday] = useState(0)
   const [activeStaffUser, setActiveStaffUser] = useState<StaffUser | null>(null)
   const [incomingAlert, setIncomingAlert] = useState<IncomingRequest | null>(null)
-  const [loginEmail, setLoginEmail] = useState('frontdesk@demo.local')
-  const [loginPassword, setLoginPassword] = useState('demo123456')
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [loginError, setLoginError] = useState('')
   const fadeAnim = React.useRef(new Animated.Value(0)).current
@@ -288,11 +288,11 @@ export default function App() {
       }
 
       if (!data || data.is_active !== true) {
-        throw new Error('Invalid staff credentials. Try frontdesk@demo.local / demo123456.')
+        throw new Error('Invalid credentials. Please check your email and password.')
       }
 
       if (data.password !== password) {
-        throw new Error('Invalid staff credentials. Try frontdesk@demo.local / demo123456.')
+        throw new Error('Invalid credentials. Please check your email and password.')
       }
 
       setActiveStaffUser({
@@ -348,19 +348,28 @@ export default function App() {
       <SafeAreaView style={styles.safe}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
         <View style={styles.loginContainer}>
-          <View style={styles.loginCard}>
-            <Text style={styles.loginTitle}>🏨 Staff Login</Text>
-            <Text style={styles.loginSubtitle}>Front desk access</Text>
+          {/* Logo / Brand area */}
+          <View style={styles.loginBrand}>
+            <View style={styles.loginLogoRing}>
+              <Text style={styles.loginLogoIcon}>🏨</Text>
+            </View>
+            <Text style={styles.loginBrandName}>Staff Portal</Text>
+            <Text style={styles.loginBrandSub}>Authorized access only</Text>
+          </View>
 
-            <Text style={styles.inputLabel}>Email</Text>
+          <View style={styles.loginCard}>
+            <Text style={styles.loginTitle}>Sign In</Text>
+
+            <Text style={styles.inputLabel}>Email address</Text>
             <TextInput
               style={styles.input}
               value={loginEmail}
               onChangeText={setLoginEmail}
-              placeholder="frontdesk@demo.local"
-              placeholderTextColor="#64748b"
+              placeholder="Enter your email"
+              placeholderTextColor="#334155"
               autoCapitalize="none"
               keyboardType="email-address"
+              autoComplete="email"
             />
 
             <Text style={styles.inputLabel}>Password</Text>
@@ -368,8 +377,8 @@ export default function App() {
               style={styles.input}
               value={loginPassword}
               onChangeText={setLoginPassword}
-              placeholder="demo123456"
-              placeholderTextColor="#64748b"
+              placeholder="Enter your password"
+              placeholderTextColor="#334155"
               secureTextEntry
             />
 
@@ -379,17 +388,11 @@ export default function App() {
               disabled={isLoggingIn}
             >
               <Text style={styles.loginButtonText}>
-                {isLoggingIn ? 'Signing in...' : 'Login'}
+                {isLoggingIn ? 'Signing in…' : 'Sign In'}
               </Text>
             </TouchableOpacity>
 
-            {loginError ? <Text style={styles.loginError}>{loginError}</Text> : null}
-
-            <View style={styles.demoBox}>
-              <Text style={styles.demoTitle}>Demo credentials</Text>
-              <Text style={styles.demoText}>frontdesk@demo.local</Text>
-              <Text style={styles.demoText}>demo123456</Text>
-            </View>
+            {!!loginError && <Text style={styles.loginError}>⚠ {loginError}</Text>}
           </View>
         </View>
       </SafeAreaView>
@@ -513,12 +516,6 @@ export default function App() {
             <RequestHistory />
 
 
-            {/* Phase indicator */}
-            <View style={styles.phaseNote}>
-              <Text style={styles.phaseNoteText}>
-                🚀 Phase 4 Active — Room Requests & Task Routing Loop
-              </Text>
-            </View>
           </Animated.View>
         )}
 
@@ -563,104 +560,114 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: COLORS.bg,
-    paddingHorizontal: 20,
-    paddingVertical: 28,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    gap: 20,
+  },
+  loginBrand: {
+    alignItems: 'center',
+    gap: 10,
+  },
+  loginLogoRing: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.goldMuted,
+    borderWidth: 1.5,
+    borderColor: 'rgba(251,191,36,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  loginLogoIcon: {
+    fontSize: 38,
+  },
+  loginBrandName: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.5,
+  },
+  loginBrandSub: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
   loginCard: {
     width: '100%',
-    maxWidth: 440,
+    maxWidth: 420,
     backgroundColor: COLORS.surface,
     borderRadius: 24,
     padding: 28,
     borderWidth: 1,
     borderColor: COLORS.border,
-    shadowColor: '#020617',
-    shadowOpacity: 0.45,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 10,
+    gap: 0,
   },
   loginTitle: {
-    fontSize: 30,
-    fontWeight: '800',
+    fontSize: 22,
+    fontWeight: '700',
     color: COLORS.textPrimary,
-    marginBottom: 6,
-  },
-  loginSubtitle: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
-    marginBottom: 18,
+    marginBottom: 20,
+    letterSpacing: -0.3,
   },
   inputLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#e2e8f0',
-    marginBottom: 8,
-    marginTop: 12,
+    color: COLORS.textSecondary,
+    marginBottom: 7,
+    marginTop: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   input: {
-    backgroundColor: '#0b1220',
+    backgroundColor: '#070e1c',
     color: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#475569',
+    borderWidth: 1.5,
+    borderColor: '#1e293b',
     borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
     fontSize: 16,
   },
   loginButton: {
-    marginTop: 18,
+    marginTop: 22,
     backgroundColor: COLORS.gold,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 14,
+    paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: COLORS.gold,
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
   },
   loginButtonDisabled: {
-    opacity: 0.75,
+    opacity: 0.65,
   },
   loginButtonText: {
-    color: '#0f172a',
+    color: '#0c1117',
     fontWeight: '800',
     fontSize: 16,
+    letterSpacing: 0.2,
   },
   loginError: {
     marginTop: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 11,
     borderWidth: 1,
-    borderColor: 'rgba(248,113,113,0.32)',
-    backgroundColor: 'rgba(248,113,113,0.1)',
+    borderColor: 'rgba(248,113,113,0.28)',
+    backgroundColor: 'rgba(248,113,113,0.08)',
     color: '#fca5a5',
     fontSize: 13,
     fontWeight: '600',
-  },
-  demoBox: {
-    marginTop: 18,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(251,191,36,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.26)',
-  },
-  demoTitle: {
-    color: '#fcd34d',
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 6,
-  },
-  demoText: {
-    color: '#e2e8f0',
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 2,
+    lineHeight: 18,
   },
 
   // Header
@@ -877,22 +884,6 @@ const styles = StyleSheet.create({
   moduleArrow: {
     fontSize: 16,
     color: COLORS.textMuted,
-  },
-
-  // Phase note
-  phaseNote: {
-    marginTop: 20,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: 'rgba(251,191,36,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.15)',
-    alignItems: 'center',
-  },
-  phaseNoteText: {
-    color: COLORS.gold,
-    fontSize: 13,
-    fontWeight: '500',
   },
 
   // Error
