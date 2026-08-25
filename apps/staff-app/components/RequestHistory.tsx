@@ -197,25 +197,67 @@ export default function RequestHistory() {
   // Resolve actor from audit trail or request payload
   const resolveActorFromRequest = (req: HistoricalRequest) => {
     const p = req.payload as any
-    // Resolve claimed_by UUID to a real staff name via staffMap
-    const claimedName = req.claimed_by ? (staffMap[req.claimed_by] || null) : null
-    const name =
+
+    // 1. If a staff member has claimed/handled this request, prefer their name from staffMap
+    const claimedStaffName = req.claimed_by ? (staffMap[req.claimed_by] || null) : null
+    if (claimedStaffName) {
+      return { name: claimedStaffName, role: 'STAFF' }
+    }
+
+    // 2. Check payload for an explicit staff actor set during manual operations/edits
+    const payloadStaffName =
       p?.last_modified_by ||
-      p?.booked_by ||
-      p?.claimed_by_name ||
-      claimedName ||
-      (p?.manual_booking ? 'Front Desk Staff' : null) ||
+      p?.modified_by_staff_name ||
+      (p?.manual_booking ? (p?.booked_by || 'Front Desk Staff') : null) ||
       null
-    const role = p?.manual_booking ? 'FRONT_DESK' : req.claimed_by ? 'STAFF' : 'GUEST'
-    return { name, role }
+    if (payloadStaffName) {
+      return { name: payloadStaffName, role: p?.manual_booking ? 'FRONT_DESK' : 'STAFF' }
+    }
+
+    // 3. claimed_by UUID exists on request but not found in staffMap yet
+    if (req.claimed_by) {
+      return { name: 'Front Desk Staff', role: 'STAFF' }
+    }
+
+    // 4. No staff claimed it — it's a guest-initiated request!
+    const roomNum = req.rooms?.room_number || p?.room_number || p?.room
+    let guestName = 'Guest'
+    if (p?.booked_by) {
+      guestName = p.booked_by
+    } else if (p?.claimed_by_name) {
+      guestName = p.claimed_by_name
+    } else if (roomNum) {
+      guestName = `Guest (Room ${roomNum})`
+    }
+
+    return { name: guestName, role: 'GUEST' }
   }
 
   const resolveActorFromLog = (log: AuditLog) => {
     const d = log.details || {}
-    const name =
-      d.actor_name || d.booked_by || d.modified_by || d.approved_by ||
-      d.cancelled_by || d.completed_by || d.claimed_by_name || null
-    const role = d.actor_role || null
+    let name =
+      d.actor_name ||
+      d.modified_by ||
+      d.approved_by ||
+      d.cancelled_by ||
+      d.completed_by ||
+      d.claimed_by_name ||
+      null
+
+    let role = d.actor_role || null
+
+    if (!name) {
+      if (role === 'GUEST' || !role) {
+        name = d.booked_by || (d.room_number ? `Guest (Room ${d.room_number})` : 'Guest')
+        role = 'GUEST'
+      } else if (role === 'STAFF' || role === 'FRONT_DESK') {
+        name = 'Staff Member'
+      }
+    } else if (role === 'STAFF' && name.startsWith('Guest')) {
+      // Guard against guest strings accidentally mapped to STAFF role in logs
+      name = 'Front Desk Staff'
+    }
+
     const email = d.actor_email || null
     return { name, role, email }
   }

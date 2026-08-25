@@ -30,6 +30,7 @@ interface FoodOrderPayload {
   booked_by?: string
   rejection_reason?: string
   modified_by_staff?: boolean
+  last_modified_by?: string
 }
 
 interface FoodRequest {
@@ -108,7 +109,7 @@ function ArrivalTimer({ target }: { target: string }) {
   return <Text style={[styles.arrivalTimer, left < 120 && styles.arrivalTimerUrgent]}>{m}:{String(s).padStart(2, '0')}</Text>
 }
 
-export default function FoodQueue({ activeStaffId, refreshTrigger }: { activeStaffId?: string; refreshTrigger?: number }) {
+export default function FoodQueue({ activeStaffId, activeStaffUser, refreshTrigger }: { activeStaffId?: string; activeStaffUser?: any; refreshTrigger?: number }) {
   const [orders, setOrders] = useState<FoodRequest[]>([])
   const [catalogItems, setCatalogItems] = useState<CatalogMenuItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -298,7 +299,7 @@ export default function FoodQueue({ activeStaffId, refreshTrigger }: { activeSta
               action: status === 'PREPARING' ? 'START_PREPARING_FOOD' : status === 'RESOLVED' ? 'FOOD_ORDER_READY' : 'UPDATE_FOOD_STATUS',
               details: {
                 actor_role: 'STAFF',
-                actor_name: 'Kitchen Staff',
+                actor_name: activeStaffUser?.full_name || 'Kitchen Staff',
                 request_id: id,
                 new_status: status,
                 room_number: targetOrder?.rooms?.room_number || targetOrder?.payload?.room_number || 'Unknown',
@@ -423,6 +424,7 @@ export default function FoodQueue({ activeStaffId, refreshTrigger }: { activeSta
       service_charge_amount: scAmt,
       total_price: newTotal,
       special_instructions: editNotes.trim(),
+      last_modified_by: activeStaffUser?.full_name || 'Front Desk Staff',
       modified_by_staff: true,
     }
 
@@ -462,7 +464,7 @@ export default function FoodQueue({ activeStaffId, refreshTrigger }: { activeSta
               action: 'MODIFY_DINING_ORDER',
               details: {
                 actor_role: 'STAFF',
-                actor_name: 'Kitchen Staff',
+                actor_name: activeStaffUser?.full_name || 'Kitchen Staff',
                 request_id: orderId,
                 room_number: editingOrder.rooms?.room_number ?? 'Unknown',
                 original_total: editingOrder.payload.total_price,
@@ -533,7 +535,7 @@ export default function FoodQueue({ activeStaffId, refreshTrigger }: { activeSta
               action: 'REJECT_DINING_ORDER',
               details: {
                 actor_role: 'STAFF',
-                actor_name: 'Kitchen Staff',
+                actor_name: activeStaffUser?.full_name || 'Kitchen Staff',
                 request_id: orderId,
                 room_number: cancellingOrder.rooms?.room_number ?? 'Unknown',
                 rejection_reason: reason,

@@ -510,7 +510,7 @@ export default function App() {
             <TaskQueue activeStaffId={activeStaffUser?.id} />
 
             {/* 4. Food Orders Queue */}
-            <FoodQueue activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
+            <FoodQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} refreshTrigger={refreshKey} />
 
             {/* 5. All Request History Logs */}
             <RequestHistory />
