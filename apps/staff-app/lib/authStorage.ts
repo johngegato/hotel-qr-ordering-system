@@ -1,27 +1,34 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as SecureStore from 'expo-secure-store'
+import { Platform } from 'react-native'
 import { StaffUser } from '../components/UserManagement'
 
-const STAFF_SESSION_KEY = '@hotel_qr_staff_session_v1'
+const STAFF_SESSION_KEY = 'hotel_qr_staff_session_v1'
 
 /**
  * Save staff user session to persistent local storage (survives app kill / close).
  */
 export async function saveStaffSession(user: StaffUser): Promise<void> {
+  const payload = JSON.stringify({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    savedAt: new Date().toISOString(),
+  })
+
   try {
-    const payload = JSON.stringify({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      savedAt: new Date().toISOString(),
-    })
-    await AsyncStorage.setItem(STAFF_SESSION_KEY, payload)
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(STAFF_SESSION_KEY, payload)
+      }
+    } else {
+      await SecureStore.setItemAsync(STAFF_SESSION_KEY, payload)
+    }
   } catch (error) {
     console.warn('[authStorage] Failed to save staff session:', error)
-    // Web fallback if AsyncStorage throws
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
-        window.localStorage.setItem(STAFF_SESSION_KEY, JSON.stringify(user))
+        window.localStorage.setItem(STAFF_SESSION_KEY, payload)
       } catch {
         // ignore
       }
@@ -34,7 +41,16 @@ export async function saveStaffSession(user: StaffUser): Promise<void> {
  */
 export async function getSavedStaffSession(): Promise<StaffUser | null> {
   try {
-    let raw = await AsyncStorage.getItem(STAFF_SESSION_KEY)
+    let raw: string | null = null
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        raw = window.localStorage.getItem(STAFF_SESSION_KEY)
+      }
+    } else {
+      raw = await SecureStore.getItemAsync(STAFF_SESSION_KEY)
+    }
+
     if (!raw && typeof window !== 'undefined' && window.localStorage) {
       raw = window.localStorage.getItem(STAFF_SESSION_KEY)
     }
@@ -62,12 +78,17 @@ export async function getSavedStaffSession(): Promise<StaffUser | null> {
  */
 export async function clearStaffSession(): Promise<void> {
   try {
-    await AsyncStorage.removeItem(STAFF_SESSION_KEY)
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem(STAFF_SESSION_KEY)
+      }
+    } else {
+      await SecureStore.deleteItemAsync(STAFF_SESSION_KEY)
+    }
   } catch (error) {
-    console.warn('[authStorage] Failed to clear staff session from AsyncStorage:', error)
+    console.warn('[authStorage] Failed to clear staff session:', error)
   }
 
-  // Web fallback cleanup
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       window.localStorage.removeItem(STAFF_SESSION_KEY)
