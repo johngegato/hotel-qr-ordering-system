@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Linking, Alert,
 } from 'react-native'
@@ -43,55 +43,26 @@ interface CatalogMenuItem {
   is_available: boolean
   category?: string
   description?: string
+  image_url?: string | null
 }
 
-const DEFAULT_FULL_MENU: CatalogMenuItem[] = [
-  // Breakfast
-  { id: 'm1', name: 'Classic Eggs Benedict', price: 22, is_available: true, category: 'Breakfast', description: 'Poached eggs, Canadian bacon, hollandaise sauce' },
-  { id: 'm2', name: 'Avocado Toast', price: 18, is_available: true, category: 'Breakfast', description: 'Sourdough, cherry tomatoes, feta cheese' },
-  { id: 'm3', name: 'Açaí Bowl', price: 16, is_available: true, category: 'Breakfast', description: 'Granola, berries, banana, honey' },
-  { id: 'm4', name: 'Brioche French Toast', price: 20, is_available: true, category: 'Breakfast', description: 'Maple syrup, fresh berries, whipped cream' },
-  { id: 'm5', name: 'Omelette Royale', price: 24, is_available: true, category: 'Breakfast', description: 'Three eggs, smoked salmon, chives, Gruyère' },
-
-  // Starters
-  { id: 'm6', name: 'Burrata & Heirloom Tomatoes', price: 22, is_available: true, category: 'Starters', description: 'Fresh burrata, basil oil, crostini' },
-  { id: 'm7', name: 'Shrimp Cocktail', price: 28, is_available: true, category: 'Starters', description: 'Chilled jumbo shrimp, cocktail sauce' },
-  { id: 'm8', name: 'Truffle Arancini', price: 19, is_available: true, category: 'Starters', description: 'Crispy risotto balls, black truffle, aioli' },
-  { id: 'm9', name: 'Classic Caesar Salad', price: 18, is_available: true, category: 'Starters', description: 'Romaine, parmesan crisp, garlic croutons' },
-  { id: 'm10', name: 'Soup of the Day', price: 14, is_available: true, category: 'Starters', description: 'Chef special seasonal soup' },
-
-  // Mains
-  { id: 'm11', name: 'Grilled Wagyu Burger', price: 38, is_available: true, category: 'Mains', description: 'A5 wagyu, truffle aioli, cheddar, fries' },
-  { id: 'm12', name: 'Pan-Seared Salmon', price: 42, is_available: true, category: 'Mains', description: 'Atlantic salmon, lemon butter, asparagus' },
-  { id: 'm13', name: 'Truffle Risotto', price: 34, is_available: true, category: 'Mains', description: 'Carnaroli rice, black truffle, parmesan' },
-  { id: 'm14', name: 'Lobster Linguine', price: 58, is_available: true, category: 'Mains', description: 'Boston lobster, white wine garlic sauce' },
-  { id: 'm15', name: 'Prime Ribeye Steak', price: 52, is_available: true, category: 'Mains', description: '12oz ribeye, herb butter, truffle fries' },
-  { id: 'm16', name: 'Chicken Parmigiana', price: 30, is_available: true, category: 'Mains', description: 'Crispy chicken breast, marinara, mozzarella' },
-
-  // Desserts
-  { id: 'm17', name: 'Tiramisu', price: 14, is_available: true, category: 'Desserts', description: 'Espresso, mascarpone, cocoa powder' },
-  { id: 'm18', name: 'Chocolate Lava Cake', price: 16, is_available: true, category: 'Desserts', description: 'Warm cake, vanilla bean gelato' },
-  { id: 'm19', name: 'New York Cheesecake', price: 15, is_available: true, category: 'Desserts', description: 'Graham crust, berry compote' },
-  { id: 'm20', name: 'Artisan Gelato Scoop', price: 12, is_available: true, category: 'Desserts', description: 'Vanilla, Chocolate, or Pistachio' },
-
-  // Beverages
-  { id: 'm21', name: 'Fresh Orange Juice', price: 8, is_available: true, category: 'Beverages', description: '100% freshly squeezed' },
-  { id: 'm22', name: 'Iced Vanilla Latte', price: 7, is_available: true, category: 'Beverages', description: 'Espresso, oat milk, vanilla' },
-  { id: 'm23', name: 'Sparkling Mineral Water', price: 6, is_available: true, category: 'Beverages', description: 'San Pellegrino 750ml' },
-  { id: 'm24', name: 'House Red Wine Glass', price: 16, is_available: true, category: 'Beverages', description: 'Cabernet Sauvignon' },
-  { id: 'm25', name: 'Craft IPA Beer', price: 10, is_available: true, category: 'Beverages', description: 'Local brewery 330ml' },
+const FALLBACK_MENU: CatalogMenuItem[] = [
+  { id: 'fb-01', name: 'Grilled Wagyu Burger', price: 450, is_available: true, category: 'Mains', description: 'A5 wagyu beef patty, truffle aioli, aged cheddar, brioche bun, hand-cut fries' },
+  { id: 'fb-02', name: 'Spicy Pork Spare Ribs', price: 325, is_available: true, category: 'Mains', description: 'Tender braised ribs with spicy sweet glaze and garlic rice' },
+  { id: 'fb-03', name: 'Crispy Pork Kare-Kare', price: 455, is_available: true, category: 'Mains', description: 'Crispy pork belly in rich peanut sauce with steamed vegetables' },
+  { id: 'fb-04', name: 'Specialty Coffee', price: 120, is_available: true, category: 'Drinks', description: 'Single-origin espresso, steamed fresh milk, hot or iced' },
+  { id: 'fb-05', name: 'Fresh Pressed Orange Juice', price: 150, is_available: true, category: 'Drinks', description: '100% freshly squeezed Valencia oranges' },
+  { id: 'fb-06', name: 'Warm Chocolate Fondant', price: 220, is_available: true, category: 'Desserts', description: 'Molten dark chocolate lava cake with vanilla bean gelato' },
 ]
-
-const MENU_CATEGORIES = ['All', 'Breakfast', 'Starters', 'Mains', 'Desserts', 'Beverages']
 
 const DELIVERY_LABELS: Record<string, string> = {
   HAND_TO_ME:   '🤝 Hand to Me',
   LEAVE_AT_DOOR: '🚪 Leave at Door',
 }
 const ARRIVAL_LABELS: Record<string, string> = {
-  IN_15_MINS: 'In 15 minutes',
-  IN_30_MINS: 'In 30 minutes',
-  IN_60_MINS: 'In 60 minutes',
+  IN_15_MINS: 'In 15 mins',
+  IN_30_MINS: 'In 30 mins',
+  IN_60_MINS: 'In 60 mins',
   CUSTOM:     'Custom time',
 }
 
@@ -101,6 +72,7 @@ const REJECTION_REASONS = [
   'Out of stock items',
   'Guest unreachable',
   'Invalid request',
+  'Other / Custom reason',
 ]
 
 function ElapsedTimer({ createdAt }: { createdAt: string }) {
@@ -150,83 +122,108 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
   const [selectedReason, setSelectedReason] = useState(REJECTION_REASONS[0])
   const [customReason, setCustomReason] = useState('')
 
-  // Fetch orders and full restaurant menu catalog
+  // Fetch orders and STRICTLY F&B food/drink catalog items
   const fetchData = async () => {
-    // 1. Fetch pending orders
-    const { data: orderData } = await supabase
-      .from('requests')
-      .select('*, rooms(room_number)')
-      .eq('request_type', 'FOOD_ORDER')
-      .in('status', ['PENDING', 'PREPARING'])
-      .order('created_at', { ascending: true })
+    try {
+      // 1. Fetch pending food orders
+      const { data: orderData } = await supabase
+        .from('requests')
+        .select('*, rooms(room_number)')
+        .eq('request_type', 'FOOD_ORDER')
+        .in('status', ['PENDING', 'PREPARING'])
+        .order('created_at', { ascending: true })
 
-    // 2. Fetch dedicated menu catalog items from menu_catalog table
-    const { data: menuCatalogData } = await (supabase as any)
-      .from('menu_catalog')
-      .select('id, name, price, is_available, category, description')
+      // 2. Fetch ONLY F&B department items from catalog_items
+      const { data: dbCatalog } = await (supabase as any)
+        .from('catalog_items')
+        .select('id, name, price, is_available, category, description, image_url')
+        .eq('department', 'F_AND_B')
+        .order('sort_order', { ascending: true })
 
-    // 3. Fallback to catalog_items if menu_catalog is not yet created/populated
-    const { data: dbCatalog } = await (supabase as any)
-      .from('catalog_items')
-      .select('id, name, price, is_available, category, description')
+      // 3. Check menu_catalog table if exists
+      const { data: menuCatalogData } = await (supabase as any)
+        .from('menu_catalog')
+        .select('id, name, price, is_available, category, description, image_url')
 
-    // Build unified map prioritizing dedicated menu_catalog data
-    const mergedMap = new Map<string, CatalogMenuItem>()
-    DEFAULT_FULL_MENU.forEach(item => mergedMap.set(item.name.toLowerCase(), item))
-    
-    if (dbCatalog && dbCatalog.length > 0) {
-      dbCatalog.forEach((item: any) => {
-        mergedMap.set(item.name.toLowerCase(), {
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          is_available: item.is_available ?? true,
-          category: item.category || 'Mains',
-          description: item.description || '',
+      const mergedMap = new Map<string, CatalogMenuItem>()
+
+      if (dbCatalog && dbCatalog.length > 0) {
+        dbCatalog.forEach((item: any) => {
+          mergedMap.set(item.name.toLowerCase(), {
+            id: item.id,
+            name: item.name,
+            price: Number(item.price),
+            is_available: item.is_available ?? true,
+            category: item.category || 'Mains',
+            description: item.description || '',
+            image_url: item.image_url,
+          })
         })
-      })
-    }
+      }
 
-    if (menuCatalogData && menuCatalogData.length > 0) {
-      menuCatalogData.forEach((item: any) => {
-        mergedMap.set(item.name.toLowerCase(), {
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          is_available: item.is_available ?? true,
-          category: item.category || 'Mains',
-          description: item.description || '',
+      if (menuCatalogData && menuCatalogData.length > 0) {
+        menuCatalogData.forEach((item: any) => {
+          mergedMap.set(item.name.toLowerCase(), {
+            id: item.id,
+            name: item.name,
+            price: Number(item.price),
+            is_available: item.is_available ?? true,
+            category: item.category || 'Mains',
+            description: item.description || '',
+            image_url: item.image_url,
+          })
         })
-      })
-    }
+      }
 
-    setOrders((orderData ?? []) as unknown as FoodRequest[])
-    setCatalogItems(Array.from(mergedMap.values()))
-    setLoading(false)
+      // If database returned no F&B items, use fallback items
+      if (mergedMap.size === 0) {
+        FALLBACK_MENU.forEach(item => mergedMap.set(item.name.toLowerCase(), item))
+      }
+
+      setOrders((orderData ?? []) as unknown as FoodRequest[])
+      setCatalogItems(Array.from(mergedMap.values()))
+    } catch (err) {
+      console.error('Error fetching food queue data:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
     fetchData()
-    let ch: RealtimeChannel
-    ch = supabase
+    const ch: RealtimeChannel = supabase
       .channel('staff-food-queue')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_catalog' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests', filter: `request_type=eq.FOOD_ORDER` }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, fetchData)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [])
 
-  // Helper to check item availability against live catalog_items
+  // Dynamically extract categories from current F&B menu items
+  const menuCategories = useMemo(() => {
+    const cats = new Set<string>()
+    catalogItems.forEach(item => {
+      if (item.category && item.category.trim()) {
+        cats.add(item.category.trim())
+      }
+    })
+    return ['All', ...Array.from(cats)]
+  }, [catalogItems])
+
+  // Helper to check item availability against live catalog
   const checkItemAvailability = (itemName: string): boolean => {
     const match = catalogItems.find(c => c.name.toLowerCase() === itemName.toLowerCase())
     return match ? match.is_available : true
   }
 
-  // Update order status directly (e.g. Accept/Prepare, Order Ready)
+  // Update order status directly
   const updateStatus = async (id: string, status: string) => {
     setUpdating(id)
-    await supabase.from('requests').update({ status, claimed_by: activeStaffId || null, claimed_at: new Date().toISOString() }).eq('id', id)
+    await supabase.from('requests').update({
+      status,
+      claimed_by: activeStaffId || null,
+      claimed_at: new Date().toISOString(),
+    }).eq('id', id)
     setUpdating(null)
   }
 
@@ -260,7 +257,7 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
     setEditItems(updated)
   }
 
-  // Add selected menu item from the complete menu to the order
+  // Add selected menu item from the restaurant menu to the order
   const addItemToOrder = (menuItem: CatalogMenuItem) => {
     const existingIndex = editItems.findIndex(i => i.name.toLowerCase() === menuItem.name.toLowerCase())
     if (existingIndex >= 0) {
@@ -280,7 +277,6 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
       ])
     }
 
-    // Trigger toast notification
     setAddedItemToast(`Added 1× ${menuItem.name}`)
     setTimeout(() => setAddedItemToast(null), 2500)
   }
@@ -359,20 +355,19 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
 
     const updatedPayload = {
       ...cancellingOrder.payload,
-      rejection_reason: reason || 'Order rejected by staff',
+      rejection_reason: reason || 'Order rejected by kitchen staff',
     }
 
     try {
-      // 1. Update request status to DECLINED
       await supabase
         .from('requests')
         .update({
           status: 'DECLINED',
           payload: updatedPayload,
+          claimed_by: activeStaffId || null,
         })
         .eq('id', cancellingOrder.id)
 
-      // 2. Audit log entry for rejection
       try {
         await (supabase.from('audit_logs') as any).insert([
           {
@@ -411,13 +406,16 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
 
   // Filter full catalog items by search query and category
   const filteredFullMenu = catalogItems.filter(item => {
+    const q = menuSearchQuery.toLowerCase().trim()
     const matchesSearch =
-      item.name.toLowerCase().includes(menuSearchQuery.toLowerCase()) ||
-      (item.category && item.category.toLowerCase().includes(menuSearchQuery.toLowerCase())) ||
-      (item.description && item.description.toLowerCase().includes(menuSearchQuery.toLowerCase()))
+      !q ||
+      item.name.toLowerCase().includes(q) ||
+      (item.category && item.category.toLowerCase().includes(q)) ||
+      (item.description && item.description.toLowerCase().includes(q))
 
     const matchesCategory =
-      selectedCategoryFilter === 'All' || item.category?.toLowerCase() === selectedCategoryFilter.toLowerCase()
+      selectedCategoryFilter === 'All' ||
+      (item.category && item.category.toLowerCase() === selectedCategoryFilter.toLowerCase())
 
     return matchesSearch && matchesCategory
   })
@@ -448,57 +446,51 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
           const guestPhone = payload.guest_phone || (payload.special_instructions?.match(/\d{7,15}/)?.[0])
 
           // Check if any item in this order is currently marked unavailable
-          const itemsWithAvailability = (payload.items || []).map(item => ({
-            ...item,
-            available: checkItemAvailability(item.name),
-          }))
-          const hasUnavailableItems = itemsWithAvailability.some(i => !i.available)
+          const hasUnavailableItem = payload.items?.some(i => !checkItemAvailability(i.name))
 
           return (
-            <View key={order.id} style={[
-              styles.card,
-              isDineIn && styles.cardDineIn,
-              isPreparing && styles.cardPreparing,
-              hasUnavailableItems && styles.cardWarning,
-            ]}>
-
-              {/* Dine-In Badge */}
-              {isDineIn && (
-                <View style={styles.dineInBadge}>
-                  <Text style={styles.dineInBadgeText}>🍽️ DINE-IN PRE-ORDER</Text>
-                  {payload.target_arrival_time && (
-                    <ArrivalTimer target={payload.target_arrival_time} />
-                  )}
-                </View>
-              )}
-
-              {/* Unavailable Items Warning Banner */}
-              {hasUnavailableItems && (
+            <View
+              key={order.id}
+              style={[
+                styles.card,
+                isDineIn && styles.cardDineIn,
+                isPreparing && styles.cardPreparing,
+                hasUnavailableItem && styles.cardWarning,
+              ]}>
+              {/* Unavailable Item Alert Banner */}
+              {hasUnavailableItem && (
                 <View style={styles.warningBanner}>
                   <Text style={styles.warningBannerText}>
-                    ⚠️ CONTAINS UNAVAILABLE ITEM(S) — Call guest to discuss preferences
+                    ⚠️ Contains out-of-stock item(s). Click &quot;Edit&quot; to substitute or call guest.
                   </Text>
                 </View>
               )}
 
-              {/* Room & Status Row */}
+              {/* Dine In Target Arrival Timer */}
+              {isDineIn && payload.target_arrival_time && (
+                <View style={styles.dineInBadge}>
+                  <Text style={styles.dineInBadgeText}>
+                    🍽️ DINE IN · Arrival: {ARRIVAL_LABELS[payload.target_arrival_time] ?? payload.target_arrival_time}
+                  </Text>
+                  <ArrivalTimer target={payload.target_arrival_time} />
+                </View>
+              )}
+
+              {/* Header: Room & Status */}
               <View style={styles.headerRow}>
                 <View>
                   <Text style={styles.roomNumber}>Room {order.rooms?.room_number ?? '—'}</Text>
                   <View style={[styles.statusBadge, isPreparing ? styles.statusPreparing : styles.statusPending]}>
-                    <Text style={styles.statusText}>
-                      {isPreparing ? '👨‍🍳 PREPARING' : '⏳ PENDING'}
-                      {payload.modified_by_staff ? ' · EDITED' : ''}
-                    </Text>
+                    <Text style={styles.statusText}>{order.status}</Text>
                   </View>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <ElapsedTimer createdAt={order.created_at} />
-                  <Text style={styles.totalText}>₱{payload.total_price?.toLocaleString() ?? '—'}</Text>
+                  <Text style={styles.totalText}>₱{payload.total_price?.toLocaleString() ?? 0}</Text>
                 </View>
               </View>
 
-              {/* Guest Call Button */}
+              {/* Guest Direct Call Button */}
               {!!guestPhone && (
                 <TouchableOpacity
                   style={styles.callGuestBtn}
@@ -507,95 +499,104 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
                 </TouchableOpacity>
               )}
 
-              {/* Items List with Availability Badges */}
+              {/* Items List with Live Availability Badges */}
               <View style={styles.itemsList}>
-                {itemsWithAvailability.map((item, i) => (
-                  <View key={i} style={styles.itemRow}>
-                    <Text style={styles.itemQty}>{item.quantity}×</Text>
-                    <Text style={[styles.itemName, !item.available && styles.itemNameUnavailable]}>
-                      {item.name}
-                    </Text>
-                    <Text style={[styles.availabilityBadge, item.available ? styles.badgeAvail : styles.badgeUnavail]}>
-                      {item.available ? '✅ Available' : '⚠️ UNAVAILABLE'}
-                    </Text>
-                    <Text style={styles.itemPrice}>₱{(item.unit_price * item.quantity).toLocaleString()}</Text>
-                  </View>
-                ))}
+                {payload.items?.map((item, idx) => {
+                  const isAvail = checkItemAvailability(item.name)
+                  return (
+                    <View key={idx} style={styles.itemRow}>
+                      <Text style={styles.itemQty}>{item.quantity}×</Text>
+                      <Text style={[styles.itemName, !isAvail && styles.itemNameUnavailable]}>
+                        {item.name}
+                      </Text>
+                      {!isAvail && (
+                        <Text style={[styles.availabilityBadge, styles.badgeUnavail]}>Out of Stock</Text>
+                      )}
+                      <Text style={styles.itemPrice}>₱{(item.unit_price * item.quantity).toLocaleString()}</Text>
+                    </View>
+                  )
+                })}
               </View>
 
-              {/* Delivery / Arrival info */}
-              {!isDineIn && payload.delivery_preference && (
+              {/* Delivery Preference */}
+              {payload.delivery_preference && (
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Delivery:</Text>
-                  <Text style={styles.infoValue}>{DELIVERY_LABELS[payload.delivery_preference] ?? payload.delivery_preference}</Text>
-                </View>
-              )}
-              {isDineIn && payload.target_arrival_time && (
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Arrival:</Text>
-                  <Text style={styles.infoValue}>{ARRIVAL_LABELS[payload.target_arrival_time] ?? payload.target_arrival_time}</Text>
+                  <Text style={styles.infoValue}>
+                    {DELIVERY_LABELS[payload.delivery_preference] ?? payload.delivery_preference}
+                  </Text>
                 </View>
               )}
 
-              {/* Special Instructions */}
+              {/* Special Instructions / Notes */}
               {!!payload.special_instructions && (
                 <View style={styles.notesBox}>
-                  <Text style={styles.notesLabel}>📝 Special Notes / Instructions</Text>
+                  <Text style={styles.notesLabel}>Guest Instructions:</Text>
                   <Text style={styles.notesText}>{payload.special_instructions}</Text>
                 </View>
               )}
 
-              {/* Actions Row */}
+              {/* Action Buttons Row */}
               <View style={styles.actionsRow}>
                 {/* Edit Order Button */}
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.btnEdit]}
                   onPress={() => openEditModal(order)}>
-                  <Text style={styles.actionBtnText}>✏️ Edit Order</Text>
+                  <Text style={styles.actionBtnText}>✏️ Edit</Text>
                 </TouchableOpacity>
 
-                {/* Reject Button */}
+                {/* Decline / Reject Button */}
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.btnReject]}
-                  onPress={() => setCancellingOrder(order)}>
-                  <Text style={styles.actionBtnText}>❌ Reject</Text>
+                  onPress={() => {
+                    setCancellingOrder(order)
+                    setSelectedReason(REJECTION_REASONS[0])
+                    setCustomReason('')
+                  }}>
+                  <Text style={styles.actionBtnText}>✕ Decline</Text>
                 </TouchableOpacity>
-              </View>
 
-              <View style={[styles.actionsRow, { marginTop: 8 }]}>
-                {/* Accept / Start Preparing Button */}
-                {!isPreparing && (
+                {/* Primary Action Button */}
+                {!isPreparing ? (
                   <TouchableOpacity
                     style={[styles.actionBtn, styles.btnPrepare, updating === order.id && styles.btnDisabled]}
-                    onPress={() => updateStatus(order.id, 'PREPARING')}
-                    disabled={updating === order.id}>
-                    <Text style={styles.actionBtnText}>{updating === order.id ? '…' : '👨‍🍳 Accept & Prepare'}</Text>
+                    disabled={updating === order.id}
+                    onPress={() => updateStatus(order.id, 'PREPARING')}>
+                    <Text style={styles.actionBtnText}>
+                      {updating === order.id ? 'Starting…' : '👨‍🍳 Prepare'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.btnReady, updating === order.id && styles.btnDisabled]}
+                    disabled={updating === order.id}
+                    onPress={() => updateStatus(order.id, 'COMPLETED')}>
+                    <Text style={styles.actionBtnText}>
+                      {updating === order.id ? 'Completing…' : '✓ Order Ready'}
+                    </Text>
                   </TouchableOpacity>
                 )}
-
-                {/* Order Ready / Complete Button */}
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.btnReady, updating === order.id && styles.btnDisabled]}
-                  onPress={() => updateStatus(order.id, 'RESOLVED')}
-                  disabled={updating === order.id}>
-                  <Text style={styles.actionBtnText}>{isDineIn ? '🍽️ Table Ready' : '🛎️ Order Ready'}</Text>
-                </TouchableOpacity>
               </View>
             </View>
           )
         })}
       </ScrollView>
 
-      {/* ─── EDIT ORDER MODAL ────────────────────────────────────── */}
-      <Modal visible={!!editingOrder} transparent animationType="slide">
+      {/* ─── MODAL 1: EDIT DINING ORDER MODAL ─────────────────────────────────────── */}
+      <Modal visible={!!editingOrder} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCardLarge}>
             {/* Modal Header */}
             <View style={styles.modalHeaderRow}>
-              <View>
-                <Text style={styles.modalTitle}>✏️ Edit Dining Order</Text>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.modalTitle}>✏️ Edit Dining Order</Text>
+                  <View style={styles.roomPill}>
+                    <Text style={styles.roomPillText}>Room {editingOrder?.rooms?.room_number ?? '—'}</Text>
+                  </View>
+                </View>
                 <Text style={styles.modalSubtitle}>
-                  Room {editingOrder?.rooms?.room_number ?? '—'} · Modify items, quantities, or substitute from complete restaurant menu
+                  Modify quantities, replace out-of-stock items, or add new dishes
                 </Text>
               </View>
               <TouchableOpacity
@@ -615,16 +616,24 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
             <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
               {/* SECTION 1: CURRENT ORDER ITEMS */}
               <View style={styles.sectionContainer}>
-                <Text style={styles.sectionHeading}>🛒 Current Order Items ({editItems.length})</Text>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionHeading}>🛒 Current Order ({editItems.length} items)</Text>
+                  <Text style={styles.sectionSubtotal}>Subtotal: ₱{calculateEditTotal().toLocaleString()}</Text>
+                </View>
+
                 {editItems.length === 0 ? (
-                  <Text style={styles.emptyOrderItemsText}>No items in order. Select items from the restaurant menu below.</Text>
+                  <View style={styles.emptyOrderBox}>
+                    <Text style={styles.emptyOrderItemsText}>
+                      Cart is empty. Select dishes from the restaurant menu below.
+                    </Text>
+                  </View>
                 ) : (
                   editItems.map((item, idx) => (
                     <View key={idx} style={styles.editRow}>
-                      <View style={{ flex: 1 }}>
+                      <View style={{ flex: 1, paddingRight: 6 }}>
                         <Text style={styles.editItemName}>{item.name}</Text>
                         <Text style={styles.editItemSubtotal}>
-                          ₱{item.unit_price} × {item.quantity} = ₱{(item.unit_price * item.quantity).toLocaleString()}
+                          ₱{item.unit_price.toLocaleString()} × {item.quantity} = <Text style={{ color: '#4ade80', fontWeight: '700' }}>₱{(item.unit_price * item.quantity).toLocaleString()}</Text>
                         </Text>
                       </View>
 
@@ -652,24 +661,24 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
                 )}
               </View>
 
-              {/* SECTION 2: COMPLETE RESTAURANT MENU PICKER */}
+              {/* SECTION 2: F&B RESTAURANT MENU PICKER */}
               <View style={styles.sectionContainer}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={styles.sectionHeading}>🍽️ Full Restaurant Menu ({filteredFullMenu.length} items)</Text>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionHeading}>🍽️ Restaurant Menu ({filteredFullMenu.length} items)</Text>
                 </View>
 
                 {/* Search Bar */}
                 <TextInput
                   value={menuSearchQuery}
                   onChangeText={setMenuSearchQuery}
-                  placeholder="🔍 Search complete menu (e.g. Wagyu, Salmon, Wine, Latte)..."
+                  placeholder="🔍 Search dishes, drinks, desserts..."
                   placeholderTextColor="rgba(255,255,255,0.4)"
                   style={styles.searchBarInput}
                 />
 
                 {/* Category Filter Chips */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
-                  {MENU_CATEGORIES.map(cat => {
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 6 }}>
+                  {menuCategories.map(cat => {
                     const isSelected = selectedCategoryFilter === cat
                     return (
                       <TouchableOpacity
@@ -684,40 +693,42 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
                   })}
                 </ScrollView>
 
-                {/* Full Menu Item Grid / List */}
-                <View style={styles.menuGridContainer}>
-                  {filteredFullMenu.length === 0 ? (
-                    <Text style={styles.emptySearchText}>No menu items found matching "{menuSearchQuery}"</Text>
-                  ) : (
-                    filteredFullMenu.map(menuItem => {
-                      const countInCart = editItems.find(i => i.name.toLowerCase() === menuItem.name.toLowerCase())?.quantity || 0
+                {/* Full Menu Item Scrollable Container */}
+                <View style={styles.menuScrollWrapper}>
+                  <ScrollView nestedScrollEnabled style={{ flex: 1 }} showsVerticalScrollIndicator={true}>
+                    {filteredFullMenu.length === 0 ? (
+                      <Text style={styles.emptySearchText}>No food items found matching &quot;{menuSearchQuery}&quot;</Text>
+                    ) : (
+                      filteredFullMenu.map(menuItem => {
+                        const countInCart = editItems.find(i => i.name.toLowerCase() === menuItem.name.toLowerCase())?.quantity || 0
 
-                      return (
-                        <View key={menuItem.id} style={styles.menuCard}>
-                          <View style={{ flex: 1, paddingRight: 8 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                              <Text style={styles.menuCardTitle}>{menuItem.name}</Text>
-                              <Text style={styles.menuCardCategoryTag}>{menuItem.category || 'Mains'}</Text>
+                        return (
+                          <View key={menuItem.id} style={styles.menuCard}>
+                            <View style={{ flex: 1, paddingRight: 10 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                <Text style={styles.menuCardTitle}>{menuItem.name}</Text>
+                                <Text style={styles.menuCardCategoryTag}>{menuItem.category || 'Food'}</Text>
+                              </View>
+
+                              {!!menuItem.description && (
+                                <Text style={styles.menuCardDesc} numberOfLines={2}>{menuItem.description}</Text>
+                              )}
+
+                              <Text style={styles.menuCardPrice}>₱{menuItem.price.toLocaleString()}</Text>
                             </View>
 
-                            {!!menuItem.description && (
-                              <Text style={styles.menuCardDesc} numberOfLines={2}>{menuItem.description}</Text>
-                            )}
-
-                            <Text style={styles.menuCardPrice}>₱{menuItem.price.toLocaleString()}</Text>
+                            <TouchableOpacity
+                              style={[styles.addToOrderBtn, countInCart > 0 && styles.addToOrderBtnActive]}
+                              onPress={() => addItemToOrder(menuItem)}>
+                              <Text style={[styles.addToOrderBtnText, countInCart > 0 && styles.addToOrderBtnTextActive]}>
+                                {countInCart > 0 ? `+ Add (${countInCart})` : '+ Add'}
+                              </Text>
+                            </TouchableOpacity>
                           </View>
-
-                          <TouchableOpacity
-                            style={[styles.addToOrderBtn, countInCart > 0 && styles.addToOrderBtnActive]}
-                            onPress={() => addItemToOrder(menuItem)}>
-                            <Text style={styles.addToOrderBtnText}>
-                              {countInCart > 0 ? `+ Add (${countInCart})` : '+ Add'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      )
-                    })
-                  )}
+                        )
+                      })
+                    )}
+                  </ScrollView>
                 </View>
               </View>
 
@@ -752,8 +763,11 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
 
                 <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: '#22c55e', flex: 2 }]}
+                  disabled={updating === editingOrder?.id}
                   onPress={saveModifiedOrder}>
-                  <Text style={styles.actionBtnText}>Accept & Save Modified Order</Text>
+                  <Text style={styles.actionBtnText}>
+                    {updating === editingOrder?.id ? 'Saving…' : '✓ Accept & Save Modified Order'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -761,23 +775,29 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
         </View>
       </Modal>
 
-      {/* ─── REJECT / CANCEL MODAL ────────────────────────────────── */}
+      {/* ─── MODAL 2: REJECTION / CANCELLATION REASON MODAL ───────────────────────── */}
       <Modal visible={!!cancellingOrder} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>❌ Reject / Cancel Order</Text>
+            <Text style={styles.modalTitle}>Decline Order</Text>
             <Text style={styles.modalSubtitle}>
-              Room {cancellingOrder?.rooms?.room_number ?? '—'} · Select a reason for order cancellation
+              Room {cancellingOrder?.rooms?.room_number ?? '—'} · Select cancellation reason:
             </Text>
 
             <View style={{ marginVertical: 14 }}>
-              {REJECTION_REASONS.map((r, i) => (
+              {REJECTION_REASONS.map(reason => (
                 <TouchableOpacity
-                  key={i}
-                  style={[styles.reasonOption, selectedReason === r && styles.reasonOptionSelected]}
-                  onPress={() => setSelectedReason(r)}>
-                  <Text style={[styles.reasonText, selectedReason === r && styles.reasonTextSelected]}>
-                    {selectedReason === r ? '◉ ' : '◯ '}{r}
+                  key={reason}
+                  style={[
+                    styles.reasonOption,
+                    selectedReason === reason && styles.reasonOptionSelected,
+                  ]}
+                  onPress={() => setSelectedReason(reason)}>
+                  <Text style={[
+                    styles.reasonText,
+                    selectedReason === reason && styles.reasonTextSelected,
+                  ]}>
+                    {reason}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -786,7 +806,7 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
                 <TextInput
                   value={customReason}
                   onChangeText={setCustomReason}
-                  placeholder="Type specific reason for cancellation…"
+                  placeholder="Specify cancellation reason…"
                   placeholderTextColor="rgba(255,255,255,0.3)"
                   style={[styles.textInput, { marginTop: 8 }]}
                 />
@@ -864,54 +884,60 @@ const styles = StyleSheet.create({
   actionBtnText:    { color: '#fff', fontWeight: '800', fontSize: 13 },
 
   // Modal Styles
-  modalBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  modalBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 12 },
   modalCard:        { width: '100%', maxWidth: 480, backgroundColor: '#0f172a', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: 20 },
-  modalCardLarge:   { width: '100%', maxWidth: 560, maxHeight: '90%', backgroundColor: '#0f172a', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', padding: 20 },
-  modalHeaderRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
-  modalTitle:       { color: '#fff', fontSize: 19, fontWeight: '800' },
-  modalSubtitle:    { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2 },
-  closeBtn:         { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
-  closeBtnText:     { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+  modalCardLarge:   { width: '96%', maxWidth: 660, maxHeight: '90%', backgroundColor: '#0f172a', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', padding: 18, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20 },
+  modalHeaderRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
+  modalTitle:       { color: '#fff', fontSize: 18, fontWeight: '800' },
+  roomPill:         { backgroundColor: 'rgba(249,115,22,0.15)', borderWidth: 1, borderColor: 'rgba(249,115,22,0.3)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  roomPillText:     { color: '#f97316', fontSize: 11, fontWeight: '800' },
+  modalSubtitle:    { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 3 },
+  closeBtn:         { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  closeBtnText:     { color: '#fff', fontSize: 15, fontWeight: 'bold' },
 
   toastBanner:      { backgroundColor: 'rgba(34,197,94,0.2)', borderWidth: 1, borderColor: 'rgba(34,197,94,0.4)', borderRadius: 10, padding: 8, marginBottom: 10, alignItems: 'center' },
   toastText:        { color: '#4ade80', fontWeight: '800', fontSize: 13 },
 
-  sectionContainer: { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', padding: 12, marginBottom: 12 },
-  sectionHeading:   { color: '#f97316', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
-  emptyOrderItemsText: { color: 'rgba(255,255,255,0.4)', fontSize: 13, fontStyle: 'italic', paddingVertical: 8 },
+  sectionContainer: { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 12, marginBottom: 12 },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  sectionHeading:   { color: '#f97316', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionSubtotal:  { color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: '700' },
+  emptyOrderBox:    { paddingVertical: 12, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 10 },
+  emptyOrderItemsText: { color: 'rgba(255,255,255,0.4)', fontSize: 12, fontStyle: 'italic' },
 
-  editRow:          { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 10, marginBottom: 6 },
-  editItemName:     { color: '#fff', fontWeight: '700', fontSize: 14 },
+  editRow:          { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  editItemName:     { color: '#fff', fontWeight: '700', fontSize: 13 },
   editItemSubtotal: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2 },
-  qtyContainer:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 8 },
-  qtyBtn:           { width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
-  qtyBtnText:       { color: '#fff', fontSize: 18, fontWeight: '700' },
-  qtyText:          { color: '#fff', fontSize: 15, fontWeight: '800', minWidth: 20, textAlign: 'center' },
+  qtyContainer:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 8 },
+  qtyBtn:           { width: 30, height: 30, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' },
+  qtyBtnText:       { color: '#fff', fontSize: 16, fontWeight: '700' },
+  qtyText:          { color: '#fff', fontSize: 14, fontWeight: '800', minWidth: 20, textAlign: 'center' },
   removeBtn:        { padding: 6 },
-  removeBtnText:    { fontSize: 16 },
+  removeBtnText:    { fontSize: 15 },
 
-  searchBarInput:   { backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: '#fff', fontSize: 13, marginBottom: 8 },
-  categoryChip:     { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, marginRight: 6, borderWidth: 1, borderColor: 'transparent' },
+  searchBarInput:   { backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: '#fff', fontSize: 13, marginBottom: 4 },
+  categoryChip:     { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, marginRight: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   categoryChipSelected: { backgroundColor: 'rgba(249,115,22,0.2)', borderColor: '#f97316' },
-  categoryChipText: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '600' },
+  categoryChipText: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '700' },
   categoryChipTextSelected: { color: '#f97316', fontWeight: '800' },
 
-  menuGridContainer:{ maxHeight: 220, marginTop: 4 },
-  emptySearchText:  { color: 'rgba(255,255,255,0.4)', fontSize: 13, textAlign: 'center', marginVertical: 16 },
-  menuCard:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  menuScrollWrapper:{ height: 260, backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: 12, padding: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  emptySearchText:  { color: 'rgba(255,255,255,0.4)', fontSize: 12, textAlign: 'center', marginVertical: 24 },
+  menuCard:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 9, marginBottom: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   menuCardTitle:    { color: '#fff', fontWeight: '700', fontSize: 13 },
-  menuCardCategoryTag: { color: '#f97316', backgroundColor: 'rgba(249,115,22,0.15)', fontSize: 10, fontWeight: '700', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  menuCardCategoryTag: { color: '#f97316', backgroundColor: 'rgba(249,115,22,0.15)', fontSize: 9, fontWeight: '800', paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4 },
   menuCardDesc:     { color: 'rgba(255,255,255,0.4)', fontSize: 11, marginVertical: 2 },
-  menuCardPrice:    { color: '#4ade80', fontWeight: '800', fontSize: 13, marginTop: 2 },
-  addToOrderBtn:    { backgroundColor: 'rgba(249,115,22,0.15)', borderWidth: 1, borderColor: 'rgba(249,115,22,0.4)', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  menuCardPrice:    { color: '#4ade80', fontWeight: '800', fontSize: 12, marginTop: 1 },
+  addToOrderBtn:    { backgroundColor: 'rgba(249,115,22,0.15)', borderWidth: 1, borderColor: 'rgba(249,115,22,0.4)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   addToOrderBtnActive: { backgroundColor: 'rgba(34,197,94,0.2)', borderColor: '#22c55e' },
-  addToOrderBtnText:{ color: '#f97316', fontWeight: '800', fontSize: 12 },
+  addToOrderBtnText:{ color: '#f97316', fontWeight: '800', fontSize: 11 },
+  addToOrderBtnTextActive: { color: '#4ade80' },
 
-  textInput:        { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: 10, color: '#fff', fontSize: 13, textAlignVertical: 'top' },
-  modalFooter:      { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 12, marginTop: 8 },
+  textInput:        { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: 10, color: '#fff', fontSize: 12, textAlignVertical: 'top' },
+  modalFooter:      { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 10, marginTop: 4 },
   totalRow:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  totalRowLabel:    { color: 'rgba(255,255,255,0.6)', fontWeight: '700', fontSize: 14 },
-  totalRowValue:    { color: '#f97316', fontWeight: '800', fontSize: 20 },
+  totalRowLabel:    { color: 'rgba(255,255,255,0.6)', fontWeight: '700', fontSize: 13 },
+  totalRowValue:    { color: '#f97316', fontWeight: '800', fontSize: 19 },
 
   reasonOption:     { paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)', marginBottom: 6 },
   reasonOptionSelected: { backgroundColor: 'rgba(239,68,68,0.15)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.4)' },
