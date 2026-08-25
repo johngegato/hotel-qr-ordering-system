@@ -41,6 +41,11 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Automatically queries unhandled requests on a 5-minute interval (`setInterval`) and upon staff login.
   - Displays `PendingRequestsReminderModal` popup with breakdown chips, live elapsed waiting timer per request, flashing alert border, audio chimes, and haptic feedback.
   - Automatically synchronizes with Realtime updates when requests are claimed, resolved, or modified.
+- [x] Staff App Callback Phone Number & One-Tap Direct Dialing (`CallQueue.tsx`, `DedicatedCallModule.tsx`, `RequestHistory.tsx`):
+  - Added `guest_phone` support across `CallQueue`, `DedicatedCallModule`, and `RequestHistory`.
+  - Added direct `📞 Call Guest` button in `CallQueue` with `Linking.openURL('tel:...')` opening the native dialer.
+  - Added tappable phone pill + `📞 Call` button in `DedicatedCallModule` next to Claim & Resolve.
+  - Added guest phone display and 1-tap call button in `RequestHistory` list cards & detail modal for callback alerts (`CALL_REQUEST`).
 - [x] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
 - [ ] Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments and Android APK.

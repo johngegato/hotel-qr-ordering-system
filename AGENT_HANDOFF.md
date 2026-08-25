@@ -21,6 +21,10 @@ Recent session additions:
 - apps/staff-app/App.tsx & FoodQueue.tsx: Fixed stale closure in Supabase Realtime channel subscription by wrapping `fetchData` in `useCallback` with a mutable `useRef` pointer. Bushed `refreshKey` trigger on incoming request alert dismissal so food orders appear instantly without manual page refresh.
 - apps/staff-app/components/RequestHistory.tsx: Fixed actor attribution in request history and audit logs. Prioritized `claimed_by` staff lookup via `staffMap` over payload's `booked_by` string (which contained guest strings like `"Guest (Room 105)"`), preventing guest strings from rendering with the STAFF role pill and icon.
 - apps/staff-app/App.tsx: Cleaned up login UI (removed demo credentials box, pre-filled input defaults, Phase 4 banner, and redesigned brand header).
+- apps/web/app/layout.tsx + apps/web/app/page.tsx + apps/web/app/app/stay/page.tsx: Rebranded hotel name from "Grand Hotel" to "Kekehyu Hotel" across all guest-facing web pages.
+- apps/staff-app/components/CallQueue.tsx: Added `📞 Call Guest` button using `Linking.openURL('tel:...')` that dials the guest's phone number from `payload.guest_phone`. Fallback Alert shown when no phone number is on record. Added `guest_phone` to `RequestItem` interface.
+- apps/staff-app/components/DedicatedCallModule.tsx: Added `📞 Call` action button in card action row. Phone number row is now a tappable green pill (`📞 +63xxx | Tap to call`) that directly fires the native dialer. Three-button action row: `📞 Call` → `✓ Claim` → `✓ Resolve`.
+- apps/staff-app/components/RequestHistory.tsx: Added guest phone display to `CALL_REQUEST` history list cards — tappable green pill showing phone number that opens the native dialer. Detail modal now shows a `📞 Dial Now` button with the guest phone number. No-phone-on-record state handled gracefully with informative text and Alert.
 
 Files changed (high level)
 - apps/web/app/admin/users/page.tsx [NEW]

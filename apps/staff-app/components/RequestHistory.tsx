@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   ScrollView,
   Modal,
+  Linking,
+  Alert,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
 
@@ -367,6 +369,31 @@ export default function RequestHistory() {
                   {p?.intake_note && <DetailRow label="Notes" value={p.intake_note} />}
                 </>}
 
+                {req.request_type === 'CALL_REQUEST' && <>
+                  {p?.note && <DetailRow label="Guest Note" value={p.note} />}
+                  {p?.guest_phone ? (
+                    <View style={styles.callPhoneRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailLabel}>Guest Phone</Text>
+                        <Text style={styles.callPhoneNumber}>{p.guest_phone}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.callPhoneBtn}
+                        onPress={() => {
+                          Linking.openURL(`tel:${p.guest_phone}`).catch(() =>
+                            Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
+                          )
+                        }}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={styles.callPhoneBtnText}>📞 Dial Now</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <DetailRow label="Guest Phone" value="No number provided" />
+                  )}
+                </>}
+
                 {p?.special_instructions && req.request_type !== 'SPA_BOOKING' && (
                   <DetailRow label="Notes" value={p.special_instructions} />
                 )}
@@ -574,6 +601,33 @@ export default function RequestHistory() {
                 </View>
 
                 <Text style={styles.summaryText}>{getTypeSummary(item)}</Text>
+
+                {/* Guest phone for CALL_REQUEST history cards */}
+                {item.request_type === 'CALL_REQUEST' && (
+                  <TouchableOpacity
+                    style={styles.callHistoryPhoneRow}
+                    activeOpacity={(item.payload as any)?.guest_phone ? 0.7 : 1}
+                    onPress={() => {
+                      const phone = (item.payload as any)?.guest_phone
+                      if (!phone) {
+                        Alert.alert('No Phone Number', 'No guest phone number was provided with this request.')
+                        return
+                      }
+                      Linking.openURL(`tel:${phone}`).catch(() =>
+                        Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
+                      )
+                    }}
+                  >
+                    {(item.payload as any)?.guest_phone ? (
+                      <>
+                        <Text style={styles.callHistoryPhoneText}>📞 {(item.payload as any).guest_phone}</Text>
+                        <Text style={styles.callHistoryPhoneHint}>Tap to call</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.callHistoryNoPhone}>📞 No phone number</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
 
                 {/* Actor attribution */}
                 {actorName && (
@@ -1030,4 +1084,65 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 14,
   },
+
+  // ── Call request history card phone row ──────────────────────────
+  callHistoryPhoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(52,211,153,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(52,211,153,0.3)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  callHistoryPhoneText: {
+    color: '#34d399',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  callHistoryPhoneHint: {
+    color: '#34d399',
+    fontSize: 10,
+    opacity: 0.7,
+  },
+  callHistoryNoPhone: {
+    color: '#475569',
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+
+  // ── Call request detail modal phone row ──────────────────────────
+  callPhoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+    gap: 10,
+  },
+  callPhoneNumber: {
+    color: '#34d399',
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  callPhoneBtn: {
+    backgroundColor: 'rgba(52,211,153,0.2)',
+    borderWidth: 1,
+    borderColor: '#34d399',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  callPhoneBtnText: {
+    color: '#34d399',
+    fontWeight: '800',
+    fontSize: 13,
+  },
 })
+
