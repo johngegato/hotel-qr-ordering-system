@@ -188,11 +188,14 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
 
   useEffect(() => {
     fetchData()
+    // Subscribe to all changes on requests table without column filter (which drops UPDATE events in Supabase Realtime)
     const ch: RealtimeChannel = supabase
-      .channel('staff-food-queue')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests', filter: `request_type=eq.FOOD_ORDER` }, fetchData)
+      .channel('staff-food-queue-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+        fetchData()
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog_items' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'hotels', filter: `id=eq.${HOTEL_ID}` }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hotels' }, fetchData)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [])
@@ -214,15 +217,60 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
     return match ? match.is_available : true
   }
 
-  // Update order status directly
+  // Update order status with instant optimistic UI update + Supabase sync
   const updateStatus = async (id: string, status: string) => {
     setUpdating(id)
-    await supabase.from('requests').update({
-      status,
-      claimed_by: activeStaffId || null,
-      claimed_at: new Date().toISOString(),
-    }).eq('id', id)
-    setUpdating(null)
+    const previousOrders = [...orders]
+
+    // 1. Instant optimistic update
+    setOrders(prev => {
+      if (['RESOLVED', 'DECLINED', 'CANCELLED'].includes(status)) {
+        return prev.filter(o => o.id !== id)
+      }
+      return prev.map(o => o.id === id ? { ...o, status } : o)
+    })
+
+    try {
+      // 2. Persist to Supabase requests table
+      const { error } = await supabase.from('requests').update({
+        status,
+        claimed_by: activeStaffId || null,
+        claimed_at: new Date().toISOString(),
+      }).eq('id', id)
+
+      if (error) {
+        console.error(`Error updating order ${id} status to ${status}:`, error)
+        setOrders(previousOrders)
+      } else {
+        // 3. Insert audit log
+        try {
+          const targetOrder = previousOrders.find(o => o.id === id)
+          await (supabase.from('audit_logs') as any).insert([
+            {
+              hotel_id: HOTEL_ID,
+              request_id: id,
+              action: status === 'PREPARING' ? 'START_PREPARING_FOOD' : status === 'RESOLVED' ? 'FOOD_ORDER_READY' : 'UPDATE_FOOD_STATUS',
+              details: {
+                actor_role: 'STAFF',
+                actor_name: 'Kitchen Staff',
+                request_id: id,
+                new_status: status,
+                room_number: targetOrder?.rooms?.room_number || targetOrder?.payload?.room_number || 'Unknown',
+                timestamp: new Date().toISOString(),
+              },
+            },
+          ])
+        } catch (auditErr) {
+          console.warn('[FoodQueue] Non-fatal audit log error:', auditErr)
+        }
+      }
+    } catch (err) {
+      console.error(`Error updating order ${id} status:`, err)
+      setOrders(previousOrders)
+    } finally {
+      setUpdating(null)
+      fetchData()
+    }
   }
 
   // Open Edit Order Modal
@@ -313,7 +361,8 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
   // Save modified order & Log to Audit Trail
   const saveModifiedOrder = async () => {
     if (!editingOrder) return
-    setUpdating(editingOrder.id)
+    const orderId = editingOrder.id
+    setUpdating(orderId)
 
     const subtotal = calculateEditSubtotal()
     const { isEnabled, pct } = getOrderServiceChargeConfig()
@@ -331,8 +380,18 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
       modified_by_staff: true,
     }
 
+    const previousOrders = [...orders]
+
+    // 1. Instant optimistic state update
+    setOrders(prev => prev.map(o => o.id === orderId ? {
+      ...o,
+      payload: updatedPayload,
+      status: 'PREPARING',
+    } : o))
+    setEditingOrder(null)
+
     try {
-      // 1. Update requests table
+      // 2. Update requests table
       const { error: reqErr } = await supabase
         .from('requests')
         .update({
@@ -341,52 +400,56 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
           claimed_by: activeStaffId || null,
           claimed_at: new Date().toISOString(),
         })
-        .eq('id', editingOrder.id)
+        .eq('id', orderId)
 
-      if (reqErr) throw reqErr
-
-      // 2. Insert record into audit_logs table
-      try {
-        await (supabase.from('audit_logs') as any).insert([
-          {
-            hotel_id: HOTEL_ID,
-            request_id: editingOrder.id,
-            action: 'MODIFY_DINING_ORDER',
-            details: {
-              actor_role: 'STAFF',
-              actor_name: 'Kitchen Staff',
-              request_id: editingOrder.id,
-              room_number: editingOrder.rooms?.room_number ?? 'Unknown',
-              original_total: editingOrder.payload.total_price,
-              new_subtotal: subtotal,
-              service_charge_pct: isEnabled ? pct : 0,
-              service_charge_amount: scAmt,
-              new_total: newTotal,
-              modified_items: editItems.map(i => `${i.quantity}x ${i.name} (₱${(i.unit_price * i.quantity).toLocaleString()})`),
-              special_instructions: editNotes.trim(),
-              summary: `Order updated to ₱${newTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${scAmt > 0 ? ` (incl. ₱${scAmt.toFixed(2)} service charge)` : ''}`,
-              timestamp: new Date().toISOString(),
+      if (reqErr) {
+        console.error('Error saving modified order:', reqErr)
+        setOrders(previousOrders)
+        Alert.alert('Error', 'Failed to update order. Please try again.')
+      } else {
+        // 3. Insert record into audit_logs table
+        try {
+          await (supabase.from('audit_logs') as any).insert([
+            {
+              hotel_id: HOTEL_ID,
+              request_id: orderId,
+              action: 'MODIFY_DINING_ORDER',
+              details: {
+                actor_role: 'STAFF',
+                actor_name: 'Kitchen Staff',
+                request_id: orderId,
+                room_number: editingOrder.rooms?.room_number ?? 'Unknown',
+                original_total: editingOrder.payload.total_price,
+                new_subtotal: subtotal,
+                service_charge_pct: isEnabled ? pct : 0,
+                service_charge_amount: scAmt,
+                new_total: newTotal,
+                modified_items: editItems.map(i => `${i.quantity}x ${i.name} (₱${(i.unit_price * i.quantity).toLocaleString()})`),
+                special_instructions: editNotes.trim(),
+                summary: `Order updated to ₱${newTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${scAmt > 0 ? ` (incl. ₱${scAmt.toFixed(2)} service charge)` : ''}`,
+                timestamp: new Date().toISOString(),
+              },
             },
-          },
-        ])
-      } catch (auditErr) {
-        console.warn('[FoodQueue] Non-fatal audit log error:', auditErr)
+          ])
+        } catch (auditErr) {
+          console.warn('[FoodQueue] Non-fatal audit log error:', auditErr)
+        }
       }
-
-      setEditingOrder(null)
-      fetchData()
     } catch (err) {
       console.error('Error saving modified order:', err)
+      setOrders(previousOrders)
       Alert.alert('Error', 'Failed to update order. Please try again.')
     } finally {
       setUpdating(null)
+      fetchData()
     }
   }
 
   // Confirm Order Rejection / Cancellation
   const confirmRejection = async () => {
     if (!cancellingOrder) return
-    setUpdating(cancellingOrder.id)
+    const orderId = cancellingOrder.id
+    setUpdating(orderId)
     const reason = selectedReason === 'Other / Custom reason' ? customReason.trim() : selectedReason
 
     const updatedPayload = {
@@ -394,41 +457,54 @@ export default function FoodQueue({ activeStaffId }: { activeStaffId?: string })
       rejection_reason: reason || 'Order rejected by kitchen staff',
     }
 
+    const previousOrders = [...orders]
+
+    // 1. Instant optimistic removal
+    setOrders(prev => prev.filter(o => o.id !== orderId))
+    setCancellingOrder(null)
+
     try {
-      await supabase
+      // 2. Update requests table
+      const { error } = await supabase
         .from('requests')
         .update({
           status: 'DECLINED',
           payload: updatedPayload,
           claimed_by: activeStaffId || null,
         })
-        .eq('id', cancellingOrder.id)
+        .eq('id', orderId)
 
-      try {
-        await (supabase.from('audit_logs') as any).insert([
-          {
-            hotel_id: HOTEL_ID,
-            request_id: cancellingOrder.id,
-            action: 'REJECT_DINING_ORDER',
-            details: {
-              actor_role: 'STAFF',
-              request_id: cancellingOrder.id,
-              room_number: cancellingOrder.rooms?.room_number ?? 'Unknown',
-              rejection_reason: reason,
-              timestamp: new Date().toISOString(),
+      if (error) {
+        console.error('Error rejecting order:', error)
+        setOrders(previousOrders)
+      } else {
+        // 3. Insert audit log
+        try {
+          await (supabase.from('audit_logs') as any).insert([
+            {
+              hotel_id: HOTEL_ID,
+              request_id: orderId,
+              action: 'REJECT_DINING_ORDER',
+              details: {
+                actor_role: 'STAFF',
+                actor_name: 'Kitchen Staff',
+                request_id: orderId,
+                room_number: cancellingOrder.rooms?.room_number ?? 'Unknown',
+                rejection_reason: reason,
+                timestamp: new Date().toISOString(),
+              },
             },
-          },
-        ])
-      } catch (auditErr) {
-        console.warn('[FoodQueue] Non-fatal audit log error:', auditErr)
+          ])
+        } catch (auditErr) {
+          console.warn('[FoodQueue] Non-fatal audit log error:', auditErr)
+        }
       }
-
-      setCancellingOrder(null)
-      fetchData()
     } catch (err) {
       console.error('Error rejecting order:', err)
+      setOrders(previousOrders)
     } finally {
       setUpdating(null)
+      fetchData()
     }
   }
 
