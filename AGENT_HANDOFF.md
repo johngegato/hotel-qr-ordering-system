@@ -10,6 +10,13 @@ Key goals
 - Add `spa_slot_locks` insert on manual bookings and seed `DEFAULT_ROOM_ID`.
 - Add pre-approval editing UI and a Call action in staff-app Spa Queue.
 - Fix Expo/TS/web build issues (typed catches, haptics on web, undefined imports).
+- Fix food order realtime queue sync in staff-app on alert acknowledgment and DB changes.
+- Fix actor attribution bug in RequestHistory showing guest names with STAFF role badge.
+
+Recent session additions:
+- apps/staff-app/App.tsx & FoodQueue.tsx: Fixed stale closure in Supabase Realtime channel subscription by wrapping `fetchData` in `useCallback` with a mutable `useRef` pointer. Bushed `refreshKey` trigger on incoming request alert dismissal so food orders appear instantly without manual page refresh.
+- apps/staff-app/components/RequestHistory.tsx: Fixed actor attribution in request history and audit logs. Prioritized `claimed_by` staff lookup via `staffMap` over payload's `booked_by` string (which contained guest strings like `"Guest (Room 105)"`), preventing guest strings from rendering with the STAFF role pill and icon.
+- apps/staff-app/App.tsx: Cleaned up login UI (removed demo credentials box, pre-filled input defaults, Phase 4 banner, and redesigned brand header).
 
 Files changed (high level)
 - apps/web/app/admin/users/page.tsx [NEW]
