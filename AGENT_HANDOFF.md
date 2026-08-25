@@ -14,6 +14,10 @@ Key goals
 - Fix actor attribution bug in RequestHistory showing guest names with STAFF role badge.
 
 Recent session additions:
+- apps/staff-app/lib/notifications.ts: Created web-safe notification engine configuring the `urgent_guest_requests` Android notification channel with `AndroidImportance.MAX`, `AndroidAudioUsage.ALARM`, custom high-intensity vibration pattern, LED light triggers, and push token registration.
+- apps/staff-app/app.json: Added Android permissions (`WAKE_LOCK`, `USE_FULL_SCREEN_INTENT`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE`, `RECEIVE_BOOT_COMPLETED`) to support APK creation and reliable background execution.
+- apps/staff-app/components/PendingRequestsReminderModal.tsx [NEW]: Implemented rich recurring unhandled requests alert popup with department breakdown chips (Calls, Spa, Dining, Tasks), live waiting counters, audio chimes, and haptics.
+- apps/staff-app/App.tsx: Wired 5-minute recurring checker (`checkUnhandledRequests`) on a 300,000ms timer and Realtime listener to trigger alert popup and native push notifications whenever pending requests remain unhandled.
 - apps/staff-app/App.tsx & FoodQueue.tsx: Fixed stale closure in Supabase Realtime channel subscription by wrapping `fetchData` in `useCallback` with a mutable `useRef` pointer. Bushed `refreshKey` trigger on incoming request alert dismissal so food orders appear instantly without manual page refresh.
 - apps/staff-app/components/RequestHistory.tsx: Fixed actor attribution in request history and audit logs. Prioritized `claimed_by` staff lookup via `staffMap` over payload's `booked_by` string (which contained guest strings like `"Guest (Room 105)"`), preventing guest strings from rendering with the STAFF role pill and icon.
 - apps/staff-app/App.tsx: Cleaned up login UI (removed demo credentials box, pre-filled input defaults, Phase 4 banner, and redesigned brand header).
