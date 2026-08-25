@@ -477,6 +477,13 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
 - **Mobile Touch Targets**: Enlarged quantity adjusters to 56px and action CTA buttons (`min-h-[56px]`).
 - **Bottom Sheet Modal**: Designed mobile bottom-sheet modal with backdrop blur for service customizations.
 
+### 7. Web Admin Authentication Wall & Role Gate (`apps/web/app/admin/layout.tsx`)
+- **Global Auth Guard**: Protected all `/admin/*` routes with `AdminAuthProvider` and `AdminAuthGuard`.
+- **Database Authentication**: Checks user against `staff_users` table by email and password.
+- **Role Authorization**: Exclusively admits accounts with **`ADMIN`** or **`MANAGER`** roles; rejects other roles with clear access denied notifications.
+- **Login UI (`AdminLoginForm.tsx`)**: Luxury dark-glass design, password reveal toggle, live error feedback, and loading indicators.
+- **Global Admin Header**: Renders persistent navigation bar across desktop and mobile, active user profile pill (`[Name] · [ROLE]`), and one-click **Sign Out** button.
+
 ---
 
 ### Remaining Open Items
