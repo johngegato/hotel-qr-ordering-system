@@ -27,6 +27,7 @@ export interface SpaSlotLock {
   id: string
   hotel_id: string
   therapist_id: string | null
+  request_id?: string | null
   session_id: string | null
   start_time: string
   end_time: string
@@ -152,6 +153,173 @@ function buildSlotWindow(slotTime: string, durationMins: number, day: 'today' | 
   return { start, end }
 }
 
+function formatRelativeTime(isoString?: string): string {
+  if (!isoString) return ''
+  try {
+    const d = new Date(isoString)
+    if (isNaN(d.getTime())) return ''
+    const diffMs = Date.now() - d.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return `${diffHours}h ago`
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return ''
+  }
+}
+
+export interface AuditHistoryItem {
+  id: string
+  requestId: string
+  action: string
+  actionLabel: string
+  actionCategory: 'CREATED' | 'EDITED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'OTHER'
+  actionColor: string
+  badgeBg: string
+  roomNumber: string
+  serviceName: string
+  therapistName: string
+  slotTime: string
+  scheduledAt?: string
+  timestamp: string
+  timeAgo: string
+  summary?: string
+  status: string
+  rawRequest?: any
+  rawAuditLog?: any
+  details?: any
+}
+
+function parseAuditHistoryItem(logOrReq: any, type: 'audit_log' | 'request', spaRequestsMap?: Map<string, any>): AuditHistoryItem {
+  if (type === 'audit_log') {
+    const log = logOrReq
+    const details = log.details || {}
+    const req = log.request_id && spaRequestsMap ? spaRequestsMap.get(log.request_id) : null
+    const reqPayload = req?.payload || {}
+
+    const action = String(log.action || 'LOG')
+    let actionLabel = 'Activity'
+    let actionCategory: 'CREATED' | 'EDITED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'OTHER' = 'OTHER'
+    let actionColor = '#94a3b8'
+    let badgeBg = 'rgba(148,163,184,0.15)'
+
+    if (action.includes('CREATED')) {
+      actionLabel = action.includes('MANUAL') ? '✨ Manual Booking' : '📱 Guest Booking'
+      actionCategory = 'CREATED'
+      actionColor = '#38bdf8'
+      badgeBg = 'rgba(56,189,248,0.15)'
+    } else if (action === 'BOOKING_EDITED') {
+      actionLabel = '✏️ Modified'
+      actionCategory = 'EDITED'
+      actionColor = '#fbbf24'
+      badgeBg = 'rgba(251,191,36,0.15)'
+    } else if (action === 'BOOKING_APPROVED' || (action === 'STATUS_CHANGED' && details.new_status === 'CONFIRMED')) {
+      actionLabel = '✓ Confirmed'
+      actionCategory = 'CONFIRMED'
+      actionColor = '#4ade80'
+      badgeBg = 'rgba(74,222,128,0.15)'
+    } else if (action === 'BOOKING_COMPLETED' || action === 'BOOKING_COMPLETED_EARLY' || (action === 'STATUS_CHANGED' && ['RESOLVED', 'COMPLETED'].includes(details.new_status))) {
+      actionLabel = '✓ Completed'
+      actionCategory = 'COMPLETED'
+      actionColor = '#10b981'
+      badgeBg = 'rgba(16,185,129,0.15)'
+    } else if (action === 'BOOKING_CANCELLED' || action === 'BOOKING_DECLINED' || (action === 'STATUS_CHANGED' && ['CANCELLED', 'DECLINED'].includes(details.new_status))) {
+      actionLabel = '✕ Cancelled'
+      actionCategory = 'CANCELLED'
+      actionColor = '#f87171'
+      badgeBg = 'rgba(239,68,68,0.15)'
+    }
+
+    const roomNumber = details.room_number || reqPayload.room_number || req?.rooms?.room_number || 'Room —'
+    const serviceName = details.service_name || details.service || reqPayload.service_name || 'Spa Service'
+    const therapistName = details.therapist_name || details.therapist || reqPayload.assigned_therapist || 'Therapist'
+    const slotTime = details.slot_time || reqPayload.slot_time || '—'
+    const scheduledAt = details.scheduled_at || reqPayload.scheduled_at
+    const summary = details.summary || (action === 'BOOKING_EDITED' ? 'Appointment details updated' : undefined)
+
+    return {
+      id: log.id,
+      requestId: log.request_id || log.id,
+      action,
+      actionLabel,
+      actionCategory,
+      actionColor,
+      badgeBg,
+      roomNumber,
+      serviceName,
+      therapistName,
+      slotTime,
+      scheduledAt,
+      timestamp: log.created_at,
+      timeAgo: formatRelativeTime(log.created_at),
+      summary,
+      status: req?.status || details.new_status || 'CONFIRMED',
+      rawRequest: req,
+      rawAuditLog: log,
+      details,
+    }
+  } else {
+    // Request fallback
+    const req = logOrReq
+    const p = req.payload || {}
+    const status = String(req.status || '')
+    let actionLabel = '✨ New Booking'
+    let actionCategory: 'CREATED' | 'EDITED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'OTHER' = 'CREATED'
+    let actionColor = '#38bdf8'
+    let badgeBg = 'rgba(56,189,248,0.15)'
+
+    if (status === 'CANCELLED' || status === 'DECLINED') {
+      actionLabel = '✕ Cancelled'
+      actionCategory = 'CANCELLED'
+      actionColor = '#f87171'
+      badgeBg = 'rgba(239,68,68,0.15)'
+    } else if (status === 'RESOLVED' || status === 'COMPLETED') {
+      actionLabel = '✓ Completed'
+      actionCategory = 'COMPLETED'
+      actionColor = '#10b981'
+      badgeBg = 'rgba(16,185,129,0.15)'
+    } else if (status === 'CONFIRMED') {
+      actionLabel = p.manual_booking ? '✨ Manual Booking' : '✓ Confirmed'
+      actionCategory = p.manual_booking ? 'CREATED' : 'CONFIRMED'
+      actionColor = '#4ade80'
+      badgeBg = 'rgba(74,222,128,0.15)'
+    } else if (status.startsWith('PENDING')) {
+      actionLabel = '📱 Guest Request'
+      actionCategory = 'CREATED'
+      actionColor = '#a78bfa'
+      badgeBg = 'rgba(167,139,250,0.15)'
+    }
+
+    const roomNumber = p.room_number || req.rooms?.room_number || 'Room —'
+    const serviceName = p.service_name || 'Spa Service'
+    const therapistName = p.assigned_therapist || 'Therapist'
+    const slotTime = p.slot_time || '—'
+    const scheduledAt = p.scheduled_at
+
+    return {
+      id: `req-${req.id}`,
+      requestId: req.id,
+      action: 'REQUEST_EVENT',
+      actionLabel,
+      actionCategory,
+      actionColor,
+      badgeBg,
+      roomNumber,
+      serviceName,
+      therapistName,
+      slotTime,
+      scheduledAt,
+      timestamp: req.created_at,
+      timeAgo: formatRelativeTime(req.created_at),
+      status: req.status,
+      rawRequest: req,
+      details: p,
+    }
+  }
+}
+
 const isHistoryStatus = (status?: string) => ['CANCELLED', 'DECLINED', 'RESOLVED', 'COMPLETED'].includes(String(status || ''))
 
 const shouldMoveBookingToHistory = (request: any, selectedDay: 'today' | 'tomorrow') => {
@@ -228,9 +396,12 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
   const [therapists, setTherapists] = useState<Therapist[]>(FALLBACK_THERAPISTS)
   const [bookings, setBookings] = useState<BookingSlot[]>([])
   const [debugOpenMap, setDebugOpenMap] = useState<Record<string, boolean>>({})
-  const [historyBookings, setHistoryBookings] = useState<any[]>([])
+  const [historyEvents, setHistoryEvents] = useState<AuditHistoryItem[]>([])
+  const [historyFilter, setHistoryFilter] = useState<'ALL' | 'CREATED' | 'EDITED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED'>('ALL')
   const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today')
-  const [selectedHistoryBooking, setSelectedHistoryBooking] = useState<any | null>(null)
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState<AuditHistoryItem | null>(null)
+  const [requestAuditTrail, setRequestAuditTrail] = useState<any[]>([])
+  const [loadingAuditTrail, setLoadingAuditTrail] = useState(false)
 
   // UI state
   const [isExpanded, setIsExpanded] = useState(false) // false = minimized (booked only)
@@ -274,39 +445,50 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
         .eq('request_type', 'SPA_BOOKING')
         .in('status', ['CONFIRMED', 'PENDING', 'PENDING_ON_CALL'])
 
-      // 3. History — include expired confirmations and terminal statuses. This keeps
-      //    past appointments visible in Booking History instead of leaving them in the active queue.
+      // 3. History & Comprehensive Audit Trail — fetch both spa requests and recent audit logs
       const { data: doneData } = await (supabase as any)
         .from('requests')
         .select('*, rooms(room_number)')
         .eq('hotel_id', HOTEL_ID)
         .eq('request_type', 'SPA_BOOKING')
-        .in('status', ['CONFIRMED', 'PENDING', 'PENDING_ON_CALL', 'CANCELLED', 'DECLINED', 'RESOLVED', 'COMPLETED'])
         .order('created_at', { ascending: false })
-        .limit(60)
+        .limit(100)
 
-      const filteredHistory = (doneData || []).filter((request: any) => shouldMoveBookingToHistory(request, selectedDay))
-      const uniqueHistory = filteredHistory.filter((request: any, index: number, arr: any[]) => {
-        const payload = request?.payload || {}
-        const key = [
-          request.id,
-          payload.therapist_id || 'none',
-          payload.room_number || payload.room || 'none',
-          payload.scheduled_at || payload.slot_time || 'none',
-          payload.service_name || 'none',
-        ].join('|')
-        return arr.findIndex((item: any) => {
-          const itemPayload = item?.payload || {}
-          return [
-            item.id,
-            itemPayload.therapist_id || 'none',
-            itemPayload.room_number || itemPayload.room || 'none',
-            itemPayload.scheduled_at || itemPayload.slot_time || 'none',
-            itemPayload.service_name || 'none',
-          ].join('|') === key
-        }) === index
+      const spaRequestsMap = new Map<string, any>()
+      ;(doneData || []).forEach((r: any) => {
+        if (r.id) spaRequestsMap.set(r.id, r)
       })
-      setHistoryBookings(uniqueHistory)
+
+      const { data: auditLogsData } = await (supabase as any)
+        .from('audit_logs')
+        .select('*')
+        .eq('hotel_id', HOTEL_ID)
+        .order('created_at', { ascending: false })
+        .limit(100)
+
+      // Filter audit logs relevant to spa requests or spa actions
+      const spaAuditLogs = (auditLogsData || []).filter((log: any) => {
+        if (log.request_id && spaRequestsMap.has(log.request_id)) return true
+        const action = String(log.action || '')
+        const reqType = log.details?.request_type
+        return (
+          action.includes('BOOKING') ||
+          action.includes('SPA') ||
+          reqType === 'SPA_BOOKING'
+        )
+      })
+
+      const parsedAuditItems = spaAuditLogs.map((log: any) => parseAuditHistoryItem(log, 'audit_log', spaRequestsMap))
+
+      // Also ensure all requests appear in history if they have no explicit audit log yet
+      const loggedRequestIds = new Set(spaAuditLogs.map((l: any) => l.request_id).filter(Boolean))
+      const unloggedRequests = (doneData || []).filter((req: any) => !loggedRequestIds.has(req.id))
+      const parsedRequestItems = unloggedRequests.map((req: any) => parseAuditHistoryItem(req, 'request', spaRequestsMap))
+
+      const combinedAuditHistory = [...parsedAuditItems, ...parsedRequestItems]
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
+      setHistoryEvents(combinedAuditHistory)
 
       // 4. Expire stale locks for booking windows that have already passed or were cancelled.
       const { data: staleLocks } = await (supabase as any)
@@ -516,7 +698,7 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
     fetchTimetableData()
 
     const channel = supabase.channel('spa-timetable-realtime')
-    // Listen to INSERT/UPDATE/DELETE on requests and spa_slot_locks so timetable refreshes reliably
+    // Listen to INSERT/UPDATE/DELETE on requests, spa_slot_locks, and audit_logs so timetable and audit feed refresh reliably
     channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'requests' }, () => fetchTimetableData())
     channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'requests' }, () => fetchTimetableData())
     channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'requests' }, () => fetchTimetableData())
@@ -524,6 +706,9 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
     channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'spa_slot_locks' }, () => fetchTimetableData())
     channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'spa_slot_locks' }, () => fetchTimetableData())
     channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'spa_slot_locks' }, () => fetchTimetableData())
+
+    channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, () => fetchTimetableData())
+    channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'audit_logs' }, () => fetchTimetableData())
 
     channel.subscribe()
 
@@ -560,6 +745,38 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
       isOnCall: therapist.is_on_call,
     })
     setIsManualOpen(true)
+  }
+
+  const handleSelectHistoryItem = async (item: AuditHistoryItem) => {
+    setSelectedHistoryItem(item)
+    const reqId = item.requestId || item.rawRequest?.id
+    if (!reqId) {
+      setRequestAuditTrail(item.rawAuditLog ? [item.rawAuditLog] : [])
+      return
+    }
+
+    setLoadingAuditTrail(true)
+    try {
+      const { data: trail } = await (supabase as any)
+        .from('audit_logs')
+        .select('*')
+        .eq('hotel_id', HOTEL_ID)
+        .eq('request_id', reqId)
+        .order('created_at', { ascending: true })
+
+      if (trail && trail.length > 0) {
+        setRequestAuditTrail(trail)
+      } else if (item.rawAuditLog) {
+        setRequestAuditTrail([item.rawAuditLog])
+      } else {
+        setRequestAuditTrail([])
+      }
+    } catch (err) {
+      console.warn('Failed to load request audit trail:', err)
+      setRequestAuditTrail(item.rawAuditLog ? [item.rawAuditLog] : [])
+    } finally {
+      setLoadingAuditTrail(false)
+    }
   }
 
   const execDeleteBooking = async (booking: BookingSlot) => {
@@ -604,17 +821,18 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
   }
 
   const handleHistoryCompletion = async (item: any) => {
-    if (!item?.id) return
+    const reqId = item?.requestId || item?.id
+    if (!reqId) return
     try {
-      const payload = item.payload || {}
-      const slotTime = payload.slot_time || payload.display_time || '14:00'
+      const payload = item.rawRequest?.payload || item.payload || item.details || {}
+      const slotTime = item.slotTime || payload.slot_time || payload.display_time || '14:00'
       const durationMins = Number(payload.duration_mins || payload.duration || 60)
-      const therapistId = payload.therapist_id || null
+      const therapistId = payload.therapist_id || item.rawRequest?.payload?.therapist_id || null
 
       await (supabase as any)
         .from('requests')
         .update({ status: 'RESOLVED', claimed_at: new Date().toISOString() })
-        .eq('id', item.id)
+        .eq('id', reqId)
 
       if (therapistId) {
         await releaseSpaLockForWindow(therapistId, slotTime, durationMins, payload.scheduled_at)
@@ -624,18 +842,18 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
         .from('audit_logs')
         .insert([{
           hotel_id: HOTEL_ID,
-          request_id: item.id,
+          request_id: reqId,
           action: 'BOOKING_COMPLETED_EARLY',
           details: {
-            room_number: payload.room_number || item.rooms?.room_number || 'N/A',
-            service: payload.service_name || 'Spa Treatment',
+            room_number: item.roomNumber || payload.room_number || item.rooms?.room_number || 'N/A',
+            service_name: item.serviceName || payload.service_name || 'Spa Treatment',
             therapist_id: therapistId,
             slot_time: slotTime,
             duration_mins: durationMins,
           },
         }])
 
-      setSelectedHistoryBooking(null)
+      setSelectedHistoryItem(null)
       await fetchTimetableData()
       if (onRefreshQueue) onRefreshQueue()
     } catch (err) {
@@ -945,118 +1163,209 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
         ))}
       </View>
 
-      {/* ── History Toggle ── */}
+      {/* ── Booking History & Comprehensive Audit Trail ── */}
       <View style={styles.historySection}>
         <TouchableOpacity
           style={styles.historyHeader}
           onPress={() => setShowHistory(prev => !prev)}
         >
           <Text style={styles.historyTitle}>
-            📜 Booking History ({historyBookings.length})
+            📜 Booking History & Audit Trail ({historyEvents.length})
           </Text>
           <Text style={styles.historyArrow}>{showHistory ? '▲ Hide' : '▼ View'}</Text>
         </TouchableOpacity>
 
         {showHistory && (
-          <View style={styles.historyList}>
-            {historyBookings.length === 0 ? (
-              <Text style={styles.emptyHistoryText}>No completed or cancelled bookings yet.</Text>
-            ) : (
-              historyBookings.map((item: any) => {
-                const p = item.payload || {}
-                const cancelled = item.status === 'CANCELLED' || item.status === 'DECLINED'
-                const finished = item.status === 'RESOLVED' || item.status === 'COMPLETED'
-                const roomLabel = p.room_number || item.rooms?.room_number || 'Room —'
+          <View style={styles.historyContainer}>
+            {/* Filter Tabs */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.historyFilterScroll}>
+              <View style={styles.historyFilterRow}>
+                {(['ALL', 'CREATED', 'EDITED', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const).map((filterKey) => {
+                  const labelMap: Record<string, string> = {
+                    ALL: `All (${historyEvents.length})`,
+                    CREATED: '✨ Created',
+                    EDITED: '✏️ Modified',
+                    CONFIRMED: '✓ Confirmed',
+                    COMPLETED: '✓ Completed',
+                    CANCELLED: '✕ Cancelled',
+                  }
+                  const isActive = historyFilter === filterKey
+                  return (
+                    <TouchableOpacity
+                      key={filterKey}
+                      style={[styles.historyFilterTab, isActive && styles.historyFilterTabActive]}
+                      onPress={() => setHistoryFilter(filterKey)}
+                    >
+                      <Text style={[styles.historyFilterTabText, isActive && styles.historyFilterTabTextActive]}>
+                        {labelMap[filterKey]}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+            </ScrollView>
 
-                return (
+            <View style={styles.historyList}>
+              {(() => {
+                const filtered = historyEvents.filter((item) => {
+                  if (historyFilter === 'ALL') return true
+                  if (historyFilter === 'CREATED') return item.actionCategory === 'CREATED'
+                  if (historyFilter === 'EDITED') return item.actionCategory === 'EDITED'
+                  if (historyFilter === 'CONFIRMED') return item.actionCategory === 'CONFIRMED'
+                  if (historyFilter === 'COMPLETED') return item.actionCategory === 'COMPLETED'
+                  if (historyFilter === 'CANCELLED') return item.actionCategory === 'CANCELLED'
+                  return true
+                })
+
+                if (filtered.length === 0) {
+                  return (
+                    <Text style={styles.emptyHistoryText}>
+                      No booking events match the selected filter.
+                    </Text>
+                  )
+                }
+
+                return filtered.map((item) => (
                   <TouchableOpacity
                     key={item.id}
                     style={styles.historyCard}
                     activeOpacity={0.8}
-                    onPress={() => setSelectedHistoryBooking(item)}
+                    onPress={() => handleSelectHistoryItem(item)}
                   >
                     <View style={styles.historyTopRow}>
-                      <Text style={styles.historyRoom}>
-                        {roomLabel} · {p.service_name || 'Spa Service'}
+                      <Text style={styles.historyRoom} numberOfLines={1}>
+                        {item.roomNumber} · {item.serviceName}
                       </Text>
-                      <Text style={[styles.historyBadge, cancelled ? styles.badgeCancelled : finished ? styles.badgeCompleted : styles.badgeCompleted]}>
-                        {cancelled ? '✕ Cancelled' : finished ? '✓ Completed' : '✓ Past'}
-                      </Text>
+                      <View style={[styles.historyBadgeContainer, { backgroundColor: item.badgeBg }]}>
+                        <Text style={[styles.historyBadge, { color: item.actionColor }]}>
+                          {item.actionLabel}
+                        </Text>
+                      </View>
                     </View>
                     <View style={styles.historyMetaRow}>
-                      <Text style={styles.historyMeta}>⏰ {p.slot_time || '—'}</Text>
-                      <Text style={styles.historyMeta}>👤 {p.assigned_therapist || 'Therapist'}</Text>
+                      <Text style={styles.historyMeta}>⏰ {item.slotTime}</Text>
+                      <Text style={styles.historyMeta}>👤 {item.therapistName}</Text>
+                      <Text style={styles.historyMeta}>🕒 {item.timeAgo}</Text>
                     </View>
+                    {item.summary && (
+                      <View style={styles.historySummaryBox}>
+                        <Text style={styles.historySummaryText}>📌 {item.summary}</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
-                )
-              })
-            )}
+                ))
+              })()}
+            </View>
           </View>
         )}
       </View>
 
-      {selectedHistoryBooking && (
+      {selectedHistoryItem && (
         <View style={styles.historyDetailOverlay}>
           <View style={styles.historyDetailCard}>
             <View style={styles.historyDetailHeader}>
-              <Text style={styles.historyDetailTitle}>Booking Details</Text>
-              <TouchableOpacity onPress={() => setSelectedHistoryBooking(null)}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.historyDetailTitle}>Booking Audit Details</Text>
+                <Text style={styles.historyDetailSub}>
+                  {selectedHistoryItem.roomNumber} · {selectedHistoryItem.serviceName}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedHistoryItem(null)}>
                 <Text style={styles.historyDetailClose}>✕</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.historyDetailScroll} showsVerticalScrollIndicator={false}>
               {(() => {
-                const p = selectedHistoryBooking.payload || {}
-                const roomLabel = p.room_number || selectedHistoryBooking.rooms?.room_number || 'Room —'
-                const staffName = p.assigned_therapist || 'Unassigned'
-                const statusLabel = selectedHistoryBooking.status === 'CANCELLED' || selectedHistoryBooking.status === 'DECLINED'
-                  ? 'Cancelled'
-                  : selectedHistoryBooking.status === 'RESOLVED' || selectedHistoryBooking.status === 'COMPLETED'
-                    ? 'Completed'
-                    : 'Past booking'
+                const details = selectedHistoryItem.details || {}
+                const req = selectedHistoryItem.rawRequest || {}
+                const reqPayload = req.payload || {}
+                const p = { ...reqPayload, ...details }
+                const phone = p.guest_phone || selectedHistoryItem.rawRequest?.guest_phone || 'Not provided'
+                const price = p.price || selectedHistoryItem.details?.price || 0
+                const duration = p.duration_mins || selectedHistoryItem.details?.duration_mins || 60
+                const notes = p.intake_note || selectedHistoryItem.details?.intake_note || 'No intake notes recorded.'
 
                 return (
                   <View style={styles.historyDetailBody}>
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Status</Text>
-                      <Text style={styles.detailValue}>{statusLabel}</Text>
+                      <Text style={styles.detailLabel}>Current Status</Text>
+                      <Text style={styles.detailValue}>{selectedHistoryItem.status}</Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Room</Text>
-                      <Text style={styles.detailValue}>{roomLabel}</Text>
+                      <Text style={styles.detailValue}>{selectedHistoryItem.roomNumber}</Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Service</Text>
-                      <Text style={styles.detailValue}>{p.service_name || 'Spa Treatment'}</Text>
+                      <Text style={styles.detailValue}>{selectedHistoryItem.serviceName}</Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Therapist</Text>
-                      <Text style={styles.detailValue}>{staffName}</Text>
+                      <Text style={styles.detailValue}>{selectedHistoryItem.therapistName}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Scheduled</Text>
-                      <Text style={styles.detailValue}>{p.slot_time || '—'}</Text>
+                      <Text style={styles.detailLabel}>Scheduled Slot</Text>
+                      <Text style={styles.detailValue}>{selectedHistoryItem.slotTime}</Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Duration</Text>
-                      <Text style={styles.detailValue}>{Number(p.duration_mins || 60)} min</Text>
+                      <Text style={styles.detailValue}>{duration} min</Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Price</Text>
-                      <Text style={styles.detailValue}>₱{Number(p.price || 0).toLocaleString()}</Text>
+                      <Text style={styles.detailValue}>₱{Number(price).toLocaleString()}</Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Guest Phone</Text>
-                      <Text style={styles.detailValue}>{p.guest_phone || 'Not provided'}</Text>
+                      <Text style={styles.detailValue}>{phone}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Created</Text>
-                      <Text style={styles.detailValue}>{new Date(selectedHistoryBooking.created_at).toLocaleString()}</Text>
+                      <Text style={styles.detailLabel}>Event Time</Text>
+                      <Text style={styles.detailValue}>{new Date(selectedHistoryItem.timestamp).toLocaleString()}</Text>
                     </View>
                     <View style={styles.detailNoteBox}>
                       <Text style={styles.detailLabel}>Notes</Text>
                       <Text style={styles.detailValue}>{p.intake_note || 'No intake notes recorded.'}</Text>
+                    </View>
+
+                    {/* Timeline */}
+                    <View style={styles.timelineSection}>
+                      <Text style={styles.timelineHeader}>📜 Audit Trail Timeline</Text>
+                      {loadingAuditTrail ? (
+                        <ActivityIndicator size="small" color="#a78bfa" style={{ marginVertical: 12 }} />
+                      ) : requestAuditTrail.length === 0 ? (
+                        <View style={styles.timelineEmptyBox}>
+                          <Text style={styles.emptyTimelineText}>Single logged event at {new Date(selectedHistoryItem.timestamp).toLocaleTimeString()}</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.timelineList}>
+                          {requestAuditTrail.map((log: any, idx: number) => {
+                            const isLast = idx === requestAuditTrail.length - 1
+                            const logDetails = log.details || {}
+                            return (
+                              <View key={log.id || idx} style={styles.timelineItem}>
+                                <View style={styles.timelineLeft}>
+                                  <View style={styles.timelineDot} />
+                                  {!isLast && <View style={styles.timelineLine} />}
+                                </View>
+                                <View style={styles.timelineRight}>
+                                  <View style={styles.timelineTitleRow}>
+                                    <Text style={styles.timelineAction}>{log.action}</Text>
+                                    <Text style={styles.timelineTime}>{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                                  </View>
+                                  <Text style={styles.timelineDate}>{new Date(log.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                                  {logDetails.summary ? (
+                                    <Text style={styles.timelineDetailsText}>{logDetails.summary}</Text>
+                                  ) : logDetails.source ? (
+                                    <Text style={styles.timelineDetailsText}>Source: {logDetails.source}</Text>
+                                  ) : null}
+                                </View>
+                              </View>
+                            )
+                          })}
+                        </View>
+                      )}
                     </View>
                   </View>
                 )
@@ -1066,16 +1375,18 @@ export default function SpaTimetable({ onRefreshQueue }: SpaTimetableProps) {
             <View style={styles.historyDetailActions}>
               <TouchableOpacity
                 style={styles.historyActionSecondary}
-                onPress={() => setSelectedHistoryBooking(null)}
+                onPress={() => setSelectedHistoryItem(null)}
               >
                 <Text style={styles.historyActionSecondaryText}>Close</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.historyActionPrimary}
-                onPress={() => handleHistoryCompletion(selectedHistoryBooking)}
-              >
-                <Text style={styles.historyActionPrimaryText}>Mark Finished</Text>
-              </TouchableOpacity>
+              {['CONFIRMED', 'PENDING', 'PENDING_ON_CALL'].includes(selectedHistoryItem.status) && (
+                <TouchableOpacity
+                  style={styles.historyActionPrimary}
+                  onPress={() => handleHistoryCompletion(selectedHistoryItem)}
+                >
+                  <Text style={styles.historyActionPrimaryText}>Mark Finished</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -1541,7 +1852,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
 
-  // History
+  // History & Audit Trail
   historySection: {
     marginTop: 14,
     borderTopWidth: 1,
@@ -1560,7 +1871,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   historyTitle: {
-    color: '#94a3b8',
+    color: '#cbd5e1',
     fontSize: 12,
     fontWeight: 'bold',
   },
@@ -1569,14 +1880,48 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: 'bold',
   },
-  historyList: {
+  historyContainer: {
     marginTop: 10,
+    gap: 8,
+  },
+  historyFilterScroll: {
+    marginBottom: 4,
+  },
+  historyFilterRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  historyFilterTab: {
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    borderColor: 'rgba(148, 163, 184, 0.2)',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  historyFilterTabActive: {
+    backgroundColor: 'rgba(167, 139, 250, 0.2)',
+    borderColor: '#a78bfa',
+  },
+  historyFilterTabText: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  historyFilterTabTextActive: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+  },
+  historyList: {
     gap: 8,
   },
   emptyHistoryText: {
     color: '#475569',
     fontSize: 11,
     fontStyle: 'italic',
+    paddingVertical: 12,
+    textAlign: 'center',
   },
   historyCard: {
     backgroundColor: 'rgba(15, 23, 42, 0.9)',
@@ -1604,12 +1949,25 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 8,
   },
-  historyBadge: {
-    fontSize: 10,
-    fontWeight: 'bold',
+  historyBadgeContainer: {
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
+  },
+  historyBadge: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  historySummaryBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 2,
+  },
+  historySummaryText: {
+    color: '#cbd5e1',
+    fontSize: 11,
   },
   historyDetailOverlay: {
     position: 'absolute',
@@ -1626,7 +1984,7 @@ const styles = StyleSheet.create({
   historyDetailCard: {
     width: '100%',
     maxWidth: 540,
-    maxHeight: '82%',
+    maxHeight: '86%',
     backgroundColor: '#0f172a',
     borderColor: 'rgba(167,139,250,0.35)',
     borderWidth: 1,
@@ -1641,7 +1999,7 @@ const styles = StyleSheet.create({
   historyDetailHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 14,
   },
   historyDetailTitle: {
@@ -1649,13 +2007,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  historyDetailSub: {
+    color: '#a78bfa',
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: '600',
+  },
   historyDetailClose: {
     color: '#94a3b8',
     fontSize: 18,
     fontWeight: 'bold',
+    paddingLeft: 8,
   },
   historyDetailScroll: {
-    maxHeight: 420,
+    maxHeight: 460,
   },
   historyDetailBody: {
     gap: 12,
@@ -1687,6 +2052,81 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     gap: 6,
+  },
+  timelineSection: {
+    marginTop: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(148,163,184,0.15)',
+    gap: 8,
+  },
+  timelineHeader: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  timelineEmptyBox: {
+    paddingVertical: 8,
+  },
+  emptyTimelineText: {
+    color: '#64748b',
+    fontSize: 11,
+    fontStyle: 'italic',
+  },
+  timelineList: {
+    gap: 0,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    minHeight: 48,
+  },
+  timelineLeft: {
+    width: 24,
+    alignItems: 'center',
+  },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#a78bfa',
+    marginTop: 4,
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    backgroundColor: 'rgba(167, 139, 250, 0.25)',
+    marginVertical: 2,
+  },
+  timelineRight: {
+    flex: 1,
+    paddingLeft: 8,
+    paddingBottom: 12,
+  },
+  timelineTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timelineAction: {
+    color: '#f1f5f9',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  timelineTime: {
+    color: '#a78bfa',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  timelineDate: {
+    color: '#64748b',
+    fontSize: 10,
+    marginTop: 1,
+  },
+  timelineDetailsText: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    marginTop: 3,
   },
   historyDetailActions: {
     flexDirection: 'row',

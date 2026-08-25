@@ -856,7 +856,7 @@ const styles = StyleSheet.create({
   // Modal Styles
   modalBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center', padding: 16 },
   modalCard:        { width: '100%', maxWidth: 480, backgroundColor: '#0f172a', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: 20 },
-  modalCardLarge:   { width: '100%', maxWidth: 560, maxHeight: '90%', backgroundColor: '#0f172a', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', padding: 20, flexHorizontal: 1 },
+  modalCardLarge:   { width: '100%', maxWidth: 560, maxHeight: '90%', backgroundColor: '#0f172a', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', padding: 20 },
   modalHeaderRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   modalTitle:       { color: '#fff', fontSize: 19, fontWeight: '800' },
   modalSubtitle:    { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2 },

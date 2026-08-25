@@ -1,13 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import type { Database, AuditLog } from '@hotel-qr/supabase/types'
 
-const supabase = createBrowserClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createSupabaseBrowserClient()
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 

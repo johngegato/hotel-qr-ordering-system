@@ -200,4 +200,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '800',
   },
+  emailText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    marginTop: 4,
+  },
 })

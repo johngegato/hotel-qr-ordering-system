@@ -290,6 +290,30 @@ function GuestSpaContent() {
             }
           )
           .subscribe()
+
+        // Log guest booking creation in audit trail
+        try {
+          await (supabase as any)
+            .from('audit_logs')
+            .insert([{
+              hotel_id: defaultHotelId,
+              request_id: requestId,
+              action: 'GUEST_BOOKING_CREATED',
+              details: {
+                source: 'guest_web',
+                service_name: selectedService.name,
+                slot_time: selectedSlotTime,
+                scheduled_at: scheduledAt,
+                room_number: roomNumber || 'Guest Room',
+                price: selectedService.price,
+                duration_mins: selectedService.duration_mins,
+                guest_phone: phoneOverride || getStoredGuestPhone() || null,
+                is_on_call: isOnCallSlot,
+              },
+            }])
+        } catch (auditErr) {
+          console.warn('[GuestSpa] Non-fatal audit log insertion error:', auditErr)
+        }
       }
 
       // 2. Update slot lock to BOOKED using the actual chosen slot window and

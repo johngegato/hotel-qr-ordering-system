@@ -398,7 +398,7 @@ export default function EditSpaBookingModal({
         throw new Error('This therapist already has an active booking for that time slot.')
       }
 
-      const { data: newLock, error: lockErr } = currentLock ? { data: null, error: null } : await supabase
+      const { data: newLock, error: lockErr } = currentLock ? { data: null as any, error: null } : await (supabase as any)
         .from('spa_slot_locks')
         .insert([
           {
@@ -411,6 +411,8 @@ export default function EditSpaBookingModal({
             expires_at: expiresAt.toISOString(),
           },
         ])
+        .select('id')
+        .single()
 
       if (lockErr) {
         console.error('[EditSpaBookingModal] Failed to create slot lock:', lockErr)
@@ -475,21 +477,39 @@ export default function EditSpaBookingModal({
       }
 
       // Explicit audit log for edit action
-      await (supabase as any)
-        .from('audit_logs')
-        .insert([{
-          hotel_id: HOTEL_ID,
-          request_id: booking.id,
-          action: 'BOOKING_EDITED',
-          details: {
-            service_name: selectedService,
-            slot_time: selectedTime,
-            therapist_name: therapistName,
-            therapist_id: selectedTherapistId,
-            room_number: booking.roomNumber,
-            price: services.find((s) => s.name === selectedService)?.price ?? 0,
-          },
-        }])
+      const changesList: string[] = []
+      if (booking.startTime !== selectedTime) changesList.push(`Time changed from ${booking.startTime} to ${selectedTime}`)
+      if (booking.therapistId !== selectedTherapistId) changesList.push(`Therapist changed to ${therapistName}`)
+      if (booking.serviceName !== selectedService) changesList.push(`Service changed to ${selectedService}`)
+
+      try {
+        await (supabase as any)
+          .from('audit_logs')
+          .insert([{
+            hotel_id: HOTEL_ID,
+            request_id: booking.id,
+            action: 'BOOKING_EDITED',
+            details: {
+              source: 'staff_edit_modal',
+              service_name: selectedService,
+              slot_time: selectedTime,
+              scheduled_at: lockStart.toISOString(),
+              therapist_name: therapistName,
+              therapist_id: selectedTherapistId,
+              room_number: booking.roomNumber,
+              price: services.find((s) => s.name === selectedService)?.price ?? 0,
+              previous: {
+                service_name: booking.serviceName,
+                slot_time: booking.startTime,
+                therapist_name: booking.therapistName,
+                therapist_id: booking.therapistId,
+              },
+              summary: changesList.length > 0 ? changesList.join(', ') : 'Details updated',
+            },
+          }])
+      } catch (auditErr) {
+        console.warn('[EditSpaBookingModal] Non-fatal audit log insertion error:', auditErr)
+      }
 
       onSaved()
       onClose()
@@ -1015,6 +1035,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#a78bfa',
     borderColor: '#a78bfa',
   },
+  timeChipDisabled: {
+    opacity: 0.35,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderColor: 'rgba(255, 255, 255, 0.04)',
+  },
   timeChipText: {
     color: '#94a3b8',
     fontSize: 13,
@@ -1023,6 +1048,9 @@ const styles = StyleSheet.create({
   timeChipTextActive: {
     color: '#0f172a',
     fontWeight: 'bold',
+  },
+  timeChipTextDisabled: {
+    color: '#475569',
   },
   serviceRow: {
     flexDirection: 'row',

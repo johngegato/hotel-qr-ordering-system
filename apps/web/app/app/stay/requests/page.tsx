@@ -2,17 +2,14 @@
 
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import type { Database } from '@hotel-qr/supabase/types'
 import type { CatalogItem, TaskPayload, TaskPriority, TargetDepartment } from '@hotel-qr/supabase/types'
 
 import PhoneCaptureModal, { getStoredGuestPhone } from '../components/PhoneCaptureModal'
 import FrontDeskFAB from '../components/FrontDeskFAB'
 
-const supabase = createBrowserClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabase = createSupabaseBrowserClient()
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 

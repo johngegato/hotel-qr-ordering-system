@@ -25,11 +25,15 @@ interface SpaRequestItem {
   payload?: {
     service_name?: string
     slot_time?: string
+    scheduled_at?: string
     price?: number
     duration_mins?: number
     intake_note?: string
     is_on_call?: boolean
     room_number?: string
+    guest_phone?: string
+    therapist_id?: string
+    assigned_therapist?: string
   } | null
 }
 
@@ -124,6 +128,30 @@ export default function SpaQueue({ activeStaffId }: { activeStaffId?: string }) 
         // Restore the card on failure so staff can retry
         console.error(`Failed to update spa request ${id} to ${newStatus}:`, error.message)
         if (snapshot) setRequests((prev) => [snapshot, ...prev])
+      } else {
+        // Record status update in audit logs
+        try {
+          const p = snapshot?.payload || {}
+          await (supabase as any)
+            .from('audit_logs')
+            .insert([{
+              hotel_id: HOTEL_ID,
+              request_id: id,
+              action: newStatus === 'CONFIRMED' ? 'BOOKING_APPROVED' : 'BOOKING_DECLINED',
+              actor_id: activeStaffId || null,
+              details: {
+                source: 'staff_queue',
+                new_status: newStatus,
+                old_status: snapshot?.status || 'PENDING',
+                service_name: p.service_name || 'Spa Service',
+                room_number: p.room_number || snapshot?.rooms?.room_number || 'Room —',
+                slot_time: p.slot_time || '—',
+                claimed_by: activeStaffId || null,
+              },
+            }])
+        } catch (auditErr) {
+          console.warn('[SpaQueue] Non-fatal audit log insertion error:', auditErr)
+        }
       }
     } catch (err) {
       console.error(`Error setting spa status to ${newStatus}:`, err)

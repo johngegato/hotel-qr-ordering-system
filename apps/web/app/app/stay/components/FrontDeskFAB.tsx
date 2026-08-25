@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import type { Database } from '@hotel-qr/supabase/types'
 import CallFrontDeskModal from './CallFrontDeskModal'
 
@@ -31,10 +31,7 @@ export default function FrontDeskFAB({
 
     const fetchHotelPhone = async () => {
       try {
-        const supabase = createBrowserClient<Database>(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        )
+        const supabase = createSupabaseBrowserClient()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data } = await (supabase as any)
           .from('hotels')

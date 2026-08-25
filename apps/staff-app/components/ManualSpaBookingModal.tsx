@@ -441,11 +441,16 @@ export default function ManualSpaBookingModal({
             action: 'MANUAL_BOOKING_CREATED',
             details: {
               source: 'staff_manual',
-              service: selectedService.name,
-              therapist: selectedTherapist?.full_name,
+              service_name: selectedService.name,
+              therapist_name: selectedTherapist?.full_name || 'Staff Assigned',
+              therapist_id: selectedTherapistId,
               slot_time: selectedTime,
+              scheduled_at: start.toISOString(),
+              price: selectedService.price,
+              duration_mins: selectedService.duration_mins,
               room_number: roomNumber.trim(),
               guest_phone: guestPhone.trim() || null,
+              intake_note: intakeNote.trim() || null,
             },
           }])
       } catch (e) {
@@ -928,6 +933,9 @@ const styles = StyleSheet.create({
   },
   timeChipTextActive: {
     color: '#fbbf24',
+  },
+  timeChipTextDisabled: {
+    color: '#475569',
   },
   minuteControlRow: {
     flexDirection: 'row',

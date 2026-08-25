@@ -27,6 +27,7 @@ interface TaskRequest {
   id: string
   room_id: string
   hotel_id: string
+  request_type?: string
   status: TaskStatus | string
   created_at: string
   payload?: TaskPayload | null
