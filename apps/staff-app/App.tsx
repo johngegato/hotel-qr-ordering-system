@@ -21,7 +21,6 @@ import TaskQueue from './components/TaskQueue'
 import { StaffUser } from './components/UserManagement'
 import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
-import UserAccountControl from './components/UserAccountControl'
 import IncomingRequestAlert, { type IncomingRequest } from './components/IncomingRequestAlert'
 
 // ─── Types ───────────────────────────────────────────────────
@@ -504,9 +503,6 @@ export default function App() {
 
             {/* 5. All Request History Logs */}
             <RequestHistory />
-
-            {/* 6. Staff User Account Control */}
-            <UserAccountControl activeUserId={activeStaffUser?.id} />
 
 
             {/* Phase indicator */}

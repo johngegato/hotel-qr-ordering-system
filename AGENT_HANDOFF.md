@@ -25,10 +25,8 @@ Files changed (high level)
   - Added "👥 Staff Control" quick action button to the top header bar.
 - packages/supabase/types/index.ts
   - Added `StaffRole` and `StaffUser` type definitions.
-- apps/staff-app/components/UserAccountControl.tsx [NEW]
-  - Full CRUD User Account Control module for the staff-app tablet dashboard.
 - apps/staff-app/App.tsx
-  - Imported and rendered `<UserAccountControl activeUserId={activeStaffUser?.id} />` in the admin/staff tablet view below `<RequestHistory />`.
+  - Cleaned up: Removed UAC component rendering and unused imports (UAC is centralized in the Admin Web portal at `/admin/users`).
 - apps/staff-app/components/ManualSpaBookingModal.tsx
   - Rewrote `handleCreate()` to validate active locks, ensure `DEFAULT_ROOM_ID` exists with the deployed `rooms` schema, create a `BOOKED` lock before the request, roll the lock back if request creation fails, and insert an audit log.
   - Added granular minute controls and `scheduled_at` to manual and quick-add payloads.
@@ -377,9 +375,57 @@ The fix replaced the old history mechanism entirely with a dedicated `audit_logs
 | Check | Command | Result |
 | :--- | :--- | :--- |
 | Web TypeScript | `pnpm --filter @hotel-qr/web exec tsc --noEmit` | ✅ 0 errors |
-| Staff-app TypeScript | `node ./apps/web/node_modules/typescript/bin/tsc --noEmit -p apps/staff-app/tsconfig.json` | ✅ 0 errors |
-| Next.js production build | `pnpm --filter @hotel-qr/web build` | ✅ All 17 routes built successfully |
-| Expo Web export | `npx expo export --platform web` (in `apps/staff-app`) | ✅ 0 errors, 996 kB bundle |
+| Staff-app TypeScript | `npx tsc --noEmit` (in `apps/staff-app`) | ✅ 0 errors |
+| Next.js production build | `pnpm --filter @hotel-qr/web build` | ✅ All 18 routes built & statically prerendered |
+| Expo Web export | `npx expo export --platform web` (in `apps/staff-app`) | ✅ 0 errors |
+
+---
+
+## Web Application Architecture (`apps/web`)
+
+The web application is built using **Next.js 16 (App Router)**, **React 19**, **TypeScript**, and **Vanilla CSS tokens with Glassmorphism styling**. It is hosted on Vercel (`https://hotel-qr-ordering-system-web.vercel.app`).
+
+### 1. Supabase Initialization Architecture
+To prevent Next.js build-time prerendering / SSG crashes, **all browser-side clients** must use the factory wrapper in `apps/web/lib/supabase-browser.ts`:
+```ts
+import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
+const supabase = createSupabaseBrowserClient()
+```
+*Never* call `createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, ...)` directly in page components, as environment variables are absent during static page compilation on CI/Vercel.
+
+---
+
+### 2. Admin Web Portal (`/admin`)
+Central executive and operational management hub for property settings, catalog control, staff administration, and dispute resolution.
+
+| Route | Page Name | Primary Responsibilities |
+| :--- | :--- | :--- |
+| `/admin` | **Admin Dashboard** | Real-time operational KPI overview (Active Sessions, Revenue, TTA, SLA Compliance), core modules navigation grid, and live audit event stream. |
+| `/admin/users` | **User Account Control (UAC)** | Full CRUD management for staff accounts (`staff_users` table): interactive search/filter by role & status, add user modal, edit user & role modal, activate/deactivate toggle, delete account confirmation, real-time sync, and CSV export. |
+| `/admin/settings` | **Hotel Settings & Branding** | Configure property name, direct front desk phone number, logo graphic URL, and guest web app color scheme tokens. |
+| `/admin/analytics` | **Executive ROI Analytics** | Departmental revenue breakdown (F&B vs. Spa), request volume trends, average acknowledgment times, SLA compliance rates, and CSV data export. |
+| `/admin/spa` | **Spa Catalog & Therapists** | Manage spa treatments, pricing, durations, 86/out-of-service toggles, and therapist shift roster with on-call availability flags. |
+| `/admin/fb` | **F&B Kitchen & Bar Menu** | Real-time dish & beverage catalog management, pricing, stock availability toggles, dietary tags (`VEGAN`, `GLUTEN_FREE`, `HALAL`, etc.), and numerical sort order. |
+| `/admin/requests` | **Task & SLA Builder** | 1-tap room request catalog builder, departmental priority routing (`LOW` to `URGENT`), and target resolution SLA windows. |
+| `/admin/audit` | **Immutable Audit Logs** | Comprehensive unalterable audit trail across all guest and staff events, interactive request timeline modal for dispute settlement, and filtered CSV exports. |
+| `/admin/rooms` | **Room & QR Manager** | Generate, preview, print, and delete room QR codes that embed secure auth hashes (`/app/stay?room=<id>&hash=<hash>`). |
+
+---
+
+### 3. Guest Web Portal (`/app/stay`)
+Mobile-first guest in-stay experience designed for instant browser access via room QR scan without requiring app installation.
+
+| Route / Component | Purpose & Features |
+| :--- | :--- |
+| `/app/stay` | **Guest Hub Home**: Validates room session via QR parameters, loads dynamic property branding/theme tokens (`GuestThemeProvider`), displays active requests banner, and provides navigation to dining, spa, housekeeping, and front desk call modal. |
+| `/app/stay/dining` | **In-Room Dining Catalog**: Categorized dish & beverage list, search, dietary filter pills, detailed item customization modal, and persistent floating cart drawer. |
+| `/app/stay/dining/checkout` | **F&B Checkout & Ordering**: Cart review, special instructions, fulfillment mode selection (`ROOM_SERVICE` vs. `DINE_IN`), delivery preferences, and order submission. |
+| `/app/stay/spa` | **Spa Treatment Booking**: Service catalog, date & therapist selection, real-time slot availability, transactional lock hold countdown (`spa_slot_locks`), phone number capture, and booking confirmation with audit logging. |
+| `/app/stay/requests` | **Room Service Tasks**: 1-tap amenity requests (extra towels, pillow menu, toiletries, housekeeping, luggage assistance, technical maintenance) with live SLA countdown tracking. |
+| `components/ActiveRequestsBanner.tsx` | Sticky real-time banner displaying active in-flight requests and their current fulfillment status (`PENDING`, `PREPARING`, `CLAIMED`, `RESOLVED`). |
+| `components/CallFrontDeskModal.tsx` | 1-tap direct call prompt and VoIP/dialer launcher to the hotel's configured front desk telephone line. |
+| `components/FrontDeskFAB.tsx` | Persistent bottom-right floating action button allowing guests to trigger front desk assistance from any guest page. |
+| `components/PhoneCaptureModal.tsx` | Lightweight prompt for guest contact number required during appointment and delivery notifications. |
 
 ---
 
@@ -389,4 +435,5 @@ The fix replaced the old history mechanism entirely with a dedicated `audit_logs
 - Phase 2 database reservation integrity work (atomic RPC, `request_id` FK on `spa_slot_locks`) remains not implemented in production DB.
 - Integration test for atomic duplicate prevention is still open.
 - Production multi-hotel RLS isolation test is still open.
+
 
