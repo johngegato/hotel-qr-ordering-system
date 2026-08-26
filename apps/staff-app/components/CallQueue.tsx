@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   StyleSheet,
   Text,
@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
 interface RequestItem {
   id: string
@@ -39,8 +40,8 @@ export default function CallQueue({ activeStaffId }: { activeStaffId?: string })
     return () => clearInterval(interval)
   }, [])
 
-  // Initial fetch of pending requests
-  const fetchPendingRequests = async () => {
+  // Fetch pending requests with stable callback
+  const fetchPendingRequests = useCallback(async () => {
     try {
       setLoading(true)
       const { data, error } = await supabase
@@ -57,13 +58,19 @@ export default function CallQueue({ activeStaffId }: { activeStaffId?: string })
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // Mutable ref to always call the latest fetchPendingRequests
+  const fetchRef = useRef(fetchPendingRequests)
+  useEffect(() => {
+    fetchRef.current = fetchPendingRequests
+  }, [fetchPendingRequests])
 
   // Subscribe to real-time changes via WebSockets
   useEffect(() => {
-    fetchPendingRequests()
+    fetchRef.current()
 
-    const channel = supabase
+    const channel: RealtimeChannel = supabase
       .channel('public:requests_queue')
       .on(
         'postgres_changes',
@@ -93,7 +100,12 @@ export default function CallQueue({ activeStaffId }: { activeStaffId?: string })
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        // CRITICAL: Refetch when subscription confirms to catch any missed events
+        if (status === 'SUBSCRIBED') {
+          fetchRef.current()
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
