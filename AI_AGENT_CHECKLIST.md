@@ -69,8 +69,11 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Added Service Worker (`apps/staff-app/public/sw.js`) with static asset caching, network-first fetch strategy, background `push` event handling, vibration patterns, and notification-click tab focus.
   - Added `apps/staff-app/lib/usePWA.ts` hook for automatic SW registration, dynamic manifest injection, deferred install prompt handling, and push permission flow.
   - Enhanced `apps/staff-app/lib/notifications.ts` and `App.tsx` with browser Notification API integration, 1-tap PWA Install Banner, and Push Alert prompts.
-- [x] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
-- [ ] Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.
+- [x] Automatic Database Cleanup Cron & Trigger for Expired Spa Holds (`16_cleanup_expired_spa_holds.sql`):
+  - `cleanup_expired_spa_holds()` PL/pgSQL function: marks `HELD` locks as `EXPIRED` once `expires_at <= NOW()` and purges abandoned `HELD`/`EXPIRED` locks older than 1 hour.
+  - Added self-cleaning `trg_cleanup_expired_spa_holds` `BEFORE INSERT` trigger on `spa_slot_locks` to maintain zero-bloat state automatically.
+  - Added optional `pg_cron` recurring job registration.
+- [ ] Apply DB migrations `15_spa_time_slots.sql` and `16_cleanup_expired_spa_holds.sql` in Supabase SQL editor.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments and Android APK.
 
 Notes:

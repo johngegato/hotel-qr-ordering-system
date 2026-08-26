@@ -31,8 +31,11 @@ Recent session additions:
 - apps/staff-app/components/ManualSpaBookingModal.tsx, SpaAvailabilityModal.tsx, EditSpaBookingModal.tsx, SpaTimetable.tsx: Fixed Staff App bug where vacant timetable slots failed to accept bookings. Removed the silent next-day auto-roll-over (`if (day === 'today' && start < Date.now()) start.setDate(+1)`) in `buildSlotWindow` across all 4 files, ensuring the explicit `day` selection is the single source of truth and resolving date mismatches between the timetable grid and created bookings.
 - apps/staff-app/components/SpaTimetable.tsx & App.tsx: Excluded Spa Timetable from auto-sync polling by removing `useAutoSync` and `refreshTrigger` effect, relying solely on Supabase Realtime subscriptions to eliminate constant reloading and screen flashing.
 - apps/staff-app/components/RequestHistory.tsx: Wrapped the Request History module in a collapsible accordion component (collapsed by default via `isAccordionOpen: false`) with header badge counter and toggle chevron to optimize mobile vertical scrolling.
-- apps/staff-app PWA Infrastructure [NEW]:
-  - `apps/staff-app/public/manifest.json`: Full Web App Manifest with standalone display mode, orientation, branding colors, icon sizes (192x192, 512x512, maskable), and quick-action app shortcuts.
+- apps/web/supabase/migrations/16_cleanup_expired_spa_holds.sql & packages/supabase/migrations/16_cleanup_expired_spa_holds.sql [NEW]:
+  - Implemented automated database cleanup system for temporary `HELD` spa locks.
+  - `cleanup_expired_spa_holds()` function: automatically marks unconfirmed `HELD` locks as `EXPIRED` once `expires_at <= NOW()`, and permanently purges abandoned `HELD`/`EXPIRED` locks older than 1 hour.
+  - `trg_cleanup_expired_spa_holds` trigger on `spa_slot_locks`: performs a lazy, non-blocking cleanup sweep on every new lock attempt, guaranteeing the table stays clean without requiring external cron daemons.
+  - Optional `pg_cron` schedule registration (`*/10 * * * *`) when the extension is active in Supabase.
   - `apps/staff-app/public/sw.js`: Service Worker caching static assets, providing offline resilience, listening to `push` events for background sound/vibration alerts, and handling `notificationclick` navigation.
   - `apps/staff-app/lib/usePWA.ts`: React hook managing Service Worker lifecycle, dynamic `<link rel="manifest">` injection, install prompt capture (`beforeinstallprompt`), standalone detection, and Web Notification permission requests.
   - `apps/staff-app/lib/notifications.ts`: Added web PWA support to `triggerAggressiveAlert` and `registerForPushNotifications` via `Notification` API and Service Worker `showNotification`.
