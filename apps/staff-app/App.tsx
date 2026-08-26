@@ -499,11 +499,12 @@ export default function App() {
     return () => clearInterval(timer)
   }, [activeStaffUser, checkUnhandledRequests])
 
-  // ─── Automated Polling & Focus Synchronization for Top-Level Stats ─────────
+  // ─── Automated Polling & Focus Synchronization for Top-Level Stats & Queues ──
   useAutoSync(
     useCallback(() => {
       if (activeStaffUser) {
         fetchStats()
+        setRefreshKey((k) => k + 1)
       }
     }, [activeStaffUser]),
     { intervalMs: 6000, enabled: !!activeStaffUser }

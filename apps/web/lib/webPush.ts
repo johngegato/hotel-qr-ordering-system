@@ -33,14 +33,20 @@ export async function sendWebPushToHotelStaff(
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-  // 1. Fetch active push subscriptions for the hotel
-  const { data: subscriptions, error } = await supabase
+  // 1. Fetch active push subscriptions for the hotel (with fallback to all active if hotelId is default)
+  let subscriptionsQuery = supabase
     .from('staff_push_subscriptions')
     .select('id, endpoint, p256dh, auth')
-    .eq('hotel_id', hotelId)
     .eq('is_active', true)
 
+  if (hotelId && hotelId !== '00000000-0000-0000-0000-000000000001') {
+    subscriptionsQuery = subscriptionsQuery.or(`hotel_id.eq.${hotelId},hotel_id.eq.00000000-0000-0000-0000-000000000001`)
+  }
+
+  const { data: subscriptions, error } = await subscriptionsQuery
+
   if (error || !subscriptions || subscriptions.length === 0) {
+    console.log('[WebPush] No active push subscriptions found for hotel:', hotelId)
     return { sent: 0, failed: 0 }
   }
 

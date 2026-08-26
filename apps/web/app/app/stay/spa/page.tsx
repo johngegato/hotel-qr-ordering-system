@@ -369,12 +369,29 @@ function GuestSpaContent() {
         .select('id')
         .single()
 
-      if (reqErr) throw reqErr
-
       if (reqData?.id) {
         const requestId = reqData.id
         createdRequestId = requestId
         setActiveRequestId(requestId)
+
+        // ── Fire Web Push to all active staff PWA devices ──
+        try {
+          fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              hotelId: defaultHotelId,
+              title: `💆 Spa Booking ${isOnCallSlot ? '(On-Call)' : ''} — ${roomNumberDisplay}`,
+              body: `${selectedService.name} @ ${selectedSlotTime}${intakeNote.trim() ? ` — ${intakeNote.trim()}` : ''}`,
+              requestId: requestId,
+              roomNumber: roomNumberDisplay,
+              requestType: 'SPA_BOOKING',
+              url: '/',
+            }),
+          }).catch(() => {})
+        } catch {
+          // Push dispatch is non-blocking
+        }
 
         // Realtime subscription for instant approval updates
         supabase

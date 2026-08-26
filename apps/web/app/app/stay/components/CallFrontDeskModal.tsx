@@ -87,11 +87,29 @@ export default function CallFrontDeskModal({
         .select('id')
         .single()
 
-      if (error) throw error
-
       if (data) {
-        setRequestId((data as { id: string }).id)
+        const reqId = (data as { id: string }).id
+        setRequestId(reqId)
         setStatus('PENDING')
+
+        // ── Fire Web Push to all active staff PWA devices ──
+        try {
+          fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              hotelId: hotelId || '00000000-0000-0000-0000-000000000001',
+              title: `📞 Front Desk Call Request — Room ${roomNumber || '—'}`,
+              body: phone ? `Guest requested an urgent callback [Phone: ${phone}]` : 'Guest requested a front desk callback.',
+              requestId: reqId,
+              roomNumber: roomNumber,
+              requestType: 'CALL_REQUEST',
+              url: '/',
+            }),
+          }).catch(() => {})
+        } catch {
+          // Push dispatch is non-blocking
+        }
       }
     } catch (err) {
       console.error('Failed to submit call request:', err)
