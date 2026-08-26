@@ -36,11 +36,10 @@ Recent session additions:
   - `cleanup_expired_spa_holds()` function: automatically marks unconfirmed `HELD` locks as `EXPIRED` once `expires_at <= NOW()`, and permanently purges abandoned `HELD`/`EXPIRED` locks older than 1 hour.
   - `trg_cleanup_expired_spa_holds` trigger on `spa_slot_locks`: performs a lazy, non-blocking cleanup sweep on every new lock attempt, guaranteeing the table stays clean without requiring external cron daemons.
   - Optional `pg_cron` schedule registration (`*/10 * * * *`) when the extension is active in Supabase.
-  - `apps/staff-app/public/sw.js`: Service Worker caching static assets, providing offline resilience, listening to `push` events for background sound/vibration alerts, and handling `notificationclick` navigation.
-  - `apps/staff-app/lib/usePWA.ts`: React hook managing Service Worker lifecycle, dynamic `<link rel="manifest">` injection, install prompt capture (`beforeinstallprompt`), standalone detection, and Web Notification permission requests.
-  - `apps/staff-app/lib/notifications.ts`: Added web PWA support to `triggerAggressiveAlert` and `registerForPushNotifications` via `Notification` API and Service Worker `showNotification`.
-  - `apps/staff-app/App.tsx`: Added 1-tap "📱 Install Staff App" banner and "🔔 Enable Push Alerts" prompt in header.
-  - `apps/staff-app/app.json`: Configured `expo.web` PWA metadata.
+- apps/staff-app PWA Background Synchronization & WebSocket Liveness Hardening:
+  - `apps/staff-app/public/sw.js`: Enhanced `push` and `notificationclick` listeners with dual client wake-up mechanism via `BroadcastChannel('hotel_staff_sync')` and direct `clients.matchAll().postMessage('PWA_BACKGROUND_SYNC')`, instantly waking up paused PWA tabs when push alerts arrive in the background.
+  - `apps/staff-app/lib/useAutoSync.ts`: Upgraded to listen to `BroadcastChannel`, `pageshow`, `online`, and `visibilitychange` events, and automatically detects and forces reconnection of stalled/frozen Supabase Realtime WebSocket connections (`supabase.realtime.connect()`) when the Android screen wakes up.
+  - `apps/staff-app/lib/useScreenWakeLock.ts` [NEW]: Integrated Web Screen Wake Lock API (`navigator.wakeLock.request('screen')`) to keep the phone/tablet screen and CPU alive during staff shifts, automatically re-acquiring lock on app visibility.
 
 Files changed (high level)
 - apps/web/app/admin/users/page.tsx [NEW]

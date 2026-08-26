@@ -37,6 +37,7 @@ import {
 } from './lib/authStorage'
 import { useAutoSync } from './lib/useAutoSync'
 import { usePWA } from './lib/usePWA'
+import { useScreenWakeLock } from './lib/useScreenWakeLock'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -175,6 +176,9 @@ export default function App() {
     promptInstall,
     requestNotificationPermission,
   } = usePWA(activeStaffUser?.id)
+
+  // ─── Screen Wake Lock (Keeps CPU & WebSockets active) ───────
+  useScreenWakeLock()
 
   const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 

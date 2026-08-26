@@ -64,11 +64,12 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
 - [x] Staff App Request History Collapsible Accordion UI (`RequestHistory.tsx`):
   - Wrapped Request History module in a collapsible accordion container (`isAccordionOpen`, defaults to `false`) to save vertical space on mobile devices.
   - Added tap-to-toggle header with counter badge, chevron icon, and full preservation of internal filters, sorting, call actions, and detail modals.
-- [x] Staff App Progressive Web App (PWA) & Web Push Infrastructure (`apps/staff-app`):
-  - Added Web App Manifest (`apps/staff-app/public/manifest.json`) supporting standalone display mode, orientation, theme colors, and icons.
-  - Added Service Worker (`apps/staff-app/public/sw.js`) with static asset caching, network-first fetch strategy, background `push` event handling, vibration patterns, and notification-click tab focus.
-  - Added `apps/staff-app/lib/usePWA.ts` hook for automatic SW registration, dynamic manifest injection, deferred install prompt handling, and push permission flow.
-  - Enhanced `apps/staff-app/lib/notifications.ts` and `App.tsx` with browser Notification API integration, 1-tap PWA Install Banner, and Push Alert prompts.
+- [x] Staff App Progressive Web App (PWA) & Background Real-Time Synchronization Hardening (`apps/staff-app`):
+  - Web App Manifest (`manifest.json`): standalone display mode, orientation lock, branding colors, and icon suite.
+  - Service Worker (`sw.js`): static asset caching, background `push` event processing, high-intensity vibration patterns, and dual client wake-up broadcasts (`BroadcastChannel('hotel_staff_sync')` & `clients.matchAll()`).
+  - Enhanced Auto-Sync (`useAutoSync.ts`): listens for Service Worker push signals, `pageshow`, `online`, and `visibilitychange` events, and forces active Supabase Realtime WebSocket reconnection (`supabase.realtime.connect()`) upon screen/tab wake-up.
+  - Screen Wake Lock (`useScreenWakeLock.ts`): automatically requests and maintains browser screen wake lock (`navigator.wakeLock`) on mobile devices to prevent OS sleeping during active shifts.
+  - Install Banner & Web Push Prompts in `App.tsx`.
 - [x] Automatic Database Cleanup Cron & Trigger for Expired Spa Holds (`16_cleanup_expired_spa_holds.sql`):
   - `cleanup_expired_spa_holds()` PL/pgSQL function: marks `HELD` locks as `EXPIRED` once `expires_at <= NOW()` and purges abandoned `HELD`/`EXPIRED` locks older than 1 hour.
   - Added self-cleaning `trg_cleanup_expired_spa_holds` `BEFORE INSERT` trigger on `spa_slot_locks` to maintain zero-bloat state automatically.

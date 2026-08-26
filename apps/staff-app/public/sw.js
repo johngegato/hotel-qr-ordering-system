@@ -68,7 +68,7 @@ self.addEventListener('fetch', (event) => {
   )
 })
 
-// ─── Web Push Handling (Background Real-Time Notifications) ────────────────────
+// ─── Web Push Handling (Background Real-Time Notifications & Client Wake-Up) ──
 self.addEventListener('push', (event) => {
   let data = {
     title: '🚨 New Guest Request',
@@ -91,7 +91,7 @@ self.addEventListener('push', (event) => {
     icon: data.icon || '/assets/icon.png',
     badge: data.badge || '/favicon.png',
     tag: data.tag || 'hotel-urgent-request',
-    data: { url: data.url || '/' },
+    data: { url: data.url || '/', ...data },
     vibrate: [200, 100, 200, 100, 200, 100, 400],
     requireInteraction: true, // Keep notification visible until acted upon
     actions: [
@@ -100,8 +100,33 @@ self.addEventListener('push', (event) => {
     ],
   }
 
+  // Wake up and broadcast to all open PWA windows/tabs
+  const broadcastWakeup = async () => {
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('hotel_staff_sync')
+        bc.postMessage({ type: 'PWA_BACKGROUND_SYNC', data, timestamp: Date.now() })
+        bc.close()
+      }
+    } catch (err) {
+      console.debug('[SW] BroadcastChannel warning:', err)
+    }
+
+    try {
+      const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      for (const client of clientList) {
+        client.postMessage({ type: 'PWA_BACKGROUND_SYNC', data, timestamp: Date.now() })
+      }
+    } catch (err) {
+      console.debug('[SW] clients.postMessage warning:', err)
+    }
+  }
+
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    Promise.all([
+      self.registration.showNotification(data.title, options),
+      broadcastWakeup(),
+    ])
   )
 })
 
@@ -113,20 +138,30 @@ self.addEventListener('notificationclick', (event) => {
 
   const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : '/'
 
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If a tab/PWA window is already open, focus it
-      for (const client of clientList) {
-        if (client.url && 'focus' in client) {
-          return client.focus()
-        }
+  const handleNotificationClick = async () => {
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('hotel_staff_sync')
+        bc.postMessage({ type: 'PWA_NOTIFICATION_CLICKED', data: event.notification.data, timestamp: Date.now() })
+        bc.close()
       }
-      // Otherwise open a new window
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl)
+    } catch (e) {}
+
+    const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    // If a tab/PWA window is already open, focus it and trigger refresh
+    for (const client of clientList) {
+      if (client.url && 'focus' in client) {
+        client.postMessage({ type: 'PWA_NOTIFICATION_CLICKED', data: event.notification.data, timestamp: Date.now() })
+        return client.focus()
       }
-    })
-  )
+    }
+    // Otherwise open a new window
+    if (self.clients.openWindow) {
+      return self.clients.openWindow(targetUrl)
+    }
+  }
+
+  event.waitUntil(handleNotificationClick())
 })
 
 // ─── Message Handling ─────────────────────────────────────────────────────────
