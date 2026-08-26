@@ -164,6 +164,7 @@ export default function App() {
   const [loginError, setLoginError] = useState('')
   const fadeAnim = React.useRef(new Animated.Value(0)).current
   const slideAnim = React.useRef(new Animated.Value(30)).current
+  const lastDismissedReminderAtRef = React.useRef<number>(0)
 
   const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -223,8 +224,15 @@ export default function App() {
   }, [])
 
   // ─── 5-Minute Recurring Check for Unhandled Requests ────────
-  const checkUnhandledRequests = useCallback(async () => {
+  const checkUnhandledRequests = useCallback(async (isScheduledOrInitial = false) => {
     try {
+      const now = Date.now()
+      const timeSinceDismissed = now - lastDismissedReminderAtRef.current
+      // If user acknowledged within the last 5 minutes (300,000 ms), do NOT re-show popup unless 5-min timer explicitly fired
+      if (!isScheduledOrInitial && timeSinceDismissed < 5 * 60 * 1000) {
+        return
+      }
+
       const { data, error } = await supabase
         .from('requests')
         .select('id, request_type, status, payload, created_at, room_id, rooms(room_number)')
@@ -239,16 +247,18 @@ export default function App() {
       }
 
       if (data && data.length > 0) {
-        setUnhandledPendingList(data as PendingRequestItem[])
-        // Trigger native notification if on mobile/tablet
-        if (Platform.OS !== 'web') {
-          triggerAggressiveAlert({
-            title: `${data.length} Unhandled Requests Pending`,
-            body: `Reminder: ${data.length} pending guest requests require staff attention!`,
-            requestId: data[0].id,
-            roomNumber: 'Multiple Rooms',
-            requestType: 'PENDING_REMINDER',
-          })
+        if (isScheduledOrInitial || timeSinceDismissed >= 5 * 60 * 1000) {
+          setUnhandledPendingList(data as PendingRequestItem[])
+          // Trigger native notification if on mobile/tablet
+          if (Platform.OS !== 'web') {
+            triggerAggressiveAlert({
+              title: `${data.length} Unhandled Requests Pending`,
+              body: `Reminder: ${data.length} pending guest requests require staff attention!`,
+              requestId: data[0].id,
+              roomNumber: 'Multiple Rooms',
+              requestType: 'PENDING_REMINDER',
+            })
+          }
         }
       } else {
         setUnhandledPendingList(null)
@@ -465,11 +475,11 @@ export default function App() {
     if (!activeStaffUser) return
 
     // Run check immediately on login / mount
-    checkUnhandledRequests()
+    checkUnhandledRequests(true)
 
     // Setup 5-minute recurring timer (300,000 ms)
     const timer = setInterval(() => {
-      checkUnhandledRequests()
+      checkUnhandledRequests(true)
     }, 5 * 60 * 1000)
 
     return () => clearInterval(timer)
@@ -480,9 +490,8 @@ export default function App() {
     useCallback(() => {
       if (activeStaffUser) {
         fetchStats()
-        checkUnhandledRequests()
       }
-    }, [activeStaffUser, checkUnhandledRequests]),
+    }, [activeStaffUser]),
     { intervalMs: 6000, enabled: !!activeStaffUser }
   )
 
@@ -490,12 +499,12 @@ export default function App() {
   const handleManualSync = useCallback(async () => {
     setIsManualSyncing(true)
     try {
-      await Promise.all([fetchStats(), checkUnhandledRequests()])
+      await fetchStats()
       setRefreshKey((k) => k + 1)
     } finally {
       setTimeout(() => setIsManualSyncing(false), 400)
     }
-  }, [checkUnhandledRequests])
+  }, [])
 
   useEffect(() => {
     fetchData()
@@ -506,9 +515,15 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
         fetchStats()
         setRefreshKey(k => k + 1)
-        // If an update or deletion resolved pending items, re-evaluate unhandled list
+        // If an update or deletion resolved pending items, silently update active reminder list without re-opening
         if (payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
-          checkUnhandledRequests()
+          setUnhandledPendingList((prev) => {
+            if (!prev) return null
+            const updated = prev.filter(
+              (item) => item.id !== (payload.new as any)?.id && item.id !== (payload.old as any)?.id
+            )
+            return updated.length > 0 ? updated : null
+          })
         }
         // Fire aggressive alert on every new PENDING request
         if (payload.eventType === 'INSERT' && (payload.new as any)?.status === 'PENDING') {
@@ -542,7 +557,7 @@ export default function App() {
       })
 
     return () => { supabase.removeChannel(channel) }
-  }, [checkUnhandledRequests])
+  }, [])
 
   if (isRestoringSession) {
     return (
@@ -634,6 +649,7 @@ export default function App() {
       <PendingRequestsReminderModal
         pendingRequests={unhandledPendingList}
         onDismiss={() => {
+          lastDismissedReminderAtRef.current = Date.now()
           setUnhandledPendingList(null)
           setRefreshKey(k => k + 1)
         }}
