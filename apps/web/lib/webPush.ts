@@ -28,7 +28,7 @@ export async function sendWebPushToHotelStaff(
   hotelId: string,
   payload: WebPushPayload
 ): Promise<{ sent: number; failed: number }> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jhyxekfckogkivjddqae.supabase.co'
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsjnlawhdgfilcfejbji.supabase.co'
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
