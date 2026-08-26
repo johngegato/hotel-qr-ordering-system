@@ -151,6 +151,27 @@ function CheckoutContent() {
       setOrderStatus('PENDING')
       clearCart()
       setCart([])
+
+      // ── Fire Web Push to all active staff PWA devices ──
+      try {
+        const orderLabel = orderType === 'DINE_IN' ? 'Dine-In Order' : 'Room Service Order'
+        const itemSummary = payload.items?.map((i: any) => `${i.quantity}× ${i.name}`).join(', ')
+        await fetch('/api/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hotelId: HOTEL_ID,
+            title: `🍽️ New ${orderLabel}${roomNumber ? ` — Room ${roomNumber}` : ''}`,
+            body: itemSummary || 'A new food order has been submitted.',
+            requestId: data.id,
+            roomNumber,
+            requestType: 'FOOD_ORDER',
+            url: '/',
+          }),
+        })
+      } catch {
+        // Push dispatch is non-blocking — never fail the order on push error
+      }
     }
   }
 

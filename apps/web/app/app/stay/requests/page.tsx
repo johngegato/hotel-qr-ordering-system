@@ -181,10 +181,31 @@ function GuestRequestsContent() {
     if (!error && data?.id) {
       setActiveRequest({ id: data.id, taskName, status: 'PENDING' })
       setStep('tracking')
+
+      // ── Fire Web Push to all active staff PWA devices ──
+      try {
+        const deptLabel = DEPT_CONFIG[targetDept as keyof typeof DEPT_CONFIG]?.label || targetDept
+        await fetch('/api/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hotelId: HOTEL_ID,
+            title: `🛎️ Guest Request — ${deptLabel}${roomNumber ? ` (Room ${roomNumber})` : ''}`,
+            body: `${quantity > 1 ? `${quantity}× ` : ''}${taskName}${notes.trim() ? ` — ${notes.trim()}` : ''}`,
+            requestId: data.id,
+            roomNumber,
+            requestType: 'TASK',
+            url: '/',
+          }),
+        })
+      } catch {
+        // Push dispatch is non-blocking — never fail the guest request on push error
+      }
     } else {
       setStep('modal')
     }
   }, [roomId, isCustom, customText, selectedItem, quantity, notes, roomNumber])
+
 
   const handleSubmit = useCallback(() => {
     const phone = getStoredGuestPhone()
