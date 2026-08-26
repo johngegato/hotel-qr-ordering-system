@@ -66,16 +66,25 @@ export default function SpaQueue({
   const fetchSpaQueue = useCallback(async (isSilent = false) => {
     try {
       if (!isSilent) setLoading(true)
+      // 1. Try fetching with rooms join
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from('requests') as any)
         .select('*, rooms(room_number)')
-        .eq('hotel_id', HOTEL_ID)
         .eq('request_type', 'SPA_BOOKING')
         .in('status', ['PENDING', 'PENDING_ON_CALL'])
         .order('created_at', { ascending: true })
 
-      if (error) throw error
-      setRequests((data as SpaRequestItem[]) || [])
+      if (error) {
+        // Fallback without join
+        const { data: fallbackData } = await (supabase.from('requests') as any)
+          .select('*')
+          .eq('request_type', 'SPA_BOOKING')
+          .in('status', ['PENDING', 'PENDING_ON_CALL'])
+          .order('created_at', { ascending: true })
+        if (fallbackData) setRequests(fallbackData as SpaRequestItem[])
+      } else if (data) {
+        setRequests((data as SpaRequestItem[]) || [])
+      }
     } catch (err) {
       console.error('Error fetching spa queue:', err)
     } finally {

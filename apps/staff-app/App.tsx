@@ -540,8 +540,9 @@ export default function App() {
             return updated.length > 0 ? updated : null
           })
         }
-        // Fire aggressive alert on every new PENDING request
-        if (payload.eventType === 'INSERT' && (payload.new as any)?.status === 'PENDING') {
+        // Fire aggressive alert on every new PENDING or PENDING_ON_CALL request
+        const isNewPending = (payload.new as any)?.status === 'PENDING' || (payload.new as any)?.status === 'PENDING_ON_CALL'
+        if (payload.eventType === 'INSERT' && isNewPending) {
           hydrateIncomingAlert(payload.new as any)
             .then((nextRequest) => {
               if (nextRequest) {

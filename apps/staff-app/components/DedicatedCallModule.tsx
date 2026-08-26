@@ -50,14 +50,21 @@ export default function DedicatedCallModule({ activeStaffId, refreshTrigger }: D
   const fetchCalls = useCallback(async (isSilent = false) => {
     if (!isSilent) setLoading(true)
     try {
+      // 1. Try fetching with rooms join
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from('requests') as any)
         .select('*, rooms(room_number)')
-        .eq('hotel_id', HOTEL_ID)
         .eq('request_type', 'CALL_REQUEST')
-        .in('status', ['PENDING', 'CLAIMED'])  // ← exclude RESOLVED so they disappear after resolution
+        .in('status', ['PENDING', 'CLAIMED'])
 
-      if (!error && data) {
+      if (error) {
+        // Fallback without join
+        const { data: fallbackData } = await (supabase.from('requests') as any)
+          .select('*')
+          .eq('request_type', 'CALL_REQUEST')
+          .in('status', ['PENDING', 'CLAIMED'])
+        if (fallbackData) setCalls(fallbackData as CallRequestItem[])
+      } else if (data) {
         setCalls(data as CallRequestItem[])
       }
     } catch (err) {
