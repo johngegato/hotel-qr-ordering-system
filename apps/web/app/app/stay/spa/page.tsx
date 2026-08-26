@@ -184,33 +184,55 @@ function GuestSpaContent() {
     }
   }, [holdLockId, step])
 
+  const parseTimeToHoursAndMinutes = (timeStr: string): { hours: number; minutes: number } => {
+    if (!timeStr) return { hours: 14, minutes: 0 }
+    const trimmed = timeStr.trim().replace(/\u00A0/g, ' ')
+
+    // If ISO datetime string
+    if (trimmed.includes('T')) {
+      const d = new Date(trimmed)
+      if (!isNaN(d.getTime())) {
+        return { hours: d.getHours(), minutes: d.getMinutes() }
+      }
+    }
+
+    // Match 12h or 24h: "10:30 AM", "10:30AM", "2:30 PM", "14:30", "2:30pm", "02:30"
+    const match = trimmed.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])?$/)
+    if (match) {
+      let hours = parseInt(match[1], 10)
+      const minutes = parseInt(match[2], 10) || 0
+      const modifier = match[3]?.toUpperCase()
+
+      if (modifier === 'PM' && hours < 12) {
+        hours += 12
+      } else if (modifier === 'AM' && hours === 12) {
+        hours = 0
+      }
+      return { hours, minutes }
+    }
+
+    return { hours: 14, minutes: 0 }
+  }
+
   const convertDisplayTimeTo24Hour = (slotTime: string): string => {
-    if (!slotTime) return '14:00'
-    if (/^\d{1,2}:\d{2}$/.test(slotTime.trim())) return slotTime.trim()
-
-    const [time, meridiem] = slotTime.trim().split(' ')
-    const [hourText, minuteText] = time.split(':')
-    let hour = Number(hourText)
-    const minute = Number(minuteText || '00')
-
-    if (meridiem && meridiem.toUpperCase() === 'PM' && hour < 12) hour += 12
-    if (meridiem && meridiem.toUpperCase() === 'AM' && hour === 12) hour = 0
-
-    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+    const { hours, minutes } = parseTimeToHoursAndMinutes(slotTime)
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
   }
 
   // Calculate precise window based on selected day (Today vs Tomorrow)
-  const getSlotWindow = (slotTime: string, durationMinutes: number = 60, dayTarget: 'TODAY' | 'TOMORROW' = selectedDay) => {
-    const normalizedTime = convertDisplayTimeTo24Hour(slotTime)
-    const [hourText, minuteText] = normalizedTime.split(':')
-    const hour = Number(hourText || '0')
-    const minute = Number(minuteText || '0')
+  const getSlotWindow = (
+    slotTime: string,
+    durationMinutes: number = 60,
+    dayTarget: 'TODAY' | 'TOMORROW' = selectedDay
+  ) => {
+    const { hours, minutes } = parseTimeToHoursAndMinutes(slotTime)
 
     const start = new Date()
     if (dayTarget === 'TOMORROW') {
       start.setDate(start.getDate() + 1)
     }
-    start.setHours(hour, minute, 0, 0)
+    start.setHours(hours, minutes, 0, 0)
+    start.setMilliseconds(0)
 
     const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
     return { start, end }
@@ -222,7 +244,7 @@ function GuestSpaContent() {
     label: string
     isSelectable: boolean
   } => {
-    const slotWindow = getSlotWindow(slotTime, durationMinutes)
+    const slotWindow = getSlotWindow(slotTime, durationMinutes, selectedDay)
     const now = new Date()
 
     // 1. If today and the time has already passed
@@ -251,7 +273,9 @@ function GuestSpaContent() {
     }
 
     // 3. On-call check
-    const isLateEvening = slotTime === '05:30 PM' || slotTime === '07:00 PM'
+    const normalized24 = convertDisplayTimeTo24Hour(slotTime)
+    const hour24 = parseInt(normalized24.split(':')[0], 10)
+    const isLateEvening = hour24 >= 17 // 5:00 PM or later
     if (selectedService?.requires_on_call || isLateEvening) {
       return { status: 'ON_CALL', label: 'On-Call Request', isSelectable: true }
     }

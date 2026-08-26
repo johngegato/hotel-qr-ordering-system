@@ -758,7 +758,7 @@ export default function App() {
             <CallQueue activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
 
             {/* 2. Spa Timetable & Appointments Queue */}
-            <SpaTimetable activeStaffUser={activeStaffUser} activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
+            <SpaTimetable activeStaffUser={activeStaffUser} activeStaffId={activeStaffUser?.id} />
             <SpaQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} refreshTrigger={refreshKey} />
 
             {/* 3. Room Task Queue */}

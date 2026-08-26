@@ -57,14 +57,22 @@ const FALLBACK_THERAPISTS = [
 ]
 
 function buildSlotWindow(slotTime: string, durationMins: number) {
-  const [timePart] = slotTime.split(' ')
-  const [hoursText, minutesText] = timePart.split(':')
-  let hours = Number(hoursText || '0')
-  const minutes = Number(minutesText || '0')
+  const trimmed = (slotTime || '14:00').trim().replace(/\u00A0/g, ' ')
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])?$/)
+  let hours = 14
+  let minutes = 0
+  if (match) {
+    hours = parseInt(match[1], 10)
+    minutes = parseInt(match[2], 10) || 0
+    const mod = match[3]?.toUpperCase()
+    if (mod === 'PM' && hours < 12) hours += 12
+    else if (mod === 'AM' && hours === 12) hours = 0
+  }
 
   const start = new Date()
   start.setHours(hours, minutes, 0, 0)
-  if (start.getTime() < Date.now()) start.setDate(start.getDate() + 1)
+  start.setMilliseconds(0)
+  // No auto-roll to next day — callers manage the date
 
   const end = new Date(start.getTime() + (durationMins || 60) * 60 * 1000)
   return { start, end }

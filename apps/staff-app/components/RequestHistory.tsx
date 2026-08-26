@@ -65,6 +65,7 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
   const [dateSort, setDateSort] = useState<DateSortOrder>('desc')
   const [activeSortType, setActiveSortType] = useState<'DATE' | 'ROOM'>('DATE')
   const [isExpanded, setIsExpanded] = useState(false)
+  const [isAccordionOpen, setIsAccordionOpen] = useState(false)
   const [typeFilter, setTypeFilter] = useState<FilterType>('ALL')
 
   // Detail panel state
@@ -526,153 +527,180 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={styles.heading}>📜 Request History & Logs</Text>
-          {sortedRequests.length > 5 && (
-            <TouchableOpacity
-              style={styles.expandToggleBtn}
-              onPress={() => setIsExpanded(prev => !prev)}
-            >
-              <Text style={styles.expandToggleText}>
-                {isExpanded ? '▲ Minimize' : `▼ Expand (${sortedRequests.length})`}
-              </Text>
-            </TouchableOpacity>
+
+      {/* ─── Accordion Header (always visible) ─── */}
+      <TouchableOpacity
+        style={styles.accordionHeader}
+        activeOpacity={0.7}
+        onPress={() => setIsAccordionOpen(prev => !prev)}
+      >
+        <View style={styles.accordionTitleGroup}>
+          <Text style={styles.accordionIcon}>📜</Text>
+          <Text style={styles.accordionTitle}>Request History & Logs</Text>
+          {requests.length > 0 && (
+            <View style={styles.accordionBadge}>
+              <Text style={styles.accordionBadgeText}>{requests.length}</Text>
+            </View>
           )}
         </View>
+        <Text style={styles.accordionChevron}>
+          {isAccordionOpen ? '▲' : '▼'}
+        </Text>
+      </TouchableOpacity>
 
-        {/* Type Filter Tabs */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-          <View style={styles.filterRow}>
-            {filterTabs.map(tab => (
+      {/* ─── Collapsible Body ─── */}
+      {isAccordionOpen && (
+        <View style={styles.accordionBody}>
+
+          <View style={styles.header}>
+            <View style={styles.titleRow}>
+              {sortedRequests.length > 5 && (
+                <TouchableOpacity
+                  style={styles.expandToggleBtn}
+                  onPress={() => setIsExpanded(prev => !prev)}
+                >
+                  <Text style={styles.expandToggleText}>
+                    {isExpanded ? '▲ Minimize' : `▼ Expand (${sortedRequests.length})`}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Type Filter Tabs */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+              <View style={styles.filterRow}>
+                {filterTabs.map(tab => (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[styles.filterTab, typeFilter === tab.key && styles.filterTabActive]}
+                    onPress={() => setTypeFilter(tab.key)}
+                  >
+                    <Text style={[styles.filterTabText, typeFilter === tab.key && styles.filterTabTextActive]}>
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            {/* Sorting Controls */}
+            <View style={styles.sortBar}>
               <TouchableOpacity
-                key={tab.key}
-                style={[styles.filterTab, typeFilter === tab.key && styles.filterTabActive]}
-                onPress={() => setTypeFilter(tab.key)}
+                style={[styles.sortBtn, activeSortType === 'ROOM' && styles.sortBtnActive]}
+                onPress={() => {
+                  if (activeSortType === 'ROOM') {
+                    setRoomSort(prev => prev === 'asc' ? 'desc' : 'asc')
+                  } else {
+                    setActiveSortType('ROOM')
+                  }
+                }}
               >
-                <Text style={[styles.filterTabText, typeFilter === tab.key && styles.filterTabTextActive]}>
-                  {tab.label}
+                <Text style={[styles.sortText, activeSortType === 'ROOM' && styles.sortTextActive]}>
+                  🚪 Room {activeSortType === 'ROOM' ? (roomSort === 'asc' ? '↑' : '↓') : ''}
                 </Text>
               </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
 
-        {/* Sorting Controls */}
-        <View style={styles.sortBar}>
-          <TouchableOpacity
-            style={[styles.sortBtn, activeSortType === 'ROOM' && styles.sortBtnActive]}
-            onPress={() => {
-              if (activeSortType === 'ROOM') {
-                setRoomSort(prev => prev === 'asc' ? 'desc' : 'asc')
-              } else {
-                setActiveSortType('ROOM')
-              }
-            }}
-          >
-            <Text style={[styles.sortText, activeSortType === 'ROOM' && styles.sortTextActive]}>
-              🚪 Room {activeSortType === 'ROOM' ? (roomSort === 'asc' ? '↑' : '↓') : ''}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.sortBtn, activeSortType === 'DATE' && styles.sortBtnActive]}
-            onPress={() => {
-              if (activeSortType === 'DATE') {
-                setDateSort(prev => prev === 'desc' ? 'asc' : 'desc')
-              } else {
-                setActiveSortType('DATE')
-              }
-            }}
-          >
-            <Text style={[styles.sortText, activeSortType === 'DATE' && styles.sortTextActive]}>
-              ⏱ Date {activeSortType === 'DATE' ? (dateSort === 'desc' ? '↓ Newest' : '↑ Oldest') : ''}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {loading ? (
-        <ActivityIndicator size="small" color="#fbbf24" style={{ marginVertical: 20 }} />
-      ) : sortedRequests.length === 0 ? (
-        <Text style={styles.emptyText}>No historical logs available.</Text>
-      ) : (
-        <FlatList
-          data={displayedRequests}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
-          scrollEnabled={false}
-
-          renderItem={({ item }) => {
-            const st = getStatusStyle(item.status)
-            const icon = getTypeIcon(item.request_type)
-            const roomNo = item.rooms?.room_number || (item.payload as any)?.room_number || 'N/A'
-            const dateStr = formatRelativeTime(item.created_at)
-            const { name: actorName, role: actorRole } = resolveActorFromRequest(item)
-
-            return (
               <TouchableOpacity
-                style={styles.card}
-                activeOpacity={0.75}
-                onPress={() => handleSelectRequest(item)}
+                style={[styles.sortBtn, activeSortType === 'DATE' && styles.sortBtnActive]}
+                onPress={() => {
+                  if (activeSortType === 'DATE') {
+                    setDateSort(prev => prev === 'desc' ? 'asc' : 'desc')
+                  } else {
+                    setActiveSortType('DATE')
+                  }
+                }}
               >
-                <View style={styles.cardHeader}>
-                  <View style={styles.roomTag}>
-                    <Text style={styles.iconText}>{icon}</Text>
-                    <Text style={styles.roomNo}>Room {roomNo}</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: st.bg }]}>
-                    <Text style={[styles.statusText, { color: st.color }]}>{st.label}</Text>
-                  </View>
-                </View>
-
-                <Text style={styles.summaryText}>{getTypeSummary(item)}</Text>
-
-                {/* Guest phone for CALL_REQUEST history cards */}
-                {item.request_type === 'CALL_REQUEST' && (
-                  <TouchableOpacity
-                    style={styles.callHistoryPhoneRow}
-                    activeOpacity={(item.payload as any)?.guest_phone ? 0.7 : 1}
-                    onPress={() => {
-                      const phone = (item.payload as any)?.guest_phone
-                      if (!phone) {
-                        Alert.alert('No Phone Number', 'No guest phone number was provided with this request.')
-                        return
-                      }
-                      Linking.openURL(`tel:${phone}`).catch(() =>
-                        Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
-                      )
-                    }}
-                  >
-                    {(item.payload as any)?.guest_phone ? (
-                      <>
-                        <Text style={styles.callHistoryPhoneText}>📞 {(item.payload as any).guest_phone}</Text>
-                        <Text style={styles.callHistoryPhoneHint}>Tap to call</Text>
-                      </>
-                    ) : (
-                      <Text style={styles.callHistoryNoPhone}>📞 No phone number</Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-
-                {/* Actor attribution */}
-                {actorName && (
-                  <View style={styles.actorChip}>
-                    <Text style={[styles.actorChipText, { color: actorRole === 'GUEST' ? '#38bdf8' : '#a78bfa' }]}>
-                      {actorRole === 'GUEST' ? '📱' : '🧑‍💼'} {actorName}
-                      {actorRole && actorRole !== 'GUEST' ? ` · ${actorRole.replace(/_/g, ' ')}` : ''}
-                    </Text>
-                  </View>
-                )}
-
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaTime}>🕒 {dateStr}</Text>
-                  <Text style={styles.tapHint}>Tap for details →</Text>
-                </View>
+                <Text style={[styles.sortText, activeSortType === 'DATE' && styles.sortTextActive]}>
+                  ⏱ Date {activeSortType === 'DATE' ? (dateSort === 'desc' ? '↓ Newest' : '↑ Oldest') : ''}
+                </Text>
               </TouchableOpacity>
-            )
-          }}
-        />
+            </View>
+          </View>
+
+          {loading ? (
+            <ActivityIndicator size="small" color="#fbbf24" style={{ marginVertical: 20 }} />
+          ) : sortedRequests.length === 0 ? (
+            <Text style={styles.emptyText}>No historical logs available.</Text>
+          ) : (
+            <FlatList
+              data={displayedRequests}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
+              scrollEnabled={false}
+
+              renderItem={({ item }) => {
+                const st = getStatusStyle(item.status)
+                const icon = getTypeIcon(item.request_type)
+                const roomNo = item.rooms?.room_number || (item.payload as any)?.room_number || 'N/A'
+                const dateStr = formatRelativeTime(item.created_at)
+                const { name: actorName, role: actorRole } = resolveActorFromRequest(item)
+
+                return (
+                  <TouchableOpacity
+                    style={styles.card}
+                    activeOpacity={0.75}
+                    onPress={() => handleSelectRequest(item)}
+                  >
+                    <View style={styles.cardHeader}>
+                      <View style={styles.roomTag}>
+                        <Text style={styles.iconText}>{icon}</Text>
+                        <Text style={styles.roomNo}>Room {roomNo}</Text>
+                      </View>
+                      <View style={[styles.statusBadge, { backgroundColor: st.bg }]}>
+                        <Text style={[styles.statusText, { color: st.color }]}>{st.label}</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.summaryText}>{getTypeSummary(item)}</Text>
+
+                    {/* Guest phone for CALL_REQUEST history cards */}
+                    {item.request_type === 'CALL_REQUEST' && (
+                      <TouchableOpacity
+                        style={styles.callHistoryPhoneRow}
+                        activeOpacity={(item.payload as any)?.guest_phone ? 0.7 : 1}
+                        onPress={() => {
+                          const phone = (item.payload as any)?.guest_phone
+                          if (!phone) {
+                            Alert.alert('No Phone Number', 'No guest phone number was provided with this request.')
+                            return
+                          }
+                          Linking.openURL(`tel:${phone}`).catch(() =>
+                            Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
+                          )
+                        }}
+                      >
+                        {(item.payload as any)?.guest_phone ? (
+                          <>
+                            <Text style={styles.callHistoryPhoneText}>📞 {(item.payload as any).guest_phone}</Text>
+                            <Text style={styles.callHistoryPhoneHint}>Tap to call</Text>
+                          </>
+                        ) : (
+                          <Text style={styles.callHistoryNoPhone}>📞 No phone number</Text>
+                        )}
+                      </TouchableOpacity>
+                    )}
+
+                    {/* Actor attribution */}
+                    {actorName && (
+                      <View style={styles.actorChip}>
+                        <Text style={[styles.actorChipText, { color: actorRole === 'GUEST' ? '#38bdf8' : '#a78bfa' }]}>
+                          {actorRole === 'GUEST' ? '📱' : '🧑‍💼'} {actorName}
+                          {actorRole && actorRole !== 'GUEST' ? ` · ${actorRole.replace(/_/g, ' ')}` : ''}
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaTime}>🕒 {dateStr}</Text>
+                      <Text style={styles.tapHint}>Tap for details →</Text>
+                    </View>
+                  </TouchableOpacity>
+                )
+              }}
+            />
+          )}
+
+        </View>
       )}
 
       {renderDetailModal()}
@@ -701,6 +729,50 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     marginTop: 20,
+  },
+  accordionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  accordionTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  accordionIcon: {
+    fontSize: 16,
+  },
+  accordionTitle: {
+    color: '#38bdf8',
+    fontWeight: '800',
+    fontSize: 15,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  accordionBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: 'rgba(56,189,248,0.15)',
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+  },
+  accordionBadgeText: {
+    color: '#38bdf8',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  accordionChevron: {
+    color: '#38bdf8',
+    fontSize: 13,
+    fontWeight: '800',
+    marginLeft: 8,
+  },
+  accordionBody: {
+    marginTop: 14,
   },
   header: {
     marginBottom: 14,

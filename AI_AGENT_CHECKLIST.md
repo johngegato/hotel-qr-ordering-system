@@ -55,8 +55,15 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
 - [x] Staff App Automated Persistent Real-Time Reactivity & Auto-Sync Engine (`useAutoSync.ts`, `App.tsx`, and all queue components):
   - Created `apps/staff-app/lib/useAutoSync.ts` providing active background polling intervals (6-8s) and instant window/tab focus & visibility re-sync triggers.
   - Hardened Realtime WebSockets: removed broken column filters (`filter: 'request_type=eq.CALL_REQUEST'`) in `DedicatedCallModule.tsx`, and added `SUBSCRIBED` channel recovery listeners across all modules.
-  - Broadcasted `refreshTrigger={refreshKey}` from top-level `App.tsx` event bus to all modules (`CallQueue`, `DedicatedCallModule`, `SpaTimetable`, `SpaQueue`, `TaskQueue`, `FoodQueue`, `RequestHistory`).
-  - Added visual header Quick Sync button (`⚡ Sync`) and top-level stats auto-sync.
+  - Broadcasted `refreshTrigger={refreshKey}` from top-level `App.tsx` event bus to queues (`CallQueue`, `DedicatedCallModule`, `SpaQueue`, `TaskQueue`, `FoodQueue`, `RequestHistory`).
+  - Decoupled `lastDismissedReminderAtRef` 5-minute cooldown guard from auto-sync polling loop to prevent repeated modal popups.
+  - Excluded `SpaTimetable` from auto-sync timer polling and `refreshTrigger` to prevent constant visual reloads, relying strictly on comprehensive Postgres Realtime table events.
+- [x] Spa Time Slot Evaluation & Datetime Normalization Fixes (`apps/web` & `apps/staff-app`):
+  - Guest Web (`/app/stay/spa`): Fixed "passed" bug on 'Today' slots by implementing robust regex AM/PM parser `/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])?$/` across `parseTimeToHoursAndMinutes`, `convertDisplayTimeTo24Hour`, and `getSlotWindow`.
+  - Staff App (`ManualSpaBookingModal.tsx`, `SpaAvailabilityModal.tsx`, `EditSpaBookingModal.tsx`, `SpaTimetable.tsx`): Fixed vacant slot acceptance bug by removing silent next-day roll-over in `buildSlotWindow`, making explicit `day` parameter the single source of truth.
+- [x] Staff App Request History Collapsible Accordion UI (`RequestHistory.tsx`):
+  - Wrapped Request History module in a collapsible accordion container (`isAccordionOpen`, defaults to `false`) to save vertical space on mobile devices.
+  - Added tap-to-toggle header with counter badge, chevron icon, and full preservation of internal filters, sorting, call actions, and detail modals.
 - [x] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
 - [ ] Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments and Android APK.

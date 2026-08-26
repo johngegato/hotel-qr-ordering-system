@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
-import { useAutoSync } from '../lib/useAutoSync'
 import EditSpaBookingModal, { type EditableBooking } from './EditSpaBookingModal'
 import ManualSpaBookingModal, { type QuickAddSlot } from './ManualSpaBookingModal'
 import { StaffUser } from './UserManagement'
@@ -144,15 +143,25 @@ function slotHour(time: string): number {
 }
 
 function buildSlotWindow(slotTime: string, durationMins: number, day: 'today' | 'tomorrow' = 'today') {
+  const trimmed = (slotTime || '14:00').trim().replace(/\u00A0/g, ' ')
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])?$/)
+  let hours = 14
+  let minutes = 0
+  if (match) {
+    hours = parseInt(match[1], 10)
+    minutes = parseInt(match[2], 10) || 0
+    const mod = match[3]?.toUpperCase()
+    if (mod === 'PM' && hours < 12) hours += 12
+    else if (mod === 'AM' && hours === 12) hours = 0
+  }
+
   const dayDate = new Date()
   if (day === 'tomorrow') dayDate.setDate(dayDate.getDate() + 1)
 
-  const [hoursText, minutesText] = slotTime.split(':')
-  const hours = Number(hoursText || '0')
-  const minutes = Number(minutesText || '0')
-
   const start = new Date(dayDate)
   start.setHours(hours, minutes, 0, 0)
+  start.setMilliseconds(0)
+  // No auto-roll — the `day` param is the explicit authority
 
   const end = new Date(start.getTime() + (durationMins || 60) * 60 * 1000)
   return { start, end }
@@ -767,18 +776,9 @@ export default function SpaTimetable({
     }
   }, [selectedDay])
 
-  // ─── Automated Polling & Focus Synchronization ─────────────
-  useAutoSync(fetchTimetableData, { intervalMs: 8000 })
-
-  // ─── Triggered from Parent App Event Bus ───────────────────
-  const isFirstRender = useRef(true)
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false
-      return
-    }
-    fetchTimetableData()
-  }, [refreshTrigger, fetchTimetableData])
+  // ─── SpaTimetable uses Supabase Realtime exclusively for live updates. ───────
+  // Polling and refreshTrigger are intentionally excluded here to avoid
+  // constant visual reloads — the Realtime channel below covers all mutations.
 
   useEffect(() => {
     fetchTimetableData()

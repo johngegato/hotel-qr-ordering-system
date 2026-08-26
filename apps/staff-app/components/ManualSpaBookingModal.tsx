@@ -63,18 +63,23 @@ const normalizeTimeTo24Hour = (timeValue: string | null | undefined): string => 
 }
 
 function buildSlotWindow(slotTime: string, durationMins: number, day: 'today' | 'tomorrow' = 'today') {
-  const [timePart, meridiem] = slotTime.split(' ')
-  const [hoursText, minutesText] = timePart.split(':')
-  let hours = Number(hoursText || '0')
-  const minutes = Number(minutesText || '0')
-
-  if (meridiem && meridiem.toUpperCase() === 'PM' && hours < 12) hours += 12
-  if (meridiem && meridiem.toUpperCase() === 'AM' && hours === 12) hours = 0
+  const trimmed = (slotTime || '14:00').trim().replace(/\u00A0/g, ' ')
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])?$/)
+  let hours = 14
+  let minutes = 0
+  if (match) {
+    hours = parseInt(match[1], 10)
+    minutes = parseInt(match[2], 10) || 0
+    const mod = match[3]?.toUpperCase()
+    if (mod === 'PM' && hours < 12) hours += 12
+    else if (mod === 'AM' && hours === 12) hours = 0
+  }
 
   const start = new Date()
   if (day === 'tomorrow') start.setDate(start.getDate() + 1)
   start.setHours(hours, minutes, 0, 0)
-  if (day === 'today' && start.getTime() < Date.now()) start.setDate(start.getDate() + 1)
+  start.setMilliseconds(0)
+  // Do NOT auto-roll to next day — `day` param is the explicit authority
 
   const end = new Date(start.getTime() + (durationMins || 60) * 60 * 1000)
   return { start, end }
