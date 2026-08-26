@@ -60,8 +60,9 @@ export default function ActiveRequestsBanner({ roomId }: ActiveRequestsBannerPro
     if (!roomId) return
 
     // Supabase Realtime channel
+    const channelName = `active_req_draw_${roomId}_${Math.random().toString(36).substring(2, 8)}`
     const channel = supabase
-      .channel(`active_requests_drawer_${roomId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -77,7 +78,11 @@ export default function ActiveRequestsBanner({ roomId }: ActiveRequestsBannerPro
       .subscribe()
 
     return () => {
-      supabase.removeChannel(channel)
+      try {
+        supabase.removeChannel(channel)
+      } catch {
+        // ignore
+      }
     }
   }, [roomId, fetchActiveRequests])
 

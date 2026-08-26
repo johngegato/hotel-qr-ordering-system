@@ -165,13 +165,24 @@ export default function GuestSessionKeeper({
   useEffect(() => {
     initGuestSession()
 
-    // Realtime channel to maintain live presence and hear request updates
-    const channel = supabase
-      .channel(`room_presence_${roomId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests', filter: `room_id=eq.${roomId}` }, () => {
-        checkAndEscalateRequests()
-      })
-      .subscribe()
+    // Create unique channel instance per mount to prevent "after subscribe" errors
+    const channelName = `room_pres_${roomId}_${Math.random().toString(36).substring(2, 8)}`
+    let channel: any = null
+
+    try {
+      channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'requests', filter: `room_id=eq.${roomId}` },
+          () => {
+            checkAndEscalateRequests()
+          }
+        )
+        .subscribe()
+    } catch (err) {
+      console.debug('[GuestSessionKeeper] Channel subscribe note:', err)
+    }
 
     // Recurring escalation check every 25 seconds
     const interval = setInterval(() => {
@@ -180,7 +191,13 @@ export default function GuestSessionKeeper({
 
     return () => {
       clearInterval(interval)
-      supabase.removeChannel(channel)
+      if (channel) {
+        try {
+          supabase.removeChannel(channel)
+        } catch {
+          // ignore
+        }
+      }
     }
   }, [roomId, initGuestSession, checkAndEscalateRequests])
 

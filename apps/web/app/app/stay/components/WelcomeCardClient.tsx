@@ -68,9 +68,6 @@ export default function WelcomeCardClient({
       />
 
       <div className="relative z-10 w-full max-w-md mx-auto py-8">
-        {/* Persistent Guest Session Connection & Request Escalation Engine */}
-        <GuestSessionKeeper roomId={roomId} hotelId={hotelId} roomNumber={roomNumber} />
-
         {/* Active Requests Realtime Banner */}
         <ActiveRequestsBanner roomId={roomId} />
 
