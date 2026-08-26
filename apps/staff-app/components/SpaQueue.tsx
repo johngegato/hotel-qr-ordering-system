@@ -12,31 +12,33 @@ import {
 import EditSpaBookingModal from './EditSpaBookingModal'
 import { StaffUser } from './UserManagement'
 import { supabase } from '../lib/supabase'
+import { useAutoSync } from '../lib/useAutoSync'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
-interface SpaRequestItem {
+export interface SpaRequestItem {
   id: string
   room_id: string
   hotel_id: string
   request_type: string
-  status: 'PENDING' | 'PENDING_ON_CALL' | 'CONFIRMED' | 'DECLINED' | string
+  status: string
   created_at: string
+  claimed_by?: string | null
   rooms?: { room_number: string } | null
   payload?: {
+    room_number?: string
     service_name?: string
     slot_time?: string
-    scheduled_at?: string
-    price?: number
     duration_mins?: number
-    intake_note?: string
+    price?: number
+    special_requests?: string
     is_on_call?: boolean
-    room_number?: string
     guest_phone?: string
     therapist_id?: string
     assigned_therapist?: string
-    booked_by?: string
+    scheduled_at?: string
+    intake_note?: string
   } | null
 }
 
@@ -48,9 +50,11 @@ const isValidUuid = (val?: string | null): string | null => {
 export default function SpaQueue({
   activeStaffId,
   activeStaffUser,
+  refreshTrigger,
 }: {
   activeStaffId?: string
   activeStaffUser?: StaffUser | null
+  refreshTrigger?: number
 }) {
   const [requests, setRequests] = useState<SpaRequestItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -59,9 +63,9 @@ export default function SpaQueue({
   const [isEditOpen, setIsEditOpen] = useState(false)
 
   // Fetch pending spa requests with stable callback
-  const fetchSpaQueue = useCallback(async () => {
+  const fetchSpaQueue = useCallback(async (isSilent = false) => {
     try {
-      setLoading(true)
+      if (!isSilent) setLoading(true)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from('requests') as any)
         .select('*, rooms(room_number)')
@@ -75,7 +79,7 @@ export default function SpaQueue({
     } catch (err) {
       console.error('Error fetching spa queue:', err)
     } finally {
-      setLoading(false)
+      if (!isSilent) setLoading(false)
     }
   }, [])
 
@@ -84,6 +88,19 @@ export default function SpaQueue({
   useEffect(() => {
     fetchRef.current = fetchSpaQueue
   }, [fetchSpaQueue])
+
+  // ─── Automated Polling & Focus Synchronization ─────────────
+  useAutoSync(() => fetchRef.current(true), { intervalMs: 6000 })
+
+  // ─── Triggered from Parent App Event Bus ───────────────────
+  const isFirstRender = useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    fetchRef.current(true)
+  }, [refreshTrigger])
 
   // Subscribe to real-time WebSockets
   useEffect(() => {
@@ -99,13 +116,13 @@ export default function SpaQueue({
           table: 'requests',
         },
         () => {
-          fetchRef.current()
+          fetchRef.current(true)
         }
       )
       .subscribe((status) => {
         // CRITICAL: Refetch when subscription confirms to catch any missed events
         if (status === 'SUBSCRIBED') {
-          fetchRef.current()
+          fetchRef.current(true)
         }
       })
 
@@ -201,7 +218,7 @@ export default function SpaQueue({
             <Text style={styles.countBadgeText}>{requests.length} Pending</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.refreshBtn} onPress={fetchSpaQueue}>
+        <TouchableOpacity style={styles.refreshBtn} onPress={() => fetchSpaQueue()}>
           <Text style={styles.refreshBtnText}>🔄 Refresh</Text>
         </TouchableOpacity>
       </View>

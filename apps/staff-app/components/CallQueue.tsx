@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
+import { useAutoSync } from '../lib/useAutoSync'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 interface RequestItem {
@@ -26,7 +27,13 @@ interface RequestItem {
   } | null
 }
 
-export default function CallQueue({ activeStaffId }: { activeStaffId?: string }) {
+export default function CallQueue({
+  activeStaffId,
+  refreshTrigger,
+}: {
+  activeStaffId?: string
+  refreshTrigger?: number
+}) {
   const [requests, setRequests] = useState<RequestItem[]>([])
   const [loading, setLoading] = useState(true)
   const [claimingId, setClaimingId] = useState<string | null>(null)
@@ -41,9 +48,9 @@ export default function CallQueue({ activeStaffId }: { activeStaffId?: string })
   }, [])
 
   // Fetch pending requests with stable callback
-  const fetchPendingRequests = useCallback(async () => {
+  const fetchPendingRequests = useCallback(async (isSilent = false) => {
     try {
-      setLoading(true)
+      if (!isSilent) setLoading(true)
       const { data, error } = await supabase
         .from('requests')
         .select('*')
@@ -56,7 +63,7 @@ export default function CallQueue({ activeStaffId }: { activeStaffId?: string })
     } catch (err) {
       console.error('Error fetching call queue:', err)
     } finally {
-      setLoading(false)
+      if (!isSilent) setLoading(false)
     }
   }, [])
 
@@ -65,6 +72,19 @@ export default function CallQueue({ activeStaffId }: { activeStaffId?: string })
   useEffect(() => {
     fetchRef.current = fetchPendingRequests
   }, [fetchPendingRequests])
+
+  // ─── Automated Polling & Focus Synchronization ─────────────
+  useAutoSync(() => fetchRef.current(true), { intervalMs: 6000 })
+
+  // ─── Triggered from Parent App Event Bus ───────────────────
+  const isFirstRender = useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    fetchRef.current(true)
+  }, [refreshTrigger])
 
   // Subscribe to real-time changes via WebSockets
   useEffect(() => {
@@ -79,31 +99,13 @@ export default function CallQueue({ activeStaffId }: { activeStaffId?: string })
           schema: 'public',
           table: 'requests',
         },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newReq = payload.new as RequestItem
-            if (newReq.request_type === 'CALL_REQUEST' && newReq.status === 'PENDING') {
-              setRequests((prev) => [newReq, ...prev.filter((r) => r.id !== newReq.id)])
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedReq = payload.new as RequestItem
-            if (updatedReq.status !== 'PENDING') {
-              setRequests((prev) => prev.filter((r) => r.id !== updatedReq.id))
-            } else {
-              setRequests((prev) =>
-                prev.map((r) => (r.id === updatedReq.id ? updatedReq : r))
-              )
-            }
-          } else if (payload.eventType === 'DELETE') {
-            const oldReq = payload.old as { id: string }
-            setRequests((prev) => prev.filter((r) => r.id !== oldReq.id))
-          }
+        () => {
+          fetchRef.current(true)
         }
       )
       .subscribe((status) => {
-        // CRITICAL: Refetch when subscription confirms to catch any missed events
         if (status === 'SUBSCRIBED') {
-          fetchRef.current()
+          fetchRef.current(true)
         }
       })
 

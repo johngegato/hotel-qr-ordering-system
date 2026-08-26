@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
+import { useAutoSync } from '../lib/useAutoSync'
 import EditSpaBookingModal, { type EditableBooking } from './EditSpaBookingModal'
 import ManualSpaBookingModal, { type QuickAddSlot } from './ManualSpaBookingModal'
 import { StaffUser } from './UserManagement'
@@ -17,6 +18,7 @@ export interface SpaTimetableProps {
   onRefreshQueue?: () => void
   activeStaffUser?: StaffUser | null
   activeStaffId?: string
+  refreshTrigger?: number
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -433,7 +435,12 @@ function isSlotBlockedForTherapist(
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeStaffId }: SpaTimetableProps) {
+export default function SpaTimetable({
+  onRefreshQueue,
+  activeStaffUser,
+  activeStaffId,
+  refreshTrigger,
+}: SpaTimetableProps) {
   const [loading, setLoading] = useState(true)
   const [therapists, setTherapists] = useState<Therapist[]>(FALLBACK_THERAPISTS)
   const [bookings, setBookings] = useState<BookingSlot[]>([])
@@ -760,6 +767,19 @@ export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeSt
     }
   }, [selectedDay])
 
+  // ─── Automated Polling & Focus Synchronization ─────────────
+  useAutoSync(fetchTimetableData, { intervalMs: 8000 })
+
+  // ─── Triggered from Parent App Event Bus ───────────────────
+  const isFirstRender = useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    fetchTimetableData()
+  }, [refreshTrigger, fetchTimetableData])
+
   useEffect(() => {
     fetchTimetableData()
 
@@ -778,7 +798,11 @@ export default function SpaTimetable({ onRefreshQueue, activeStaffUser, activeSt
 
     channel.on('postgres_changes', { event: '*', schema: 'public', table: 'spa_time_slots' }, () => fetchTimetableData())
 
-    channel.subscribe()
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        fetchTimetableData()
+      }
+    })
 
     return () => { supabase.removeChannel(channel) }
   }, [fetchTimetableData])

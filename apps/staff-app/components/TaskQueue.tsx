@@ -9,6 +9,7 @@ import {
   Animated,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
+import { useAutoSync } from '../lib/useAutoSync'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
@@ -88,14 +89,20 @@ function SlaTimer({ createdAt, slaMinutes }: { createdAt: string; slaMinutes: nu
 }
 
 // ─── Main Component ────────────────────────────────────────────
-export default function TaskQueue({ activeStaffId }: { activeStaffId?: string }) {
+export default function TaskQueue({
+  activeStaffId,
+  refreshTrigger,
+}: {
+  activeStaffId?: string
+  refreshTrigger?: number
+}) {
   const [tasks, setTasks] = useState<TaskRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [deptFilter, setDeptFilter] = useState<TargetDepartment | 'ALL'>('ALL')
 
-  const fetchTasks = useCallback(async () => {
-    setLoading(true)
+  const fetchTasks = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true)
     const { data, error } = await supabase
       .from('requests')
       .select('*')
@@ -103,7 +110,7 @@ export default function TaskQueue({ activeStaffId }: { activeStaffId?: string })
       .in('status', ['PENDING', 'CLAIMED', 'ESCALATED_L1'])
       .order('created_at', { ascending: true })
     if (!error) setTasks((data as TaskRequest[]) || [])
-    setLoading(false)
+    if (!isSilent) setLoading(false)
   }, [])
 
   // Mutable ref to always call the latest fetchTasks
@@ -112,29 +119,29 @@ export default function TaskQueue({ activeStaffId }: { activeStaffId?: string })
     fetchRef.current = fetchTasks
   }, [fetchTasks])
 
+  // ─── Automated Polling & Focus Synchronization ─────────────
+  useAutoSync(() => fetchRef.current(true), { intervalMs: 6000 })
+
+  // ─── Triggered from Parent App Event Bus ───────────────────
+  const isFirstRender = useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    fetchRef.current(true)
+  }, [refreshTrigger])
+
   useEffect(() => {
     fetchRef.current()
     const channel: RealtimeChannel = supabase
       .channel('task-queue')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          const r = payload.new as TaskRequest
-          if (r.request_type === 'TASK' && ['PENDING', 'CLAIMED', 'ESCALATED_L1'].includes(r.status)) {
-            setTasks(prev => [r, ...prev.filter(t => t.id !== r.id)])
-          }
-        } else if (payload.eventType === 'UPDATE') {
-          const r = payload.new as TaskRequest
-          if (!['PENDING', 'CLAIMED', 'ESCALATED_L1'].includes(r.status)) {
-            setTasks(prev => prev.filter(t => t.id !== r.id))
-          } else {
-            setTasks(prev => prev.map(t => t.id === r.id ? r : t))
-          }
-        }
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+        fetchRef.current(true)
       })
       .subscribe((status) => {
-        // CRITICAL: Refetch when subscription confirms to catch any missed events
         if (status === 'SUBSCRIBED') {
-          fetchRef.current()
+          fetchRef.current(true)
         }
       })
     return () => { supabase.removeChannel(channel) }

@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Linking, Alert,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
+import { useAutoSync } from '../lib/useAutoSync'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
@@ -207,6 +208,9 @@ export default function FoodQueue({ activeStaffId, activeStaffUser, refreshTrigg
   // the realtime subscription closure without stale-closure issues
   const fetchDataRef = useRef(fetchData)
   useEffect(() => { fetchDataRef.current = fetchData }, [fetchData])
+
+  // ─── Automated Polling & Focus Synchronization ─────────────
+  useAutoSync(() => fetchDataRef.current(), { intervalMs: 6000 })
 
   // Initial load + realtime subscription (runs once on mount)
   useEffect(() => {

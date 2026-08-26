@@ -52,6 +52,11 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Automatically restores session on app launch and smoothly bypasses the login screen.
   - Performs background account verification with Supabase to handle admin deactivations.
   - Completely clears local session upon clicking "Log Out".
+- [x] Staff App Automated Persistent Real-Time Reactivity & Auto-Sync Engine (`useAutoSync.ts`, `App.tsx`, and all queue components):
+  - Created `apps/staff-app/lib/useAutoSync.ts` providing active background polling intervals (6-8s) and instant window/tab focus & visibility re-sync triggers.
+  - Hardened Realtime WebSockets: removed broken column filters (`filter: 'request_type=eq.CALL_REQUEST'`) in `DedicatedCallModule.tsx`, and added `SUBSCRIBED` channel recovery listeners across all modules.
+  - Broadcasted `refreshTrigger={refreshKey}` from top-level `App.tsx` event bus to all modules (`CallQueue`, `DedicatedCallModule`, `SpaTimetable`, `SpaQueue`, `TaskQueue`, `FoodQueue`, `RequestHistory`).
+  - Added visual header Quick Sync button (`⚡ Sync`) and top-level stats auto-sync.
 - [x] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
 - [ ] Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments and Android APK.

@@ -35,6 +35,7 @@ import {
   getSavedStaffSession,
   clearStaffSession,
 } from './lib/authStorage'
+import { useAutoSync } from './lib/useAutoSync'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -474,6 +475,28 @@ export default function App() {
     return () => clearInterval(timer)
   }, [activeStaffUser, checkUnhandledRequests])
 
+  // ─── Automated Polling & Focus Synchronization for Top-Level Stats ─────────
+  useAutoSync(
+    useCallback(() => {
+      if (activeStaffUser) {
+        fetchStats()
+        checkUnhandledRequests()
+      }
+    }, [activeStaffUser, checkUnhandledRequests]),
+    { intervalMs: 6000, enabled: !!activeStaffUser }
+  )
+
+  const [isManualSyncing, setIsManualSyncing] = useState(false)
+  const handleManualSync = useCallback(async () => {
+    setIsManualSyncing(true)
+    try {
+      await Promise.all([fetchStats(), checkUnhandledRequests()])
+      setRefreshKey((k) => k + 1)
+    } finally {
+      setTimeout(() => setIsManualSyncing(false), 400)
+    }
+  }, [checkUnhandledRequests])
+
   useEffect(() => {
     fetchData()
 
@@ -511,7 +534,12 @@ export default function App() {
             })
         }
       })
-      .subscribe()
+      .subscribe((subStatus) => {
+        if (subStatus === 'SUBSCRIBED') {
+          fetchStats()
+          setRefreshKey(k => k + 1)
+        }
+      })
 
     return () => { supabase.removeChannel(channel) }
   }, [checkUnhandledRequests])
@@ -625,9 +653,21 @@ export default function App() {
               <Text style={styles.headerTitle}>Front Desk</Text>
               <Text style={styles.headerSubtitle}>Tablet Interface</Text>
             </View>
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton} activeOpacity={0.9}>
-              <Text style={styles.logoutButtonText}>↩ Logout</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity
+                onPress={handleManualSync}
+                style={[styles.syncButton, isManualSyncing && styles.syncButtonActive]}
+                activeOpacity={0.8}
+                disabled={isManualSyncing}
+              >
+                <Text style={styles.syncButtonText}>
+                  {isManualSyncing ? '⟳ Syncing…' : '⚡ Sync'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleLogout} style={styles.logoutButton} activeOpacity={0.9}>
+                <Text style={styles.logoutButtonText}>↩ Logout</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -698,21 +738,21 @@ export default function App() {
             </View>
 
             {/* 1. Dedicated Call Requests Module & Real-time Call Queue */}
-            <DedicatedCallModule activeStaffId={activeStaffUser?.id || undefined} />
-            <CallQueue activeStaffId={activeStaffUser?.id} />
+            <DedicatedCallModule activeStaffId={activeStaffUser?.id || undefined} refreshTrigger={refreshKey} />
+            <CallQueue activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
 
             {/* 2. Spa Timetable & Appointments Queue */}
-            <SpaTimetable activeStaffUser={activeStaffUser} activeStaffId={activeStaffUser?.id} />
-            <SpaQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} />
+            <SpaTimetable activeStaffUser={activeStaffUser} activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
+            <SpaQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} refreshTrigger={refreshKey} />
 
             {/* 3. Room Task Queue */}
-            <TaskQueue activeStaffId={activeStaffUser?.id} />
+            <TaskQueue activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
 
             {/* 4. Food Orders Queue */}
             <FoodQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} refreshTrigger={refreshKey} />
 
             {/* 5. All Request History Logs */}
-            <RequestHistory />
+            <RequestHistory refreshTrigger={refreshKey} />
 
 
           </Animated.View>
@@ -913,6 +953,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.2,
+  },
+  syncButton: {
+    backgroundColor: 'rgba(251,191,36,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.4)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncButtonActive: {
+    backgroundColor: 'rgba(251,191,36,0.28)',
+    borderColor: COLORS.gold,
+  },
+  syncButtonText: {
+    color: COLORS.gold,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 
   // Badge

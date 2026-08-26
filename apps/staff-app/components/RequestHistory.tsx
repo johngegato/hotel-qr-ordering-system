@@ -12,6 +12,7 @@ import {
   Alert,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
+import { useAutoSync } from '../lib/useAutoSync'
 
 export interface HistoricalRequest {
   id: string
@@ -56,7 +57,7 @@ function formatRelativeTime(isoString?: string): string {
   }
 }
 
-export default function RequestHistory() {
+export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: number } = {}) {
   const [requests, setRequests] = useState<HistoricalRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [staffMap, setStaffMap] = useState<Record<string, string>>({})
@@ -87,8 +88,8 @@ export default function RequestHistory() {
     }
   }, [])
 
-  const fetchHistory = useCallback(async () => {
-    setLoading(true)
+  const fetchHistory = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true)
     try {
       const { data, error } = await (supabase.from('requests') as any)
         .select('*, rooms(room_number)')
@@ -101,25 +102,50 @@ export default function RequestHistory() {
     } catch (err) {
       console.error('Error fetching request history:', err)
     } finally {
-      setLoading(false)
+      if (!isSilent) setLoading(false)
     }
   }, [])
 
+  const fetchRef = React.useRef(fetchHistory)
+  useEffect(() => {
+    fetchRef.current = fetchHistory
+  }, [fetchHistory])
+
+  // ─── Automated Polling & Focus Synchronization ─────────────
+  useAutoSync(() => fetchRef.current(true), { intervalMs: 8000 })
+
+  // ─── Triggered from Parent App Event Bus ───────────────────
+  const isFirstRender = React.useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    fetchRef.current(true)
+  }, [refreshTrigger])
+
   useEffect(() => {
     fetchStaffMap()
-    fetchHistory()
+    fetchRef.current()
 
     const channel = supabase
       .channel('history-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
-        fetchHistory()
+        fetchRef.current(true)
       })
-      .subscribe()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, () => {
+        fetchRef.current(true)
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          fetchRef.current(true)
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [fetchHistory, fetchStaffMap])
+  }, [fetchStaffMap])
 
   const handleSelectRequest = async (req: HistoricalRequest) => {
     setSelectedRequest(req)

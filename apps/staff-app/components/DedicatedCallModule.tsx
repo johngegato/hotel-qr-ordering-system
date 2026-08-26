@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
+import { useAutoSync } from '../lib/useAutoSync'
 
 export interface CallRequestItem {
   id: string
@@ -26,6 +27,7 @@ export interface CallRequestItem {
 
 interface DedicatedCallModuleProps {
   activeStaffId?: string
+  refreshTrigger?: number
 }
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
@@ -35,7 +37,7 @@ const isValidUuid = (value?: string | null) => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
-export default function DedicatedCallModule({ activeStaffId }: DedicatedCallModuleProps) {
+export default function DedicatedCallModule({ activeStaffId, refreshTrigger }: DedicatedCallModuleProps) {
   const [calls, setCalls] = useState<CallRequestItem[]>([])
   const [loading, setLoading] = useState(true)
   const [roomSort, setRoomSort] = useState<'asc' | 'desc'>('asc')
@@ -45,8 +47,8 @@ export default function DedicatedCallModule({ activeStaffId }: DedicatedCallModu
 
   const [isExpanded, setIsExpanded] = useState(false)
 
-  const fetchCalls = useCallback(async () => {
-    setLoading(true)
+  const fetchCalls = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true)
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from('requests') as any)
@@ -61,24 +63,46 @@ export default function DedicatedCallModule({ activeStaffId }: DedicatedCallModu
     } catch (err) {
       console.error('Error fetching call requests:', err)
     } finally {
-      setLoading(false)
+      if (!isSilent) setLoading(false)
     }
   }, [])
 
+  const fetchRef = React.useRef(fetchCalls)
   useEffect(() => {
-    fetchCalls()
+    fetchRef.current = fetchCalls
+  }, [fetchCalls])
+
+  // ─── Automated Polling & Focus Synchronization ─────────────
+  useAutoSync(() => fetchRef.current(true), { intervalMs: 6000 })
+
+  // ─── Triggered from Parent App Event Bus ───────────────────
+  const isFirstRender = React.useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    fetchRef.current(true)
+  }, [refreshTrigger])
+
+  useEffect(() => {
+    fetchRef.current()
 
     const channel = supabase
       .channel('dedicated-call-requests')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests', filter: 'request_type=eq.CALL_REQUEST' }, () => {
-        fetchCalls()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+        fetchRef.current(true)
       })
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          fetchRef.current(true)
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [fetchCalls])
+  }, [])
 
   const handleUpdateStatus = async (id: string, newStatus: 'CLAIMED' | 'RESOLVED') => {
     setUpdating(id)
