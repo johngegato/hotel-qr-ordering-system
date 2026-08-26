@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import {
   StyleSheet,
   Text,
@@ -9,6 +9,7 @@ import {
   Animated,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
 type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
 type TargetDepartment = 'HOUSEKEEPING' | 'MAINTENANCE' | 'FRONT_DESK'
@@ -93,7 +94,7 @@ export default function TaskQueue({ activeStaffId }: { activeStaffId?: string })
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [deptFilter, setDeptFilter] = useState<TargetDepartment | 'ALL'>('ALL')
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('requests')
@@ -103,11 +104,17 @@ export default function TaskQueue({ activeStaffId }: { activeStaffId?: string })
       .order('created_at', { ascending: true })
     if (!error) setTasks((data as TaskRequest[]) || [])
     setLoading(false)
-  }
+  }, [])
+
+  // Mutable ref to always call the latest fetchTasks
+  const fetchRef = useRef(fetchTasks)
+  useEffect(() => {
+    fetchRef.current = fetchTasks
+  }, [fetchTasks])
 
   useEffect(() => {
-    fetchTasks()
-    const channel = supabase
+    fetchRef.current()
+    const channel: RealtimeChannel = supabase
       .channel('task-queue')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
         if (payload.eventType === 'INSERT') {
@@ -124,7 +131,12 @@ export default function TaskQueue({ activeStaffId }: { activeStaffId?: string })
           }
         }
       })
-      .subscribe()
+      .subscribe((status) => {
+        // CRITICAL: Refetch when subscription confirms to catch any missed events
+        if (status === 'SUBSCRIBED') {
+          fetchRef.current()
+        }
+      })
     return () => { supabase.removeChannel(channel) }
   }, [])
 
