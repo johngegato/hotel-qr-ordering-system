@@ -79,7 +79,19 @@ export async function setupNotificationChannels(): Promise<void> {
  * Request notification permissions and register for push notifications
  */
 export async function registerForPushNotifications(): Promise<string | null> {
-  if (Platform.OS === 'web') return null
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const perm = await Notification.requestPermission()
+        if (perm === 'granted') {
+          return `web_pwa_${Date.now()}`
+        }
+      } catch (err) {
+        console.warn('[Notifications] Web notification permission request error:', err)
+      }
+    }
+    return null
+  }
 
   const Notifications = getNotificationsModule()
   if (!Notifications || typeof Notifications.getPermissionsAsync !== 'function') return null
@@ -132,7 +144,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
 }
 
 /**
- * Trigger an aggressive high-priority heads-up alert notification (Native Android/iOS)
+ * Trigger an aggressive high-priority heads-up alert notification (Native Android/iOS & Web PWA)
  */
 export async function triggerAggressiveAlert(params: {
   title: string
@@ -142,7 +154,36 @@ export async function triggerAggressiveAlert(params: {
   requestType: string
   payloadData?: Record<string, unknown>
 }): Promise<void> {
-  if (Platform.OS === 'web') return
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const notifTitle = `🚨 ${params.title} — ${params.roomNumber}`
+        const notifOptions: NotificationOptions = {
+          body: params.body,
+          icon: '/assets/icon.png',
+          badge: '/favicon.png',
+          tag: `request-${params.requestId}`,
+          data: {
+            requestId: params.requestId,
+            roomNumber: params.roomNumber,
+            requestType: params.requestType,
+            ...params.payloadData,
+          },
+          requireInteraction: true,
+        }
+
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.ready
+          await reg.showNotification(notifTitle, notifOptions)
+        } else {
+          new Notification(notifTitle, notifOptions)
+        }
+      } catch (err) {
+        console.warn('[Notifications] Web triggerAggressiveAlert error:', err)
+      }
+    }
+    return
+  }
 
   const Notifications = getNotificationsModule()
   if (!Notifications || typeof Notifications.scheduleNotificationAsync !== 'function') return

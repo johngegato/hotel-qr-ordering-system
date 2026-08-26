@@ -1,0 +1,56 @@
+{
+  "name": "Hotel Staff Portal - Kekehyu Hotel",
+  "short_name": "Staff App",
+  "description": "Real-time Operations & Guest Request Management",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "management"],
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "48x48 64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/icon.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/android-icon-foreground.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Incoming Calls",
+      "short_name": "Calls",
+      "description": "View pending guest callback alerts",
+      "url": "/#calls",
+      "icons": [{ "src": "/favicon.png", "sizes": "48x48" }]
+    },
+    {
+      "name": "Dining Orders",
+      "short_name": "Dining",
+      "description": "View food & beverage queue",
+      "url": "/#dining",
+      "icons": [{ "src": "/favicon.png", "sizes": "48x48" }]
+    },
+    {
+      "name": "Spa Bookings",
+      "short_name": "Spa",
+      "description": "View spa appointments & timetable",
+      "url": "/#spa",
+      "icons": [{ "src": "/favicon.png", "sizes": "48x48" }]
+    }
+  ]
+}

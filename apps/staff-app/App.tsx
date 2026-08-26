@@ -36,6 +36,7 @@ import {
   clearStaffSession,
 } from './lib/authStorage'
 import { useAutoSync } from './lib/useAutoSync'
+import { usePWA } from './lib/usePWA'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -165,6 +166,15 @@ export default function App() {
   const fadeAnim = React.useRef(new Animated.Value(0)).current
   const slideAnim = React.useRef(new Animated.Value(30)).current
   const lastDismissedReminderAtRef = React.useRef<number>(0)
+
+  // ─── Progressive Web App (PWA) Support ─────────────────────
+  const {
+    canInstall,
+    isStandalone,
+    notificationPermission,
+    promptInstall,
+    requestNotificationPermission,
+  } = usePWA(activeStaffUser?.id)
 
   const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -685,6 +695,42 @@ export default function App() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* PWA 1-Tap Install Banner on Mobile Browsers */}
+          {canInstall && (
+            <TouchableOpacity
+              onPress={promptInstall}
+              style={styles.pwaInstallBanner}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.pwaInstallIcon}>📲</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pwaInstallTitle}>Install Staff App</Text>
+                <Text style={styles.pwaInstallSub}>Add to home screen for native fullscreen experience</Text>
+              </View>
+              <View style={styles.pwaInstallBtn}>
+                <Text style={styles.pwaInstallBtnText}>Install</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
+          {/* Web Push Notification Permission Prompt */}
+          {Platform.OS === 'web' && notificationPermission === 'default' && (
+            <TouchableOpacity
+              onPress={requestNotificationPermission}
+              style={styles.pwaNotifBanner}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.pwaInstallIcon}>🔔</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pwaNotifTitle}>Enable Push Alerts</Text>
+                <Text style={styles.pwaInstallSub}>Receive instant heads-up sound & vibration alerts</Text>
+              </View>
+              <View style={styles.pwaNotifBtn}>
+                <Text style={styles.pwaNotifBtnText}>Enable</Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Content */}
@@ -1202,5 +1248,70 @@ const styles = StyleSheet.create({
     color: COLORS.gold,
     fontSize: 15,
     fontWeight: '600',
+  },
+
+  // ─── PWA Banners ──────────────────────────────────────────
+  pwaInstallBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(56,189,248,0.12)',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    gap: 10,
+  },
+  pwaInstallIcon: {
+    fontSize: 22,
+  },
+  pwaInstallTitle: {
+    color: '#38bdf8',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  pwaInstallSub: {
+    color: '#94a3b8',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  pwaInstallBtn: {
+    backgroundColor: '#38bdf8',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  pwaInstallBtnText: {
+    color: '#0f172a',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  pwaNotifBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(251,191,36,0.12)',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+    gap: 10,
+  },
+  pwaNotifTitle: {
+    color: COLORS.gold,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  pwaNotifBtn: {
+    backgroundColor: COLORS.gold,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  pwaNotifBtnText: {
+    color: '#0f172a',
+    fontSize: 12,
+    fontWeight: '800',
   },
 })

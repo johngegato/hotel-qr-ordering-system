@@ -31,6 +31,13 @@ Recent session additions:
 - apps/staff-app/components/ManualSpaBookingModal.tsx, SpaAvailabilityModal.tsx, EditSpaBookingModal.tsx, SpaTimetable.tsx: Fixed Staff App bug where vacant timetable slots failed to accept bookings. Removed the silent next-day auto-roll-over (`if (day === 'today' && start < Date.now()) start.setDate(+1)`) in `buildSlotWindow` across all 4 files, ensuring the explicit `day` selection is the single source of truth and resolving date mismatches between the timetable grid and created bookings.
 - apps/staff-app/components/SpaTimetable.tsx & App.tsx: Excluded Spa Timetable from auto-sync polling by removing `useAutoSync` and `refreshTrigger` effect, relying solely on Supabase Realtime subscriptions to eliminate constant reloading and screen flashing.
 - apps/staff-app/components/RequestHistory.tsx: Wrapped the Request History module in a collapsible accordion component (collapsed by default via `isAccordionOpen: false`) with header badge counter and toggle chevron to optimize mobile vertical scrolling.
+- apps/staff-app PWA Infrastructure [NEW]:
+  - `apps/staff-app/public/manifest.json`: Full Web App Manifest with standalone display mode, orientation, branding colors, icon sizes (192x192, 512x512, maskable), and quick-action app shortcuts.
+  - `apps/staff-app/public/sw.js`: Service Worker caching static assets, providing offline resilience, listening to `push` events for background sound/vibration alerts, and handling `notificationclick` navigation.
+  - `apps/staff-app/lib/usePWA.ts`: React hook managing Service Worker lifecycle, dynamic `<link rel="manifest">` injection, install prompt capture (`beforeinstallprompt`), standalone detection, and Web Notification permission requests.
+  - `apps/staff-app/lib/notifications.ts`: Added web PWA support to `triggerAggressiveAlert` and `registerForPushNotifications` via `Notification` API and Service Worker `showNotification`.
+  - `apps/staff-app/App.tsx`: Added 1-tap "📱 Install Staff App" banner and "🔔 Enable Push Alerts" prompt in header.
+  - `apps/staff-app/app.json`: Configured `expo.web` PWA metadata.
 
 Files changed (high level)
 - apps/web/app/admin/users/page.tsx [NEW]

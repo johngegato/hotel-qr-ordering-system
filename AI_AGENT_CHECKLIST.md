@@ -64,6 +64,11 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
 - [x] Staff App Request History Collapsible Accordion UI (`RequestHistory.tsx`):
   - Wrapped Request History module in a collapsible accordion container (`isAccordionOpen`, defaults to `false`) to save vertical space on mobile devices.
   - Added tap-to-toggle header with counter badge, chevron icon, and full preservation of internal filters, sorting, call actions, and detail modals.
+- [x] Staff App Progressive Web App (PWA) & Web Push Infrastructure (`apps/staff-app`):
+  - Added Web App Manifest (`apps/staff-app/public/manifest.json`) supporting standalone display mode, orientation, theme colors, and icons.
+  - Added Service Worker (`apps/staff-app/public/sw.js`) with static asset caching, network-first fetch strategy, background `push` event handling, vibration patterns, and notification-click tab focus.
+  - Added `apps/staff-app/lib/usePWA.ts` hook for automatic SW registration, dynamic manifest injection, deferred install prompt handling, and push permission flow.
+  - Enhanced `apps/staff-app/lib/notifications.ts` and `App.tsx` with browser Notification API integration, 1-tap PWA Install Banner, and Push Alert prompts.
 - [x] Apply DB migrations in `packages/supabase/migrations` & `apps/web/supabase/migrations` (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`, `14_service_charge.sql`) to target Supabase instance.
 - [ ] Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments and Android APK.
