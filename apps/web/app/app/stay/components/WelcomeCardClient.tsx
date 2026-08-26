@@ -4,6 +4,7 @@ import { useState } from 'react'
 import CallFrontDeskModal from './CallFrontDeskModal'
 import ActiveRequestsBanner from './ActiveRequestsBanner'
 import FrontDeskFAB from './FrontDeskFAB'
+import GuestSessionKeeper from './GuestSessionKeeper'
 import { useGuestTheme } from './GuestThemeProvider'
 
 interface WelcomeCardClientProps {
@@ -67,6 +68,9 @@ export default function WelcomeCardClient({
       />
 
       <div className="relative z-10 w-full max-w-md mx-auto py-8">
+        {/* Persistent Guest Session Connection & Request Escalation Engine */}
+        <GuestSessionKeeper roomId={roomId} hotelId={hotelId} roomNumber={roomNumber} />
+
         {/* Active Requests Realtime Banner */}
         <ActiveRequestsBanner roomId={roomId} />
 

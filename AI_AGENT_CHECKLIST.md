@@ -70,9 +70,10 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Enhanced Auto-Sync (`useAutoSync.ts`): listens for Service Worker push signals, `pageshow`, `online`, and `visibilitychange` events, and forces active Supabase Realtime WebSocket reconnection (`supabase.realtime.connect()`) upon screen/tab wake-up.
   - Screen Wake Lock (`useScreenWakeLock.ts`): automatically requests and maintains browser screen wake lock (`navigator.wakeLock`) on mobile devices to prevent OS sleeping during active shifts.
   - Install Banner & Web Push Prompts in `App.tsx`.
-- [x] Automatic Database Cleanup Cron & Trigger for Expired Spa Holds (`16_cleanup_expired_spa_holds.sql`):
-  - `cleanup_expired_spa_holds()` PL/pgSQL function: marks `HELD` locks as `EXPIRED` once `expires_at <= NOW()` and purges abandoned `HELD`/`EXPIRED` locks older than 1 hour.
-  - Added self-cleaning `trg_cleanup_expired_spa_holds` `BEFORE INSERT` trigger on `spa_slot_locks` to maintain zero-bloat state automatically.
+- [x] Guest Persistent Session & Escalation Engine (`apps/web`):
+  - Added `GuestSessionKeeper.tsx`: automatically saves `guest_sessions` to Supabase on first scan, sends room connection pings to staff, maintains presence on Supabase Realtime channel, and executes a 1–2 min recurring push escalation loop for unacknowledged pending requests.
+  - Added `StayRootClientWrapper.tsx` and `stay/layout.tsx`: wraps all guest pages (`dining`, `spa`, `requests`, `stay`) to maintain persistent session and escalation heartbeats globally.
+  - Integrated push notification dispatching to all remaining request types (`SPA_BOOKING` and `CALL_REQUEST`).
   - Added optional `pg_cron` recurring job registration.
 - [ ] Apply DB migrations `15_spa_time_slots.sql` and `16_cleanup_expired_spa_holds.sql` in Supabase SQL editor.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments and Android APK.
