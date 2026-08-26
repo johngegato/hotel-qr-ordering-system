@@ -1,17 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Platform } from 'react-native'
 import { supabase } from './supabase'
 
-// The VAPID public key — must match what is on the server
-// In Expo web builds, env vars are prefixed with EXPO_PUBLIC_
+// The VAPID public key — matching the server
 const VAPID_PUBLIC_KEY =
   (typeof process !== 'undefined' && (process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY)) ||
   'BDZiJJ2o83qDdtVUQaVEEekgX3KVABFYZZzCRM76dtNgyEp3Sxe4TT9cBmcNcDTQ9RUIcQUjD0tu9pCoWkH4Xkg'
 
-// The Next.js web server URL (staff-app posts subscriptions to apps/web API)
 const WEB_SERVER_URL =
   (typeof process !== 'undefined' && (process.env.EXPO_PUBLIC_WEB_SERVER_URL || process.env.NEXT_PUBLIC_WEB_SERVER_URL)) ||
-  'http://localhost:3000'
+  ''
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -29,7 +27,7 @@ export interface PWAState {
   requestNotificationPermission: () => Promise<boolean>
 }
 
-/** Convert a base64 VAPID public key to a Uint8Array for the PushManager API */
+/** Convert a base64 VAPID public key to a Uint8Array for PushManager API */
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
@@ -42,29 +40,107 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return view
 }
 
-/** Save the push subscription to the hotel web server (apps/web API) */
-async function savePushSubscription(subscription: PushSubscription, staffUserId?: string | null): Promise<void> {
+/** Save the push subscription directly to Supabase and fallback to web server API */
+async function savePushSubscription(subscription: PushSubscription, staffUserId?: string | null): Promise<boolean> {
   try {
-    const body = JSON.stringify({
-      subscription: subscription.toJSON(),
-      staffUserId: staffUserId || null,
-      hotelId: HOTEL_ID,
-    })
+    const json = subscription.toJSON()
+    const endpoint = json.endpoint || subscription.endpoint
+    const p256dh = json.keys?.p256dh || ''
+    const auth = json.keys?.auth || ''
 
-    const res = await fetch(`${WEB_SERVER_URL}/api/push/subscribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    })
-
-    if (!res.ok) {
-      const err = await res.text()
-      console.warn('[PWA] Failed to save push subscription to server:', err)
-    } else {
-      console.log('[PWA] Push subscription saved successfully.')
+    if (!endpoint || !p256dh || !auth) {
+      console.warn('[PWA] PushSubscription missing required keys:', json)
+      return false
     }
+
+    console.log('[PWA] Saving push subscription to Supabase...', { endpoint: endpoint.slice(0, 40) + '...' })
+
+    // 1. Direct Supabase insertion (RLS policy allows insert/upsert)
+    const { error } = await (supabase as any)
+      .from('staff_push_subscriptions')
+      .upsert(
+        {
+          hotel_id: HOTEL_ID,
+          staff_user_id: staffUserId || null,
+          endpoint,
+          p256dh,
+          auth,
+          user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : 'PWA',
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'endpoint' }
+      )
+
+    if (error) {
+      console.error('[PWA] Direct Supabase push save error:', error)
+    } else {
+      console.log('[PWA] Push subscription saved directly to Supabase successfully! ✅')
+    }
+
+    // 2. Secondary API route backup if WEB_SERVER_URL is configured
+    if (WEB_SERVER_URL && !WEB_SERVER_URL.includes('localhost')) {
+      try {
+        await fetch(`${WEB_SERVER_URL}/api/push/subscribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subscription: json,
+            staffUserId: staffUserId || null,
+            hotelId: HOTEL_ID,
+          }),
+        })
+      } catch (apiErr) {
+        console.debug('[PWA] API route push sync note:', apiErr)
+      }
+    }
+
+    return !error
   } catch (err) {
-    console.warn('[PWA] Error saving push subscription:', err)
+    console.error('[PWA] Unexpected error saving push subscription:', err)
+    return false
+  }
+}
+
+/** Core subscription handler that registers with ServiceWorker PushManager */
+async function registerWebPushSubscription(staffUserId?: string | null): Promise<boolean> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window)) {
+    return false
+  }
+
+  if (Notification.permission !== 'granted') {
+    return false
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.ready
+
+    if (!('pushManager' in registration)) {
+      console.warn('[PWA] PushManager is not supported in this browser.')
+      return false
+    }
+
+    let subscription = await registration.pushManager.getSubscription()
+
+    if (!subscription) {
+      console.log('[PWA] Registering new Web Push subscription with VAPID key...')
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      })
+      console.log('[PWA] New Web Push subscription created.')
+    } else {
+      console.log('[PWA] Existing Web Push subscription found, verifying with database...')
+    }
+
+    if (subscription) {
+      return await savePushSubscription(subscription, staffUserId)
+    }
+
+    return false
+  } catch (err: any) {
+    console.error('[PWA] Failed to subscribe to Web Push:', err)
+    return false
   }
 }
 
@@ -74,6 +150,7 @@ export function usePWA(activeStaffId?: string | null): PWAState {
   const [isInstalled, setIsInstalled] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>('unsupported')
+  const syncAttemptedRef = useRef(false)
 
   // ─── Detect Standalone Mode (PWA installed) ──────────────────────────────────
   useEffect(() => {
@@ -105,7 +182,7 @@ export function usePWA(activeStaffId?: string | null): PWAState {
     }
   }, [])
 
-  // ─── Register Service Worker ─────────────────────────────────────────────────
+  // ─── Register Service Worker & Auto-Sync Subscription on Load ───────────────
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined' || !('serviceWorker' in navigator)) {
       return
@@ -138,7 +215,7 @@ export function usePWA(activeStaffId?: string | null): PWAState {
     // Register sw.js
     navigator.serviceWorker
       .register('/sw.js', { scope: '/' })
-      .then((registration) => {
+      .then(async (registration) => {
         console.log('[PWA] Service Worker registered with scope:', registration.scope)
 
         // Check for SW updates
@@ -152,6 +229,12 @@ export function usePWA(activeStaffId?: string | null): PWAState {
             })
           }
         })
+
+        // If permission was already granted previously, auto-sync subscription now
+        if ('Notification' in window && Notification.permission === 'granted' && !syncAttemptedRef.current) {
+          syncAttemptedRef.current = true
+          await registerWebPushSubscription(activeStaffId)
+        }
       })
       .catch((err) => {
         console.warn('[PWA] Service Worker registration failed:', err)
@@ -183,7 +266,14 @@ export function usePWA(activeStaffId?: string | null): PWAState {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall)
       window.removeEventListener('appinstalled', handleAppInstalled)
     }
-  }, [])
+  }, [activeStaffId])
+
+  // ─── Auto-sync when staff user logs in ───────────────────────────────────────
+  useEffect(() => {
+    if (activeStaffId && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      registerWebPushSubscription(activeStaffId)
+    }
+  }, [activeStaffId])
 
   // ─── Prompt Install ──────────────────────────────────────────────────────────
   const promptInstall = useCallback(async (): Promise<boolean> => {
@@ -215,35 +305,13 @@ export function usePWA(activeStaffId?: string | null): PWAState {
       const permission = await Notification.requestPermission()
       setNotificationPermission(permission)
 
-      if (permission === 'granted' && 'serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.ready
-
-        if ('pushManager' in registration) {
-          try {
-            // Check if a subscription already exists
-            let subscription = await registration.pushManager.getSubscription()
-
-            if (!subscription) {
-              // Create a new Web Push subscription using the VAPID public key
-              subscription = await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-              })
-              console.log('[PWA] Created new Web Push subscription.')
-            } else {
-              console.log('[PWA] Existing Web Push subscription found.')
-            }
-
-            // Save the subscription endpoint + keys to the hotel server
-            if (subscription) {
-              await savePushSubscription(subscription, activeStaffId)
-            }
-          } catch (e) {
-            console.warn('[PWA] PushManager subscription error:', e)
-          }
+      if (permission === 'granted') {
+        const success = await registerWebPushSubscription(activeStaffId)
+        if (success) {
+          console.log('[PWA] Notification permission & push subscription complete!')
         }
 
-        // Also record notification permission granted in staff_users metadata
+        // Also record notification permission in staff_users metadata
         if (activeStaffId) {
           try {
             await (supabase as any)
