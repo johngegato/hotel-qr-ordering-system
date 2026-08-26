@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import {
   StyleSheet,
   Text,
@@ -12,6 +12,7 @@ import {
 import EditSpaBookingModal from './EditSpaBookingModal'
 import { StaffUser } from './UserManagement'
 import { supabase } from '../lib/supabase'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -57,7 +58,7 @@ export default function SpaQueue({
   const [editBooking, setEditBooking] = useState<any | null>(null)
   const [isEditOpen, setIsEditOpen] = useState(false)
 
-  // Fetch pending spa requests
+  // Fetch pending spa requests with stable callback
   const fetchSpaQueue = useCallback(async () => {
     try {
       setLoading(true)
@@ -78,11 +79,17 @@ export default function SpaQueue({
     }
   }, [])
 
+  // Mutable ref to always call the latest fetchSpaQueue
+  const fetchRef = useRef(fetchSpaQueue)
+  useEffect(() => {
+    fetchRef.current = fetchSpaQueue
+  }, [fetchSpaQueue])
+
   // Subscribe to real-time WebSockets
   useEffect(() => {
-    fetchSpaQueue()
+    fetchRef.current()
 
-    const channel = supabase
+    const channel: RealtimeChannel = supabase
       .channel('public:spa_queue_realtime')
       .on(
         'postgres_changes',
@@ -92,15 +99,20 @@ export default function SpaQueue({
           table: 'requests',
         },
         () => {
-          fetchSpaQueue()
+          fetchRef.current()
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        // CRITICAL: Refetch when subscription confirms to catch any missed events
+        if (status === 'SUBSCRIBED') {
+          fetchRef.current()
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [fetchSpaQueue])
+  }, [])
 
   const handleUpdateStatus = async (id: string, newStatus: 'CONFIRMED' | 'DECLINED') => {
     setProcessingId(id)
