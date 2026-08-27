@@ -27,7 +27,11 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Workspace Dependencies
+      - name: Install Workspace Root Dependencies
+        run: npm install
+
+      - name: Install Staff App Dependencies
+        working-directory: apps/staff-app
         run: npm install
 
       - name: Align Monorepo Entry Configs
@@ -71,4 +75,3 @@ jobs:
         with:
           name: StaffApp-Release-APK
           path: apps/staff-app/android/app/build/outputs/apk/release/app-release.apk
-
