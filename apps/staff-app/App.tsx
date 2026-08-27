@@ -39,6 +39,127 @@ import { useAutoSync } from './lib/useAutoSync'
 import { usePWA } from './lib/usePWA'
 import { useScreenWakeLock } from './lib/useScreenWakeLock'
 
+// ─── Global Error Boundary ───────────────────────────────────
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean
+  error: Error | null
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[App Global ErrorBoundary Captured]:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView style={errorStyles.safe}>
+          <StatusBar barStyle="light-content" backgroundColor="#020617" />
+          <View style={errorStyles.container}>
+            <Text style={errorStyles.headerIcon}>⚠️</Text>
+            <Text style={errorStyles.title}>Runtime Error Captured</Text>
+            <Text style={errorStyles.subtitle}>
+              An unexpected error occurred. The details below can help diagnose the issue:
+            </Text>
+            <ScrollView style={errorStyles.scroll} contentContainerStyle={errorStyles.scrollContent}>
+              <Text style={errorStyles.errorText}>{this.state.error?.toString()}</Text>
+              {this.state.error?.stack ? (
+                <Text style={errorStyles.stackText}>{this.state.error.stack}</Text>
+              ) : null}
+            </ScrollView>
+            <TouchableOpacity
+              style={errorStyles.button}
+              onPress={() => this.setState({ hasError: false, error: null })}
+            >
+              <Text style={errorStyles.buttonText}>Try Reloading App State</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
+const errorStyles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: '#020617',
+  },
+  container: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#f87171',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  scroll: {
+    width: '100%',
+    maxHeight: 300,
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 20,
+  },
+  scrollContent: {
+    padding: 14,
+  },
+  errorText: {
+    color: '#fbbf24',
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  stackText: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    lineHeight: 16,
+  },
+  button: {
+    backgroundColor: '#fbbf24',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  buttonText: {
+    color: '#020617',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+})
+
 // ─── Types ───────────────────────────────────────────────────
 
 type ConnectionStatus = 'connecting' | 'connected' | 'error'
@@ -144,9 +265,19 @@ function StatCard({ icon, label, value }: { icon: string; label: string; value: 
   )
 }
 
-// ─── Main App ─────────────────────────────────────────────────
+// ─── App Root Component Wrapped with ErrorBoundary ───────────
 
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <MainAppContent />
+    </ErrorBoundary>
+  )
+}
+
+// ─── Main App Content ────────────────────────────────────────
+
+function MainAppContent() {
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [hotelInfo, setHotelInfo] = useState<HotelInfo | null>(null)
   const [roomCount, setRoomCount] = useState<number>(0)
@@ -821,7 +952,6 @@ export default function App() {
 
             {/* 5. All Request History Logs */}
             <RequestHistory refreshTrigger={refreshKey} />
-
 
           </Animated.View>
         )}
