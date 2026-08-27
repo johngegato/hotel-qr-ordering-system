@@ -29,7 +29,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Workspace Dependencies
-        run: npm ci
+        run: npm install
 
       - name: Align Monorepo Entry Configs
         run: |
