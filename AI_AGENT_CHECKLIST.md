@@ -75,7 +75,23 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Added `StayRootClientWrapper.tsx` and `stay/layout.tsx`: wraps all guest pages (`dining`, `spa`, `requests`, `stay`) to maintain persistent session and escalation heartbeats globally.
   - Integrated push notification dispatching to all remaining request types (`SPA_BOOKING` and `CALL_REQUEST`).
   - Added optional `pg_cron` recurring job registration.
-- [ ] Apply DB migrations `15_spa_time_slots.sql` and `16_cleanup_expired_spa_holds.sql` in Supabase SQL editor.
+- [x] Android 24/7 Background Watchdog & Sleep Self-Wake Engine (`apps/staff-app`):
+  - Added `runBackgroundWatchdogCheck(hotelId)` in `foregroundService.ts` running a 90-second REST poll loop inside the foreground service task.
+  - Queries Supabase REST API directly for pending requests (`status IN ('PENDING', 'PENDING_ON_CALL')`), making incoming alarms 100% independent of WebSockets during deep Android Doze mode sleep.
+  - Fires Full-Screen Intent overlay, activates 60s WakeLock, turns on the screen (`setTurnScreenOn`), and loops the alarm sound.
+- [x] Android AppState Resume & Socket Reconnection Recovery (`apps/staff-app`):
+  - Removed `Platform.OS === 'web'` guard in `useAutoSync.ts`, enabling native Android to reconnect Supabase Realtime sockets (`rt.disconnect() -> rt.connect()`) on `AppState === 'active'`.
+  - Immediately refetches stats, queue lists, and pending request alerts when staff unlocks the screen or opens the app.
+- [x] Android Battery Optimization Exemption Prompt (`apps/staff-app`):
+  - Added `checkAndPromptBatteryOptimization()` in `foregroundService.ts` called upon staff login in `App.tsx`.
+  - Prompts staff to whitelist the app in Android battery settings via `notifee.openBatteryOptimizationSettings()`, preventing aggressive OEM Doze suspension on Samsung, Xiaomi, and Pixel devices.
+- [x] High-Priority FCM & Expo Push Payload Dispatching (`apps/web`):
+  - Updated `webPush.ts` to accept all valid FCM and Expo push tokens.
+  - Configured high-priority delivery (`priority: 'high'`, `sound: 'alarm'`, `channelId: 'hotel_staff_alarm'`, `ttl: 86400`) to wake sleeping Google Play Services devices.
+- [x] Database Schema Migration 18 (`push_token` on `staff_users`):
+  - Added `packages/supabase/migrations/18_add_staff_users_push_token.sql` and `apps/web/supabase/migrations/18_add_staff_users_push_token.sql` to store Android mobile FCM device tokens.
+  - Updated TypeScript interfaces in `packages/supabase/types/index.ts` and `apps/staff-app/components/UserManagement.tsx`.
+- [ ] Apply DB migrations `15_spa_time_slots.sql`, `16_cleanup_expired_spa_holds.sql`, and `18_add_staff_users_push_token.sql` in Supabase SQL editor.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments and Android APK.
 
 Notes:
