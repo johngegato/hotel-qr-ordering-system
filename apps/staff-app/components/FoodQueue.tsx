@@ -798,7 +798,13 @@ export default function FoodQueue({ activeStaffId, activeStaffUser, refreshTrigg
               </View>
             )}
 
-            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={{ flex: 1, width: '100%' }}
+              contentContainerStyle={{ paddingBottom: 16 }}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+              keyboardShouldPersistTaps="handled"
+            >
               {/* SECTION 1: CURRENT ORDER ITEMS */}
               <View style={styles.sectionContainer}>
                 <View style={styles.sectionHeaderRow}>
@@ -882,7 +888,13 @@ export default function FoodQueue({ activeStaffId, activeStaffUser, refreshTrigg
 
                 {/* Full Menu Item Scrollable Container */}
                 <View style={styles.menuScrollWrapper}>
-                  <ScrollView nestedScrollEnabled style={{ flex: 1 }} showsVerticalScrollIndicator={true}>
+                  <ScrollView
+                    nestedScrollEnabled={true}
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingBottom: 10 }}
+                    showsVerticalScrollIndicator={true}
+                    keyboardShouldPersistTaps="handled"
+                  >
                     {filteredFullMenu.length === 0 ? (
                       <Text style={styles.emptySearchText}>No food items found matching &quot;{menuSearchQuery}&quot;</Text>
                     ) : (
@@ -1096,7 +1108,7 @@ const styles = StyleSheet.create({
   // Modal Styles
   modalBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 12 },
   modalCard:        { width: '100%', maxWidth: 480, backgroundColor: '#0f172a', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', padding: 20 },
-  modalCardLarge:   { width: '96%', maxWidth: 660, maxHeight: '90%', backgroundColor: '#0f172a', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', padding: 18, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20 },
+  modalCardLarge:   { width: '96%', maxWidth: 660, height: '90%', maxHeight: '90%', backgroundColor: '#0f172a', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', padding: 18, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 24, flexDirection: 'column' },
   modalHeaderRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
   modalTitle:       { color: '#fff', fontSize: 18, fontWeight: '800' },
   roomPill:         { backgroundColor: 'rgba(249,115,22,0.15)', borderWidth: 1, borderColor: 'rgba(249,115,22,0.3)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
@@ -1131,7 +1143,7 @@ const styles = StyleSheet.create({
   categoryChipText: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '700' },
   categoryChipTextSelected: { color: '#f97316', fontWeight: '800' },
 
-  menuScrollWrapper:{ height: 260, backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: 12, padding: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  menuScrollWrapper:{ height: 280, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 12, padding: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' },
   emptySearchText:  { color: 'rgba(255,255,255,0.4)', fontSize: 12, textAlign: 'center', marginVertical: 24 },
   menuCard:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 9, marginBottom: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   menuCardTitle:    { color: '#fff', fontWeight: '700', fontSize: 13 },

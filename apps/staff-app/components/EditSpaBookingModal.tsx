@@ -663,7 +663,12 @@ export default function EditSpaBookingModal({
             <Text style={styles.contactPhone}>{booking.guestPhone || 'Not provided'}</Text>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={{ flex: 1 }}
+            nestedScrollEnabled={true}
+            showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* ── Granular Time Picker ── */}
             <Text style={styles.sectionLabel}>⏰ Scheduled Time (Granular Minute Control)</Text>
 
@@ -897,9 +902,11 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
+    height: '90%',
     maxHeight: '90%',
     borderTopWidth: 1,
     borderTopColor: 'rgba(167, 139, 250, 0.3)',
+    flexDirection: 'column',
   },
   header: {
     flexDirection: 'row',
