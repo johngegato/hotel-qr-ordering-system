@@ -40,14 +40,22 @@ jobs:
         working-directory: apps/staff-app
         run: npx expo prebuild --platform android --clean
 
-      - name: Build Android Release APK
+      - name: Verify JS entry point resolves
+        working-directory: apps/staff-app
+        run: |
+          echo "Entry file path:"
+          node -e "require('expo/scripts/resolveAppEntry')" . android absolute || echo "resolveAppEntry unavailable (using hardcoded index.ts)"
+          echo "index.ts exists:"
+          ls -la index.ts
+
+      - name: Build Android Debug APK
         working-directory: apps/staff-app/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: StaffApp-Release-APK
-          path: apps/staff-app/android/app/build/outputs/apk/release/app-release.apk
+          name: StaffApp-Debug-APK
+          path: apps/staff-app/android/app/build/outputs/apk/debug/app-debug.apk
