@@ -16,8 +16,7 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-av",
-      "@notifee/react-native"
+      "expo-av"
     ],
     "android": {
       "package": "com.hotelqr.staffapp",
