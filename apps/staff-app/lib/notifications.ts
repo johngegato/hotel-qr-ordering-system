@@ -1,89 +1,101 @@
+/**
+ * notifications.ts
+ *
+ * Aggressive call-style notification system using Notifee.
+ * Behaves like an incoming Messenger video call:
+ *  - Wakes the device screen (WakeLock)
+ *  - Plays a looping alarm sound that bypasses Silent + DND
+ *  - Shows a Full-Screen Intent UI even when app is killed / screen locked
+ *  - Stops everything immediately when staff acknowledges
+ *
+ * Library: @notifee/react-native (no Firebase required)
+ */
+
 import { Platform } from 'react-native'
 
-export const URGENT_CHANNEL_ID = 'urgent_guest_requests'
+// ─── Channel & Notification IDs ────────────────────────────────────────────────
+export const ALARM_CHANNEL_ID    = 'hotel_staff_alarm'
+export const ALARM_NOTIFICATION_ID = 'incoming_request_alarm'
+/** Legacy channel kept for compatibility with old expo-notifications paths */
+export const URGENT_CHANNEL_ID   = 'urgent_guest_requests'
 
-// Safe helper to get Notifications module only on native platforms
-function getNotificationsModule() {
+// ─── Safe dynamic import helpers ───────────────────────────────────────────────
+
+function getNotifee() {
   if (Platform.OS === 'web') return null
   try {
-    return require('expo-notifications')
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('@notifee/react-native').default
   } catch {
     return null
   }
 }
 
-// Safe helper to get Audio module
-function getAudioModule() {
+function getNotifeeAndroid() {
+  if (Platform.OS === 'web') return null
   try {
-    return require('expo-av').Audio
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('@notifee/react-native')
+    return mod
   } catch {
     return null
   }
 }
+
+// ─── Channel Setup ─────────────────────────────────────────────────────────────
 
 /**
- * Configure Android Notification Channel with ALARM audio stream & MAX priority
+ * Create the ALARM-priority Notifee channel on Android.
+ * Must be called once at app startup (idempotent — safe to re-call).
  */
 export async function setupNotificationChannels(): Promise<void> {
   if (Platform.OS === 'web') return
 
-  const Notifications = getNotificationsModule()
-  if (!Notifications) return
-
-  // Configure foreground notification presentation handler inside lifecycle
-  if (typeof Notifications.setNotificationHandler === 'function') {
-    try {
-      Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowAlert: true,
-          shouldPlaySound: true,
-          shouldSetBadge: true,
-        }),
-      })
-    } catch (err) {
-      console.warn('[Notifications] setNotificationHandler warning:', err)
-    }
-  }
-
-  if (Platform.OS !== 'android' || typeof Notifications.setNotificationChannelAsync !== 'function') return
+  const notifee = getNotifee()
+  if (!notifee) return
 
   try {
-    await Notifications.setNotificationChannelAsync(URGENT_CHANNEL_ID, {
-      name: '🚨 Urgent Guest Requests',
-      description: 'High-priority alerts for incoming room service, calls, and bookings',
-      importance: Notifications.AndroidImportance?.MAX ?? 5,
-      vibrationPattern: [0, 500, 200, 500, 200, 500, 200, 800],
-      lightColor: '#EF4444',
-      enableLights: true,
-      enableVibrate: true,
-      audioAttributes: {
-        usage: Notifications.AndroidAudioUsage?.ALARM ?? 4, // Uses Alarm stream to bypass mute/DND
-        contentType: Notifications.AndroidAudioContentType?.SONIFICATION ?? 4,
-        flags: {
-          enforceAudibility: true,
-          requestHardwareAudioVideoSynchronization: false,
+    const { AndroidImportance, AndroidAudioUsage, AndroidAudioContentType } = getNotifeeAndroid() ?? {}
+
+    if (Platform.OS === 'android') {
+      await notifee.createChannel({
+        id: ALARM_CHANNEL_ID,
+        name: '🚨 Hotel Staff Alarm',
+        description: 'Critical alarm for incoming guest requests — wakes screen, loops alarm sound',
+        // IMPORTANCE_HIGH = heads-up (peek) notification + sound
+        importance: AndroidImportance?.HIGH ?? 4,
+        // Custom alarm sound bundled in android/app/src/main/res/raw/alarm.mp3
+        sound: 'alarm',
+        // Audio attributes: USAGE_ALARM bypasses Silent mode AND DND
+        audioAttributes: {
+          usage: AndroidAudioUsage?.ALARM ?? 4,
+          contentType: AndroidAudioContentType?.SONIFICATION ?? 4,
         },
-      },
-      bypassDnd: true,
-      showBadge: true,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC ?? 1,
-    })
+        vibration: true,
+        vibrationPattern: [0, 400, 100, 400, 100, 400, 100, 600],
+        lights: true,
+        lightColor: '#EF4444',
+        bypassDnd: true,
+      })
+    }
   } catch (err) {
     console.warn('[Notifications] setupNotificationChannels failed:', err)
   }
 }
 
+// ─── Permissions ───────────────────────────────────────────────────────────────
+
 /**
- * Request notification permissions and register for push notifications
+ * Request notification + exact-alarm permissions and handle Android 14
+ * USE_FULL_SCREEN_INTENT runtime permission.
  */
 export async function registerForPushNotifications(): Promise<string | null> {
+  // Web fallback — use browser Notification API
   if (Platform.OS === 'web') {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       try {
         const perm = await Notification.requestPermission()
-        if (perm === 'granted') {
-          return `web_pwa_${Date.now()}`
-        }
+        if (perm === 'granted') return `web_pwa_${Date.now()}`
       } catch (err) {
         console.warn('[Notifications] Web notification permission request error:', err)
       }
@@ -91,67 +103,56 @@ export async function registerForPushNotifications(): Promise<string | null> {
     return null
   }
 
-  const Notifications = getNotificationsModule()
-  if (!Notifications || typeof Notifications.getPermissionsAsync !== 'function') return null
+  const notifee = getNotifee()
+  if (!notifee) return null
 
   try {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync()
-    let finalStatus = existingStatus
+    const settings = await notifee.requestPermission({
+      criticalAlert: false,
+      alert: true,
+      badge: true,
+      sound: true,
+    })
 
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync({
-        android: {},
-        ios: {
-          allowAlert: true,
-          allowBadge: true,
-          allowSound: true,
-          allowCriticalAlerts: true,
-        },
-      })
-      finalStatus = status
-    }
-
-    if (finalStatus !== 'granted') {
-      console.warn('[Notifications] Permission not granted for push notifications')
+    // AuthorizationStatus: 1 = AUTHORIZED, 2 = PROVISIONAL
+    if (settings.authorizationStatus < 1) {
+      console.warn('[Notifications] Notification permission denied')
       return null
     }
 
-    // Configure Audio Mode for background & silent bypass on mobile
-    const Audio = getAudioModule()
-    if (Audio && typeof Audio.setAudioModeAsync === 'function') {
+    // Android 14+: Request USE_FULL_SCREEN_INTENT if not already granted
+    if (Platform.OS === 'android') {
       try {
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          shouldRouteThroughEarpiece: false,
-        })
+        const hasFullScreen = await notifee.getNotificationSettings?.()
+        // openFullScreenIntentSettings available in Notifee v9+
+        if (
+          hasFullScreen &&
+          hasFullScreen.android?.fullScreenIntentEnabled === false &&
+          typeof notifee.openFullScreenIntentSettings === 'function'
+        ) {
+          // Open settings non-blocking — don't await to avoid blocking app startup
+          notifee.openFullScreenIntentSettings().catch(() => {})
+        }
       } catch {
-        // Ignore audio mode configuration failure on unsupported devices
+        // Ignore — not critical on older Android versions
       }
     }
 
-    if (typeof Notifications.getExpoPushTokenAsync === 'function') {
-      try {
-        const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: 'c443e903-bcbf-4c9a-9167-bdc0f3195d1f',
-        })
-        return tokenData?.data || null
-      } catch (tokenErr) {
-        console.warn('[Notifications] getExpoPushTokenAsync warning:', tokenErr)
-        return `native_${Platform.OS}_${Date.now()}`
-      }
-    }
-    return null
+    return `notifee_native_${Platform.OS}_${Date.now()}`
   } catch (err) {
-    console.warn('[Notifications] Failed to obtain push token:', err)
+    console.warn('[Notifications] registerForPushNotifications failed:', err)
     return null
   }
 }
 
+// ─── Alarm Trigger ─────────────────────────────────────────────────────────────
+
 /**
- * Trigger an aggressive high-priority heads-up alert notification (Native Android/iOS & Web PWA)
+ * Fire an aggressive alarm notification.
+ * On Android: Full-Screen Intent + WakeLock + looping alarm sound.
+ * On Web: browser Notification API fallback.
  */
-export async function triggerAggressiveAlert(params: {
+export async function triggerAlarmNotification(params: {
   title: string
   body: string
   requestId: string
@@ -159,6 +160,8 @@ export async function triggerAggressiveAlert(params: {
   requestType: string
   payloadData?: Record<string, unknown>
 }): Promise<void> {
+
+  // ── Web fallback ──
   if (Platform.OS === 'web') {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       try {
@@ -166,7 +169,6 @@ export async function triggerAggressiveAlert(params: {
         const notifOptions: NotificationOptions = {
           body: params.body,
           icon: '/assets/icon.png',
-          badge: '/favicon.png',
           tag: `request-${params.requestId}`,
           data: {
             requestId: params.requestId,
@@ -176,7 +178,6 @@ export async function triggerAggressiveAlert(params: {
           },
           requireInteraction: true,
         }
-
         if ('serviceWorker' in navigator) {
           const reg = await navigator.serviceWorker.ready
           await reg.showNotification(notifTitle, notifOptions)
@@ -184,70 +185,180 @@ export async function triggerAggressiveAlert(params: {
           new Notification(notifTitle, notifOptions)
         }
       } catch (err) {
-        console.warn('[Notifications] Web triggerAggressiveAlert error:', err)
+        console.warn('[Notifications] Web triggerAlarmNotification error:', err)
       }
     }
     return
   }
 
-  const Notifications = getNotificationsModule()
-  if (!Notifications || typeof Notifications.scheduleNotificationAsync !== 'function') return
+  // ── Native (Android / iOS) via Notifee ──
+  const notifee = getNotifee()
+  if (!notifee) return
 
   try {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `🚨 ${params.title} — ${params.roomNumber}`,
-        body: params.body,
-        priority: Notifications.AndroidNotificationPriority?.MAX ?? 2,
-        vibrate: [0, 500, 200, 500, 200, 500, 200, 800],
-        data: {
-          requestId: params.requestId,
-          roomNumber: params.roomNumber,
-          requestType: params.requestType,
-          ...params.payloadData,
-        },
-        categoryIdentifier: 'URGENT_REQUEST',
+    const {
+      AndroidImportance,
+      AndroidCategory,
+      AndroidVisibility,
+    } = getNotifeeAndroid() ?? {}
+
+    await notifee.displayNotification({
+      id: ALARM_NOTIFICATION_ID,
+      title: `<b>🚨 ${params.title}</b>`,
+      subtitle: params.roomNumber,
+      body: params.body,
+      data: {
+        requestId: params.requestId,
+        roomNumber: params.roomNumber,
+        requestType: params.requestType,
+        ...(params.payloadData as Record<string, string> ?? {}),
       },
-      trigger: {
-        channelId: URGENT_CHANNEL_ID,
-      } as any,
+      android: {
+        channelId: ALARM_CHANNEL_ID,
+
+        // ── Full-Screen Intent (wakes screen even when locked / killed) ──
+        fullScreenAction: {
+          id: 'default',
+          // Launches the app's MainActivity as the Full-Screen Intent
+          launchActivity: 'default',
+        },
+
+        // ── WakeLock: keeps screen on for 60 seconds ──
+        wakeLockTimeout: 60_000,
+
+        // ── Alarm-class audio ──
+        sound: 'alarm',
+        loopSound: true,
+
+        // ── Importance + appearance ──
+        importance: AndroidImportance?.HIGH ?? 4,
+        category: AndroidCategory?.CALL ?? 'call',
+        visibility: AndroidVisibility?.PUBLIC ?? 1,
+
+        // ── Persistent heads-up ──
+        ongoing: false,
+        autoCancel: false,
+        showTimestamp: true,
+        timestamp: Date.now(),
+
+        // Aggressive vibration
+        vibrationPattern: [0, 400, 100, 400, 100, 400, 100, 600],
+
+        // Red light on supported devices
+        lights: ['#EF4444', 500, 500] as any,
+
+        // Large icon
+        largeIcon: require('../assets/icon.png'),
+
+        // ── Action Buttons ──
+        actions: [
+          {
+            title: '✓ ACKNOWLEDGE',
+            pressAction: {
+              id: 'acknowledge',
+              launchActivity: 'default',
+            },
+          },
+        ],
+      },
     })
   } catch (err) {
-    console.warn('[Notifications] triggerAggressiveAlert failed:', err)
+    console.warn('[Notifications] triggerAlarmNotification failed:', err)
+  }
+}
+
+/** @deprecated Use triggerAlarmNotification instead */
+export const triggerAggressiveAlert = triggerAlarmNotification
+
+// ─── Alarm Cancellation ────────────────────────────────────────────────────────
+
+/**
+ * Cancel a specific notification by ID (defaults to the alarm notification).
+ */
+export async function cancelAlarmNotification(id = ALARM_NOTIFICATION_ID): Promise<void> {
+  if (Platform.OS === 'web') return
+  const notifee = getNotifee()
+  if (!notifee) return
+  try {
+    await notifee.cancelNotification(id)
+  } catch (err) {
+    console.warn('[Notifications] cancelAlarmNotification failed:', err)
   }
 }
 
 /**
- * Safe subscription for notification tap responses
+ * Cancel ALL displayed notifications and stop looping alarm sound.
+ * Call this when staff acknowledges a request.
  */
-export function addNotificationResponseListener(callback: (data: any) => void): { remove: () => void } {
+export async function cancelAllAlarms(): Promise<void> {
+  if (Platform.OS === 'web') return
+  const notifee = getNotifee()
+  if (!notifee) return
+  try {
+    await notifee.cancelAllNotifications()
+  } catch (err) {
+    console.warn('[Notifications] cancelAllAlarms failed:', err)
+  }
+}
+
+// ─── Event Listeners ───────────────────────────────────────────────────────────
+
+/**
+ * Register handler for foreground Notifee events (pressed actions, dismissed).
+ * Returns an unsubscribe function.
+ */
+export function addNotificationResponseListener(
+  callback: (data: any) => void
+): { remove: () => void } {
   if (Platform.OS === 'web') return { remove: () => {} }
 
-  const Notifications = getNotificationsModule()
-  if (!Notifications || typeof Notifications.addNotificationResponseReceivedListener !== 'function') {
+  const notifee = getNotifee()
+  if (!notifee || typeof notifee.onForegroundEvent !== 'function') {
     return { remove: () => {} }
   }
 
   try {
-    const sub = Notifications.addNotificationResponseReceivedListener((response: any) => {
-      const data = response?.notification?.request?.content?.data
-      callback(data)
+    const { EventType } = getNotifeeAndroid() ?? {}
+
+    const unsubscribe = notifee.onForegroundEvent(({ type, detail }: any) => {
+      // EventType.PRESS = 1, EventType.ACTION_PRESS = 2
+      const isPress = type === (EventType?.PRESS ?? 1) || type === (EventType?.ACTION_PRESS ?? 2)
+      if (isPress && detail?.notification?.data) {
+        callback(detail.notification.data)
+      }
     })
-    return {
-      remove: () => {
-        try {
-          if (sub && typeof sub.remove === 'function') {
-            sub.remove()
-          } else if (typeof Notifications.removeNotificationSubscription === 'function') {
-            Notifications.removeNotificationSubscription(sub)
-          }
-        } catch {
-          // ignore cleanup error
-        }
-      },
-    }
+
+    return { remove: typeof unsubscribe === 'function' ? unsubscribe : () => {} }
   } catch {
     return { remove: () => {} }
   }
 }
 
+/**
+ * Register the Notifee BACKGROUND event handler.
+ * Must be called at the module level in index.ts (before registerRootComponent).
+ * Handles: notification taps when app is killed/backgrounded, action button presses.
+ */
+export function registerBackgroundNotificationHandler(): void {
+  if (Platform.OS === 'web') return
+
+  const notifee = getNotifee()
+  if (!notifee || typeof notifee.onBackgroundEvent !== 'function') return
+
+  try {
+    const { EventType } = getNotifeeAndroid() ?? {}
+
+    notifee.onBackgroundEvent(async ({ type, detail }: any) => {
+      const isAck =
+        type === (EventType?.ACTION_PRESS ?? 2) &&
+        detail?.pressAction?.id === 'acknowledge'
+
+      if (isAck) {
+        // Cancel the alarm notification when staff acknowledges from background
+        await cancelAllAlarms()
+      }
+    })
+  } catch (err) {
+    console.warn('[Notifications] registerBackgroundNotificationHandler failed:', err)
+  }
+}

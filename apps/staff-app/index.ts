@@ -15,8 +15,18 @@ if (typeof (globalThis as any).ErrorUtils !== 'undefined') {
   });
 }
 
+// ─── Notifee Background Event Handler ─────────────────────────────────────────
+// MUST be registered here (module level) before registerRootComponent.
+// This fires when the app is in the background or completely killed:
+//  - Staff taps "✓ ACKNOWLEDGE" on the lock-screen Full-Screen Intent → alarm stops
+//  - Staff taps the notification banner in the notification shade → app opens
+import { registerBackgroundNotificationHandler } from './lib/notifications';
+registerBackgroundNotificationHandler();
+// ──────────────────────────────────────────────────────────────────────────────
+
 import { registerRootComponent } from 'expo';
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
 registerRootComponent(App);
+

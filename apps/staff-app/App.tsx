@@ -27,7 +27,7 @@ import { Platform } from 'react-native'
 import {
   setupNotificationChannels,
   registerForPushNotifications,
-  triggerAggressiveAlert,
+  triggerAlarmNotification,
   addNotificationResponseListener,
 } from './lib/notifications'
 import {
@@ -380,9 +380,9 @@ function MainAppContent() {
       if (data && data.length > 0) {
         if (isScheduledOrInitial || timeSinceDismissed >= 5 * 60 * 1000) {
           setUnhandledPendingList(data as PendingRequestItem[])
-          // Trigger native notification if on mobile/tablet
+          // Trigger aggressive alarm notification if on mobile/tablet
           if (Platform.OS !== 'web') {
-            triggerAggressiveAlert({
+            triggerAlarmNotification({
               title: `${data.length} Unhandled Requests Pending`,
               body: `Reminder: ${data.length} pending guest requests require staff attention!`,
               requestId: data[0].id,
@@ -668,10 +668,10 @@ function MainAppContent() {
             .then((nextRequest) => {
               if (nextRequest) {
                 setIncomingAlert(nextRequest as IncomingRequest)
-                // Trigger Native Notification with MAX Priority & ALARM stream
+                // Fire aggressive Full-Screen Intent alarm (Notifee: wakes screen, loops alarm)
                 const rType = nextRequest.request_type || 'REQUEST'
                 const rNum = (nextRequest.payload as any)?.room_number || 'Room'
-                triggerAggressiveAlert({
+                triggerAlarmNotification({
                   title: `Incoming ${rType.replace('_', ' ')}`,
                   body: `${rNum} submitted a new request requiring immediate staff attention!`,
                   requestId: nextRequest.id,

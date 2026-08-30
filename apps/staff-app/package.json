@@ -4,6 +4,7 @@
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
+    "@notifee/react-native": "^9.1.8",
     "@supabase/supabase-js": "^2.112.2",
     "expo": "~54.0.37",
     "expo-av": "~16.0.8",

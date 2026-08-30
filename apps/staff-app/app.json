@@ -16,7 +16,8 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-av"
+      "expo-av",
+      "@notifee/react-native"
     ],
     "android": {
       "package": "com.hotelqr.staffapp",
@@ -34,7 +35,8 @@
         "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
         "POST_NOTIFICATIONS",
         "FOREGROUND_SERVICE",
-        "SYSTEM_ALERT_WINDOW"
+        "SYSTEM_ALERT_WINDOW",
+        "SCHEDULE_EXACT_ALARM"
       ],
       "predictiveBackGestureEnabled": false
     },

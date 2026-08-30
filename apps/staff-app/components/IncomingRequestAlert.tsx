@@ -11,6 +11,7 @@ import {
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import { Audio } from 'expo-av'
+import { cancelAllAlarms } from '../lib/notifications'
 
 // ─── Request Type Config ───────────────────────────────────────────────────────
 const TYPE_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
@@ -119,6 +120,8 @@ export default function IncomingRequestAlert({ request, onDismiss }: IncomingReq
     soundRef.current?.unloadAsync().catch(() => {})
     soundRef.current = null
     setCountdown(60)
+    // Cancel the Notifee Full-Screen Intent alarm notification + stop looping alarm sound
+    cancelAllAlarms().catch(() => {})
     Animated.timing(slideAnim, { toValue: -60, duration: 200, useNativeDriver: true }).start(onDismiss)
   }
 

@@ -40,6 +40,15 @@ jobs:
         working-directory: apps/staff-app
         run: npx expo prebuild --platform android --clean
 
+      - name: Copy alarm sound to Android res/raw (survives prebuild clean)
+        working-directory: apps/staff-app
+        run: |
+          mkdir -p android/app/src/main/res/raw
+          # Copy as both .mp3 and without extension — Notifee looks for 'alarm' (no ext)
+          cp assets/alarm.mp3 android/app/src/main/res/raw/alarm.mp3
+          echo "✅ alarm.mp3 copied to res/raw"
+          ls -la android/app/src/main/res/raw/
+
       - name: Build Standalone Android Release APK
         working-directory: apps/staff-app/android
         run: |
