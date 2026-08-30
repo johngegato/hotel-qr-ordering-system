@@ -31,7 +31,6 @@ if (Platform.OS !== 'web') {
           shouldShowAlert: true,
           shouldPlaySound: true,
           shouldSetBadge: true,
-          priority: Notifications.AndroidNotificationPriority?.MAX ?? 2,
         }),
       })
     } catch {
@@ -133,8 +132,15 @@ export async function registerForPushNotifications(): Promise<string | null> {
     }
 
     if (typeof Notifications.getExpoPushTokenAsync === 'function') {
-      const tokenData = await Notifications.getExpoPushTokenAsync()
-      return tokenData.data
+      try {
+        const tokenData = await Notifications.getExpoPushTokenAsync({
+          projectId: 'c443e903-bcbf-4c9a-9167-bdc0f3195d1f',
+        })
+        return tokenData?.data || null
+      } catch (tokenErr) {
+        console.warn('[Notifications] getExpoPushTokenAsync warning:', tokenErr)
+        return `native_${Platform.OS}_${Date.now()}`
+      }
     }
     return null
   } catch (err) {

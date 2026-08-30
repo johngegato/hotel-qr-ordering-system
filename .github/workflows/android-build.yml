@@ -13,10 +13,16 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'pnpm'
 
       - name: Set up Java JDK 17
         uses: actions/setup-java@v4
@@ -27,42 +33,12 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Workspace Root Dependencies
-        run: npm install
-
-      - name: Install Staff App Dependencies
-        working-directory: apps/staff-app
-        run: npm install
-
-      - name: Align Monorepo Entry Configs
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkgPath = 'apps/staff-app/package.json';
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-            pkg.main = './index.js';
-            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-
-            fs.writeFileSync('apps/staff-app/index.js', \"import { registerRootComponent } from 'expo';\nimport App from './App';\n\nregisterRootComponent(App);\n\");
-
-            const metroConfig = \`const { getDefaultConfig } = require('expo/metro-config');
-          const path = require('path');
-          const projectRoot = __dirname;
-          const workspaceRoot = path.resolve(projectRoot, '../..');
-          const config = getDefaultConfig(projectRoot);
-          config.projectRoot = projectRoot;
-          config.watchFolders = [workspaceRoot];
-          config.resolver.nodeModulesPaths = [
-            path.resolve(projectRoot, 'node_modules'),
-            path.resolve(workspaceRoot, 'node_modules'),
-          ];
-          module.exports = config;\`;
-            fs.writeFileSync('apps/staff-app/metro.config.js', metroConfig);
-          "
+      - name: Install Monorepo Dependencies
+        run: pnpm install --no-frozen-lockfile
 
       - name: Run Expo Prebuild
         working-directory: apps/staff-app
-        run: npx expo prebuild --platform android
+        run: npx expo prebuild --platform android --clean
 
       - name: Build Android Release APK
         working-directory: apps/staff-app/android

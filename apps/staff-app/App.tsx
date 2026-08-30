@@ -592,16 +592,20 @@ function MainAppContent() {
   useEffect(() => {
     if (Platform.OS !== 'web') {
       setupNotificationChannels()
-      registerForPushNotifications().then((token) => {
-        if (token && activeStaffUser) {
-          Promise.resolve(
-            supabase
-              .from('staff_users')
-              .update({ push_token: token } as any)
-              .eq('id', activeStaffUser.id)
-          ).catch(() => {})
-        }
-      })
+      registerForPushNotifications()
+        .then((token) => {
+          if (token && activeStaffUser) {
+            Promise.resolve(
+              supabase
+                .from('staff_users')
+                .update({ push_token: token } as any)
+                .eq('id', activeStaffUser.id)
+            ).catch(() => {})
+          }
+        })
+        .catch((err) => {
+          console.warn('[App] Push notification registration caught:', err)
+        })
 
       const subResponse = addNotificationResponseListener((data) => {
         if (data?.requestId) {
@@ -723,7 +727,7 @@ function MainAppContent() {
     )
   }
 
-  if (!activeStaffUser && status !== 'error' && status === 'connected') {
+  if (!activeStaffUser) {
     return (
       <SafeAreaView style={styles.safe}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
