@@ -15,13 +15,6 @@
       "supportsTablet": true
     },
     "plugins": [
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#fbbf24"
-        }
-      ],
       "expo-secure-store",
       "expo-av"
     ],

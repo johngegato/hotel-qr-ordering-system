@@ -40,19 +40,20 @@ jobs:
         working-directory: apps/staff-app
         run: npx expo prebuild --platform android --clean
 
-      - name: Verify JS entry point resolves
-        working-directory: apps/staff-app
+      - name: Patch build.gradle entryFile (monorepo fix)
+        working-directory: apps/staff-app/android/app
         run: |
-          echo "Entry file path:"
-          node -e "require('expo/scripts/resolveAppEntry')" . android absolute || echo "resolveAppEntry unavailable (using hardcoded index.ts)"
-          echo "index.ts exists:"
-          ls -la index.ts
+          # The shell command Expo generates for entryFile can return empty string in pnpm monorepos.
+          # Replace it with a hardcoded reliable relative path.
+          sed -i 's|entryFile = file(\["node", "-e", "require(.expo/scripts/resolveAppEntry.).*\]\.execute.*\.text\.trim())|entryFile = file("../../index.ts")|g' build.gradle
+          echo "--- Patched entryFile line ---"
+          grep "entryFile" build.gradle
 
       - name: Build Android Debug APK
         working-directory: apps/staff-app/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tail -100
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
