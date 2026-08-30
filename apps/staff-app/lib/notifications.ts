@@ -21,10 +21,17 @@ function getAudioModule() {
   }
 }
 
-// Configure global notification presentation when app is in the foreground (Native only)
-if (Platform.OS !== 'web') {
+/**
+ * Configure Android Notification Channel with ALARM audio stream & MAX priority
+ */
+export async function setupNotificationChannels(): Promise<void> {
+  if (Platform.OS === 'web') return
+
   const Notifications = getNotificationsModule()
-  if (Notifications && typeof Notifications.setNotificationHandler === 'function') {
+  if (!Notifications) return
+
+  // Configure foreground notification presentation handler inside lifecycle
+  if (typeof Notifications.setNotificationHandler === 'function') {
     try {
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
@@ -33,20 +40,12 @@ if (Platform.OS !== 'web') {
           shouldSetBadge: true,
         }),
       })
-    } catch {
-      // ignore handler setup error on web or unsupported environments
+    } catch (err) {
+      console.warn('[Notifications] setNotificationHandler warning:', err)
     }
   }
-}
 
-/**
- * Configure Android Notification Channel with ALARM audio stream & MAX priority
- */
-export async function setupNotificationChannels(): Promise<void> {
-  if (Platform.OS !== 'android') return
-
-  const Notifications = getNotificationsModule()
-  if (!Notifications || typeof Notifications.setNotificationChannelAsync !== 'function') return
+  if (Platform.OS !== 'android' || typeof Notifications.setNotificationChannelAsync !== 'function') return
 
   try {
     await Notifications.setNotificationChannelAsync(URGENT_CHANNEL_ID, {

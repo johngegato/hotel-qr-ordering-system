@@ -1,9 +1,22 @@
 import 'react-native-url-polyfill/auto';
-import { registerRootComponent } from 'expo';
 
+// Global error handler for React Native runtime stability
+if (typeof (globalThis as any).ErrorUtils !== 'undefined') {
+  const defaultHandler = (globalThis as any).ErrorUtils.getGlobalHandler();
+  (globalThis as any).ErrorUtils.setGlobalHandler((error: any, isFatal: boolean) => {
+    console.error('[Global ErrorUtils Caught]:', error, 'isFatal:', isFatal);
+    if (defaultHandler) {
+      try {
+        defaultHandler(error, isFatal);
+      } catch {
+        // prevent secondary handler failure
+      }
+    }
+  });
+}
+
+import { registerRootComponent } from 'expo';
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
 registerRootComponent(App);
