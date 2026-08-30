@@ -6,8 +6,8 @@ const workspaceRoot = path.resolve(projectRoot, '../..')
 
 const config = getDefaultConfig(projectRoot)
 
-// 1. Watch all files in the monorepo
-config.watchFolders = [workspaceRoot]
+// 1. Watch all files in the monorepo while preserving default entries
+config.watchFolders = [...(config.watchFolders || []), workspaceRoot]
 
 // 2. Resolve modules from project first, then monorepo root
 config.resolver.nodeModulesPaths = [
@@ -15,7 +15,7 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ]
 
-// 3. Force Metro to resolve (sub)dependencies from one of the `nodeModulesPaths`
-config.resolver.disableHierarchicalLookup = true
+// 3. Enable standard hierarchical lookup so PNPM symlinked modules are resolved correctly
+config.resolver.disableHierarchicalLookup = false
 
 module.exports = config

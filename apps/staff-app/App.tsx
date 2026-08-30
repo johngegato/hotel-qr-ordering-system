@@ -36,8 +36,6 @@ import {
   clearStaffSession,
 } from './lib/authStorage'
 import { useAutoSync } from './lib/useAutoSync'
-import { usePWA } from './lib/usePWA'
-import { useScreenWakeLock } from './lib/useScreenWakeLock'
 
 // ─── Global Error Boundary ───────────────────────────────────
 
@@ -298,18 +296,6 @@ function MainAppContent() {
   const fadeAnim = React.useRef(new Animated.Value(0)).current
   const slideAnim = React.useRef(new Animated.Value(30)).current
   const lastDismissedReminderAtRef = React.useRef<number>(0)
-
-  // ─── Progressive Web App (PWA) Support ─────────────────────
-  const {
-    canInstall,
-    isStandalone,
-    notificationPermission,
-    promptInstall,
-    requestNotificationPermission,
-  } = usePWA(activeStaffUser?.id)
-
-  // ─── Screen Wake Lock (Keeps CPU & WebSockets active) ───────
-  useScreenWakeLock()
 
   const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -836,42 +822,6 @@ function MainAppContent() {
               </TouchableOpacity>
             </View>
           </View>
-
-          {/* PWA 1-Tap Install Banner on Mobile Browsers */}
-          {canInstall && (
-            <TouchableOpacity
-              onPress={promptInstall}
-              style={styles.pwaInstallBanner}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.pwaInstallIcon}>📲</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.pwaInstallTitle}>Install Staff App</Text>
-                <Text style={styles.pwaInstallSub}>Add to home screen for native fullscreen experience</Text>
-              </View>
-              <View style={styles.pwaInstallBtn}>
-                <Text style={styles.pwaInstallBtnText}>Install</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-
-          {/* Web Push Notification Permission Prompt */}
-          {Platform.OS === 'web' && notificationPermission === 'default' && (
-            <TouchableOpacity
-              onPress={requestNotificationPermission}
-              style={styles.pwaNotifBanner}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.pwaInstallIcon}>🔔</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.pwaNotifTitle}>Enable Push Alerts</Text>
-                <Text style={styles.pwaInstallSub}>Receive instant heads-up sound & vibration alerts</Text>
-              </View>
-              <View style={styles.pwaNotifBtn}>
-                <Text style={styles.pwaNotifBtnText}>Enable</Text>
-              </View>
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* Content */}
