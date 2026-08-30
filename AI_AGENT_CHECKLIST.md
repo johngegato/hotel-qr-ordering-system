@@ -225,4 +225,5 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 - [ ] Supabase migration `11_scheduled_booking_expiration.sql` — still pending manual application.
 - [ ] Phase 2 database work: atomic reservation RPC + `request_id` FK on `spa_slot_locks` — not yet implemented in production.
 - [ ] Add automated integration test for audit log insertion across all booking paths.
-
+### To be added
+- [ ] I am implementing a real-time chat feature between guests and staff in my hotel app. Guests access the app by scanning a static QR code in their room. To ensure data privacy between different stays, chat messages must be tied to a unique guest_session_id rather than the static room_id or QR code payload. Please provide the database schema and backend routing logic so that when a guest checks out, their chat session is archived, and when a new guest scans the same QR code, a fresh chat session is initiated without exposing previous messages.
