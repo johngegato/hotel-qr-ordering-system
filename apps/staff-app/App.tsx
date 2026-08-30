@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import {
+  Alert,
   StyleSheet,
   Text,
   View,
@@ -11,6 +12,7 @@ import {
   Dimensions,
   ScrollView,
   TextInput,
+  Platform,
 } from 'react-native'
 import { supabase } from './lib/supabase'
 import CallQueue from './components/CallQueue'
@@ -23,13 +25,13 @@ import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
 import IncomingRequestAlert, { type IncomingRequest } from './components/IncomingRequestAlert'
 import PendingRequestsReminderModal, { type PendingRequestItem } from './components/PendingRequestsReminderModal'
-import { Platform } from 'react-native'
 import {
   setupNotificationChannels,
   registerForPushNotifications,
   triggerAlarmNotification,
   addNotificationResponseListener,
 } from './lib/notifications'
+
 import {
   saveStaffSession,
   getSavedStaffSession,
@@ -574,35 +576,52 @@ function MainAppContent() {
 
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // ─── Native Notifications Setup ─────────────────────────────
+  // ─── Notification Channel Setup at App Startup ───────────────
+  // MUST run on mount (before any request arrives), not gated behind login.
+  // Creates the ALARM-stream channel so expo-notifications can fire immediately.
   useEffect(() => {
-    if (Platform.OS !== 'web') {
-      setupNotificationChannels()
-      registerForPushNotifications()
-        .then((token) => {
-          if (token && activeStaffUser) {
-            Promise.resolve(
-              supabase
-                .from('staff_users')
-                .update({ push_token: token } as any)
-                .eq('id', activeStaffUser.id)
-            ).catch(() => {})
-          }
-        })
-        .catch((err) => {
-          console.warn('[App] Push notification registration caught:', err)
-        })
+    if (Platform.OS === 'web') return
 
-      const subResponse = addNotificationResponseListener((data) => {
-        if (data?.requestId) {
-          setRefreshKey((k) => k + 1)
+    setupNotificationChannels()
+      .catch((err) => console.warn('[App] setupNotificationChannels:', err))
+
+    registerForPushNotifications()
+      .then((token) => {
+        if (!token && Platform.OS === 'android') {
+          Alert.alert(
+            '🔔 Enable Notifications',
+            'Notifications are required to receive incoming guest requests. Please go to Settings → App → Notifications and enable them.',
+            [{ text: 'OK' }]
+          )
         }
       })
+      .catch((err) => console.warn('[App] registerForPushNotifications:', err))
 
-      return () => {
-        subResponse.remove()
-      }
-    }
+    const subResponse = addNotificationResponseListener((data) => {
+      if (data?.requestId) setRefreshKey((k) => k + 1)
+    })
+
+    return () => { subResponse.remove() }
+  }, []) // ← empty deps: runs ONCE at mount, before login
+
+  // ─── Update push token in DB once user logs in ───────────────
+  useEffect(() => {
+    if (Platform.OS === 'web' || !activeStaffUser) return
+
+    registerForPushNotifications()
+      .then((token) => {
+        if (token && activeStaffUser) {
+          Promise.resolve(
+            supabase
+              .from('staff_users')
+              .update({ push_token: token } as any)
+              .eq('id', activeStaffUser.id)
+          ).catch(() => {})
+        }
+      })
+      .catch((err) => {
+        console.warn('[App] Push token DB update caught:', err)
+      })
   }, [activeStaffUser?.id])
 
   // ─── 5-Minute Recurring Interval for Unhandled Pending Requests ──
