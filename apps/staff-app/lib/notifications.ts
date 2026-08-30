@@ -186,6 +186,34 @@ export async function registerForPushNotifications(): Promise<string | null> {
       }
 
       console.log('[Notifications] expo-notifications permission granted ✅')
+
+      // ── Retrieve real Expo Push Token for FCM background delivery ──
+      try {
+        if (typeof Notifications.getExpoPushTokenAsync === 'function') {
+          const tokenData = await Notifications.getExpoPushTokenAsync({
+            projectId: 'c443e903-bcbf-4c9a-9167-bdc0f3195d1f',
+          })
+          if (tokenData?.data) {
+            console.log('[Notifications] ✅ Obtained Real Expo Push Token (FCM):', tokenData.data)
+            return tokenData.data
+          }
+        }
+      } catch (tokenErr) {
+        console.warn('[Notifications] getExpoPushTokenAsync failed (trying device token):', tokenErr)
+      }
+
+      try {
+        if (typeof Notifications.getDevicePushTokenAsync === 'function') {
+          const deviceToken = await Notifications.getDevicePushTokenAsync()
+          if (deviceToken?.data) {
+            console.log('[Notifications] ✅ Obtained Native Device FCM Token:', deviceToken.data)
+            return deviceToken.data
+          }
+        }
+      } catch (devErr) {
+        console.warn('[Notifications] getDevicePushTokenAsync failed:', devErr)
+      }
+
       return `expo_local_${Platform.OS}_${Date.now()}`
     } catch (err) {
       console.warn('[Notifications] expo-notifications permission request failed:', err)
@@ -426,6 +454,38 @@ export function addNotificationResponseListener(
     const sub = Notifications.addNotificationResponseReceivedListener((response: any) => {
       const data = response?.notification?.request?.content?.data
       if (data) callback(data)
+    })
+    return {
+      remove: () => {
+        try {
+          if (sub && typeof sub.remove === 'function') sub.remove()
+          else if (typeof Notifications.removeNotificationSubscription === 'function') {
+            Notifications.removeNotificationSubscription(sub)
+          }
+        } catch { /* ignore */ }
+      },
+    }
+  } catch {
+    return { remove: () => {} }
+  }
+}
+
+/**
+ * Listen for notifications received while app is foregrounded.
+ */
+export function addNotificationReceivedListener(
+  callback: (notification: any) => void
+): { remove: () => void } {
+  if (Platform.OS === 'web') return { remove: () => {} }
+
+  const Notifications = getExpoNotifications()
+  if (!Notifications || typeof Notifications.addNotificationReceivedListener !== 'function') {
+    return { remove: () => {} }
+  }
+
+  try {
+    const sub = Notifications.addNotificationReceivedListener((notif: any) => {
+      callback(notif)
     })
     return {
       remove: () => {

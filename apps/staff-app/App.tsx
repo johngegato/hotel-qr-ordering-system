@@ -30,6 +30,7 @@ import {
   registerForPushNotifications,
   triggerAlarmNotification,
   addNotificationResponseListener,
+  addNotificationReceivedListener,
 } from './lib/notifications'
 import {
   createNotifeeChannels,
@@ -606,11 +607,53 @@ function MainAppContent() {
       })
       .catch((err) => console.warn('[App] registerForPushNotifications:', err))
 
-    const subResponse = addNotificationResponseListener((data) => {
-      if (data?.requestId) setRefreshKey((k) => k + 1)
+    const subResponse = addNotificationResponseListener(async (data) => {
+      if (data?.requestId) {
+        setRefreshKey((k) => k + 1)
+        try {
+          const { data: req } = await supabase
+            .from('requests')
+            .select('*, rooms(room_number)')
+            .eq('id', data.requestId)
+            .maybeSingle()
+          if (req) {
+            const nextReq = await hydrateIncomingAlert(req)
+            if (nextReq) {
+              setIncomingAlert(nextReq)
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
     })
 
-    return () => { subResponse.remove() }
+    const subReceived = addNotificationReceivedListener(async (notif) => {
+      const data = notif?.request?.content?.data
+      if (data?.requestId) {
+        setRefreshKey((k) => k + 1)
+        try {
+          const { data: req } = await supabase
+            .from('requests')
+            .select('*, rooms(room_number)')
+            .eq('id', data.requestId)
+            .maybeSingle()
+          if (req) {
+            const nextReq = await hydrateIncomingAlert(req)
+            if (nextReq) {
+              setIncomingAlert(nextReq)
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    })
+
+    return () => {
+      subResponse.remove()
+      subReceived.remove()
+    }
   }, []) // ← empty deps: runs ONCE at mount, before login
 
   // ─── Start Foreground Service & Update push token on login ────
