@@ -948,7 +948,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(56,189,248,0.2)',
+    height: '88%',
     maxHeight: '88%',
+    flexDirection: 'column',
     paddingBottom: 20,
   },
   detailHeader: {

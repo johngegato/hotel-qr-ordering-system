@@ -46,7 +46,7 @@ export function useAutoSync(
 
     // 2. Refresh / Reconnect Supabase Realtime WebSocket if stalled or disconnected
     try {
-      if (Platform.OS === 'web' && supabase && (supabase as any).realtime) {
+      if (supabase && (supabase as any).realtime) {
         const rt = (supabase as any).realtime
         if (typeof rt.isConnected === 'function' && !rt.isConnected()) {
           console.log('[useAutoSync] Realtime WebSocket disconnected — reconnecting...')
@@ -71,7 +71,7 @@ export function useAutoSync(
     }
   }, [enabled, intervalMs, executeSync])
 
-  // ─── 2. Window / Tab Focus, Visibility, Online & PWA Wake-Up ─
+  // ─── 2. Window / Tab Focus, Visibility, Online, PWA & AppState Wake-Up ─
   useEffect(() => {
     if (!enabled || !syncOnFocus) return
 
@@ -82,7 +82,7 @@ export function useAutoSync(
 
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
-          // If the screen was off or backgrounded for more than 5 seconds, immediately sync
+          // If the screen was off or backgrounded, immediately sync
           executeSync()
         }
       }
@@ -131,9 +131,21 @@ export function useAutoSync(
         }
       }
     } else {
-      // React Native Mobile / Tablet Lifecycle
+      // React Native Mobile / Tablet Lifecycle (Android & iOS)
       const handleAppStateChange = (nextAppState: AppStateStatus) => {
         if (nextAppState === 'active') {
+          console.log('[useAutoSync] App resumed / screen unlocked — triggering immediate sync & socket reconnect')
+          try {
+            if (supabase && (supabase as any).realtime) {
+              const rt = (supabase as any).realtime
+              if (typeof rt.connect === 'function') {
+                rt.disconnect()
+                rt.connect()
+              }
+            }
+          } catch (e) {
+            console.warn('[useAutoSync] Realtime reconnect error on resume:', e)
+          }
           executeSync()
         }
       }
@@ -148,3 +160,4 @@ export function useAutoSync(
 
   return { triggerSync: executeSync }
 }
+

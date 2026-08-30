@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import {
+  Alert,
   StyleSheet,
   Text,
   View,
@@ -11,6 +12,7 @@ import {
   Dimensions,
   ScrollView,
   TextInput,
+  Platform,
 } from 'react-native'
 import { supabase } from './lib/supabase'
 import CallQueue from './components/CallQueue'
@@ -23,21 +25,148 @@ import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
 import IncomingRequestAlert, { type IncomingRequest } from './components/IncomingRequestAlert'
 import PendingRequestsReminderModal, { type PendingRequestItem } from './components/PendingRequestsReminderModal'
-import { Platform } from 'react-native'
 import {
   setupNotificationChannels,
   registerForPushNotifications,
-  triggerAggressiveAlert,
+  triggerAlarmNotification,
   addNotificationResponseListener,
+  addNotificationReceivedListener,
 } from './lib/notifications'
+import {
+  createNotifeeChannels,
+  startStaffMonitoringService,
+  stopStaffMonitoringService,
+  checkAndPromptBatteryOptimization,
+  runBackgroundWatchdogCheck,
+} from './lib/foregroundService'
+
 import {
   saveStaffSession,
   getSavedStaffSession,
   clearStaffSession,
 } from './lib/authStorage'
 import { useAutoSync } from './lib/useAutoSync'
-import { usePWA } from './lib/usePWA'
-import { useScreenWakeLock } from './lib/useScreenWakeLock'
+
+// ─── Global Error Boundary ───────────────────────────────────
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean
+  error: Error | null
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[App Global ErrorBoundary Captured]:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView style={errorStyles.safe}>
+          <StatusBar barStyle="light-content" backgroundColor="#020617" />
+          <View style={errorStyles.container}>
+            <Text style={errorStyles.headerIcon}>⚠️</Text>
+            <Text style={errorStyles.title}>Runtime Error Captured</Text>
+            <Text style={errorStyles.subtitle}>
+              An unexpected error occurred. The details below can help diagnose the issue:
+            </Text>
+            <ScrollView style={errorStyles.scroll} contentContainerStyle={errorStyles.scrollContent}>
+              <Text style={errorStyles.errorText}>{this.state.error?.toString()}</Text>
+              {this.state.error?.stack ? (
+                <Text style={errorStyles.stackText}>{this.state.error.stack}</Text>
+              ) : null}
+            </ScrollView>
+            <TouchableOpacity
+              style={errorStyles.button}
+              onPress={() => this.setState({ hasError: false, error: null })}
+            >
+              <Text style={errorStyles.buttonText}>Try Reloading App State</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
+const errorStyles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: '#020617',
+  },
+  container: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#f87171',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  scroll: {
+    width: '100%',
+    maxHeight: 300,
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 20,
+  },
+  scrollContent: {
+    padding: 14,
+  },
+  errorText: {
+    color: '#fbbf24',
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  stackText: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    lineHeight: 16,
+  },
+  button: {
+    backgroundColor: '#fbbf24',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  buttonText: {
+    color: '#020617',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+})
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -144,9 +273,19 @@ function StatCard({ icon, label, value }: { icon: string; label: string; value: 
   )
 }
 
-// ─── Main App ─────────────────────────────────────────────────
+// ─── App Root Component Wrapped with ErrorBoundary ───────────
 
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <MainAppContent />
+    </ErrorBoundary>
+  )
+}
+
+// ─── Main App Content ────────────────────────────────────────
+
+function MainAppContent() {
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [hotelInfo, setHotelInfo] = useState<HotelInfo | null>(null)
   const [roomCount, setRoomCount] = useState<number>(0)
@@ -167,18 +306,6 @@ export default function App() {
   const fadeAnim = React.useRef(new Animated.Value(0)).current
   const slideAnim = React.useRef(new Animated.Value(30)).current
   const lastDismissedReminderAtRef = React.useRef<number>(0)
-
-  // ─── Progressive Web App (PWA) Support ─────────────────────
-  const {
-    canInstall,
-    isStandalone,
-    notificationPermission,
-    promptInstall,
-    requestNotificationPermission,
-  } = usePWA(activeStaffUser?.id)
-
-  // ─── Screen Wake Lock (Keeps CPU & WebSockets active) ───────
-  useScreenWakeLock()
 
   const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -263,9 +390,9 @@ export default function App() {
       if (data && data.length > 0) {
         if (isScheduledOrInitial || timeSinceDismissed >= 5 * 60 * 1000) {
           setUnhandledPendingList(data as PendingRequestItem[])
-          // Trigger native notification if on mobile/tablet
+          // Trigger aggressive alarm notification if on mobile/tablet
           if (Platform.OS !== 'web') {
-            triggerAggressiveAlert({
+            triggerAlarmNotification({
               title: `${data.length} Unhandled Requests Pending`,
               body: `Reminder: ${data.length} pending guest requests require staff attention!`,
               requestId: data[0].id,
@@ -450,6 +577,7 @@ export default function App() {
     } catch (err) {
       console.warn('[App] Logout clear session error:', err)
     }
+    stopStaffMonitoringService().catch(() => {})
     setActiveStaffUser(null)
     setLoginPassword('')
     setLoginError('')
@@ -457,30 +585,110 @@ export default function App() {
 
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // ─── Native Notifications Setup ─────────────────────────────
+  // ─── Notification Channels & Foreground Service Setup ────────
+  // MUST run on mount (before any request arrives), not gated behind login.
+  // Creates both the ALARM-stream and MONITOR channels.
   useEffect(() => {
-    if (Platform.OS !== 'web') {
-      setupNotificationChannels()
-      registerForPushNotifications().then((token) => {
-        if (token && activeStaffUser) {
-          Promise.resolve(
-            supabase
-              .from('staff_users')
-              .update({ push_token: token } as any)
-              .eq('id', activeStaffUser.id)
-          ).catch(() => {})
+    if (Platform.OS === 'web') return
+
+    setupNotificationChannels()
+      .catch((err) => console.warn('[App] setupNotificationChannels:', err))
+
+    createNotifeeChannels()
+      .catch((err) => console.warn('[App] createNotifeeChannels:', err))
+
+    registerForPushNotifications()
+      .then((token) => {
+        if (!token && Platform.OS === 'android') {
+          Alert.alert(
+            '🔔 Enable Notifications',
+            'Notifications are required to receive incoming guest requests. Please go to Settings → App → Notifications and enable them.',
+            [{ text: 'OK' }]
+          )
         }
       })
+      .catch((err) => console.warn('[App] registerForPushNotifications:', err))
 
-      const subResponse = addNotificationResponseListener((data) => {
-        if (data?.requestId) {
-          setRefreshKey((k) => k + 1)
+    const subResponse = addNotificationResponseListener(async (data) => {
+      if (data?.requestId) {
+        setRefreshKey((k) => k + 1)
+        try {
+          const { data: req } = await supabase
+            .from('requests')
+            .select('*, rooms(room_number)')
+            .eq('id', data.requestId)
+            .maybeSingle()
+          if (req) {
+            const nextReq = await hydrateIncomingAlert(req)
+            if (nextReq) {
+              setIncomingAlert(nextReq)
+            }
+          }
+        } catch {
+          // ignore
         }
-      })
-
-      return () => {
-        subResponse.remove()
       }
+    })
+
+    const subReceived = addNotificationReceivedListener(async (notif) => {
+      const data = notif?.request?.content?.data
+      if (data?.requestId) {
+        setRefreshKey((k) => k + 1)
+        try {
+          const { data: req } = await supabase
+            .from('requests')
+            .select('*, rooms(room_number)')
+            .eq('id', data.requestId)
+            .maybeSingle()
+          if (req) {
+            const nextReq = await hydrateIncomingAlert(req)
+            if (nextReq) {
+              setIncomingAlert(nextReq)
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    })
+
+    return () => {
+      subResponse.remove()
+      subReceived.remove()
+    }
+  }, []) // ← empty deps: runs ONCE at mount, before login
+
+  // ─── Start Foreground Service & Update push token on login ────
+  useEffect(() => {
+    if (Platform.OS === 'web') return
+
+    if (activeStaffUser) {
+      // Prompt staff to disable battery optimization for reliable 24/7 background execution
+      checkAndPromptBatteryOptimization().catch((err) => {
+        console.warn('[App] Battery optimization check caught:', err)
+      })
+
+      // Start 24/7 background monitoring service to keep WebSocket alive when screen is off
+      startStaffMonitoringService(HOTEL_ID).catch((err) => {
+        console.warn('[App] startStaffMonitoringService error:', err)
+      })
+
+      registerForPushNotifications()
+        .then((token) => {
+          if (token) {
+            Promise.resolve(
+              supabase
+                .from('staff_users')
+                .update({ push_token: token } as any)
+                .eq('id', activeStaffUser.id)
+            ).catch(() => {})
+          }
+        })
+        .catch((err) => {
+          console.warn('[App] Push token DB update caught:', err)
+        })
+    } else {
+      stopStaffMonitoringService().catch(() => {})
     }
   }, [activeStaffUser?.id])
 
@@ -505,8 +713,9 @@ export default function App() {
       if (activeStaffUser) {
         fetchStats()
         setRefreshKey((k) => k + 1)
+        checkUnhandledRequests(false)
       }
-    }, [activeStaffUser]),
+    }, [activeStaffUser, checkUnhandledRequests]),
     { intervalMs: 6000, enabled: !!activeStaffUser }
   )
 
@@ -547,10 +756,10 @@ export default function App() {
             .then((nextRequest) => {
               if (nextRequest) {
                 setIncomingAlert(nextRequest as IncomingRequest)
-                // Trigger Native Notification with MAX Priority & ALARM stream
+                // Fire aggressive Full-Screen Intent alarm (Notifee: wakes screen, loops alarm)
                 const rType = nextRequest.request_type || 'REQUEST'
                 const rNum = (nextRequest.payload as any)?.room_number || 'Room'
-                triggerAggressiveAlert({
+                triggerAlarmNotification({
                   title: `Incoming ${rType.replace('_', ' ')}`,
                   body: `${rNum} submitted a new request requiring immediate staff attention!`,
                   requestId: nextRequest.id,
@@ -592,7 +801,7 @@ export default function App() {
     )
   }
 
-  if (!activeStaffUser && status !== 'error' && status === 'connected') {
+  if (!activeStaffUser) {
     return (
       <SafeAreaView style={styles.safe}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
@@ -701,42 +910,6 @@ export default function App() {
               </TouchableOpacity>
             </View>
           </View>
-
-          {/* PWA 1-Tap Install Banner on Mobile Browsers */}
-          {canInstall && (
-            <TouchableOpacity
-              onPress={promptInstall}
-              style={styles.pwaInstallBanner}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.pwaInstallIcon}>📲</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.pwaInstallTitle}>Install Staff App</Text>
-                <Text style={styles.pwaInstallSub}>Add to home screen for native fullscreen experience</Text>
-              </View>
-              <View style={styles.pwaInstallBtn}>
-                <Text style={styles.pwaInstallBtnText}>Install</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-
-          {/* Web Push Notification Permission Prompt */}
-          {Platform.OS === 'web' && notificationPermission === 'default' && (
-            <TouchableOpacity
-              onPress={requestNotificationPermission}
-              style={styles.pwaNotifBanner}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.pwaInstallIcon}>🔔</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.pwaNotifTitle}>Enable Push Alerts</Text>
-                <Text style={styles.pwaInstallSub}>Receive instant heads-up sound & vibration alerts</Text>
-              </View>
-              <View style={styles.pwaNotifBtn}>
-                <Text style={styles.pwaNotifBtnText}>Enable</Text>
-              </View>
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* Content */}
@@ -821,7 +994,6 @@ export default function App() {
 
             {/* 5. All Request History Logs */}
             <RequestHistory refreshTrigger={refreshKey} />
-
 
           </Animated.View>
         )}

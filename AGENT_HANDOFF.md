@@ -671,11 +671,32 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
 - [x] ~~Apply pending Supabase migrations (`11_scheduled_booking_expiration.sql`, `13_menu_categories_and_storage.sql`) in target production Supabase database.~~ *(Applied to production ✅)*
 - [x] ~~Phase 2 database reservation integrity work (atomic RPC, `request_id` FK on `spa_slot_locks`)~~ *(Completed in production ✅)*
 - [x] ~~Integration test for atomic duplicate prevention~~ *(Completed ✅)*
-- [ ] Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.
+- [x] ~~Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.~~ *(Applied to production ✅)*
+- [ ] Apply migration `18_add_staff_users_push_token.sql` in Supabase SQL editor to enable native Android FCM push token storage on `staff_users`.
 
 ### Remaining Open Items
 
 - Production multi-hotel RLS isolation test.
 
+---
 
+## Session Update — 2026-08-31 (Background Watchdog, Socket Recovery, Battery Optimization & FCM Dispatch)
 
+### Overview
+This session solved background sleeping, WebSocket disconnection, and out-of-sync states when Android devices are locked or in Doze mode in `staff-app`.
+
+### Key Fixes & Additions
+1. **24/7 Background Watchdog Engine (`apps/staff-app/lib/foregroundService.ts`)**:
+   - Implemented `runBackgroundWatchdogCheck(hotelId)` which runs a direct HTTP REST query against Supabase every 90 seconds.
+   - Operates 100% independently of WebSockets. If a new request is pending while the screen is off, it turns on the screen (`setTurnScreenOn`), acquires a 60s WakeLock, displays the Full-Screen Intent overlay, and loops the alarm sound.
+2. **AppState Reconnection & Synchronization (`apps/staff-app/lib/useAutoSync.ts` & `App.tsx`)**:
+   - Removed `Platform.OS === 'web'` restriction on socket reconnection.
+   - On `AppState === 'active'` (screen unlock / app foregrounded), automatically disconnects and reconnects the Supabase Realtime channel (`rt.disconnect() -> rt.connect()`), and immediately refetches all stats, queues, and reminder popups.
+3. **Battery Optimization Prompt (`apps/staff-app/lib/foregroundService.ts` & `App.tsx`)**:
+   - Added `checkAndPromptBatteryOptimization()` to prompt staff to disable OEM battery optimization on login (`notifee.openBatteryOptimizationSettings()`).
+4. **High-Priority FCM & Expo Push Dispatching (`apps/web/lib/webPush.ts`)**:
+   - Updated token filter to accept all valid FCM and Expo push tokens.
+   - Configured high priority flags (`priority: 'high'`, `sound: 'alarm'`, `channelId: 'hotel_staff_alarm'`, `ttl: 86400`) to wake sleeping Google Play Services devices.
+5. **Database Migration 18 (`packages/supabase/migrations/18_add_staff_users_push_token.sql`)**:
+   - Added `push_token` column to `staff_users` table so Android FCM device tokens persist properly on staff accounts.
+   - Updated TypeScript types in `packages/supabase/types/index.ts` and `apps/staff-app/components/UserManagement.tsx`.

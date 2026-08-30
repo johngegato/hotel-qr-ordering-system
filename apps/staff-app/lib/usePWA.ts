@@ -29,6 +29,9 @@ export interface PWAState {
 
 /** Convert a base64 VAPID public key to a Uint8Array for PushManager API */
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  if (typeof atob === 'undefined' || typeof window === 'undefined') {
+    return new Uint8Array(0) as any
+  }
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
   const rawData = atob(base64)

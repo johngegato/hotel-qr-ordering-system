@@ -14,6 +14,10 @@
     "ios": {
       "supportsTablet": true
     },
+    "plugins": [
+      "expo-secure-store",
+      "expo-av"
+    ],
     "android": {
       "package": "com.hotelqr.staffapp",
       "adaptiveIcon": {
@@ -30,7 +34,9 @@
         "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
         "POST_NOTIFICATIONS",
         "FOREGROUND_SERVICE",
-        "SYSTEM_ALERT_WINDOW"
+        "FOREGROUND_SERVICE_DATA_SYNC",
+        "SYSTEM_ALERT_WINDOW",
+        "SCHEDULE_EXACT_ALARM"
       ],
       "predictiveBackGestureEnabled": false
     },

@@ -596,7 +596,13 @@ export default function ManualSpaBookingModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
+          <ScrollView
+            style={{ flex: 1 }}
+            nestedScrollEnabled={true}
+            showsVerticalScrollIndicator={true}
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+          >
 
             {/* Room Number */}
             <View style={styles.fieldGroup}>
@@ -812,7 +818,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     borderTopWidth: 1,
     borderColor: 'rgba(167,139,250,0.3)',
+    height: '92%',
     maxHeight: '92%',
+    flexDirection: 'column',
   },
   header: {
     flexDirection: 'row',

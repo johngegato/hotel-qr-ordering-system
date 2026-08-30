@@ -10,6 +10,7 @@ export interface StaffUser {
   name: string
   email?: string
   role: 'FRONT_DESK' | 'KITCHEN' | 'HOUSEKEEPING' | 'SPA' | 'MANAGER'
+  push_token?: string | null
 }
 
 interface UserManagementProps {

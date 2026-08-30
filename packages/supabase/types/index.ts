@@ -88,8 +88,10 @@ export interface StaffUser {
   email: string
   password?: string
   role: StaffRole
+  push_token?: string | null
   is_active: boolean
   created_at: string
+  updated_at?: string
 }
 
 export interface MenuCategory {
