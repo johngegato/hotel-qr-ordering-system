@@ -36,6 +36,8 @@ import {
   createNotifeeChannels,
   startStaffMonitoringService,
   stopStaffMonitoringService,
+  checkAndPromptBatteryOptimization,
+  runBackgroundWatchdogCheck,
 } from './lib/foregroundService'
 
 import {
@@ -661,6 +663,11 @@ function MainAppContent() {
     if (Platform.OS === 'web') return
 
     if (activeStaffUser) {
+      // Prompt staff to disable battery optimization for reliable 24/7 background execution
+      checkAndPromptBatteryOptimization().catch((err) => {
+        console.warn('[App] Battery optimization check caught:', err)
+      })
+
       // Start 24/7 background monitoring service to keep WebSocket alive when screen is off
       startStaffMonitoringService(HOTEL_ID).catch((err) => {
         console.warn('[App] startStaffMonitoringService error:', err)
@@ -706,8 +713,9 @@ function MainAppContent() {
       if (activeStaffUser) {
         fetchStats()
         setRefreshKey((k) => k + 1)
+        checkUnhandledRequests(false)
       }
-    }, [activeStaffUser]),
+    }, [activeStaffUser, checkUnhandledRequests]),
     { intervalMs: 6000, enabled: !!activeStaffUser }
   )
 

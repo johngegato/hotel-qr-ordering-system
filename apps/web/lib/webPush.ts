@@ -68,14 +68,14 @@ export async function sendWebPushToHotelStaff(
     if (!staffErr && staffData && staffData.length > 0) {
       const expoTokens = staffData
         .map((s) => s.push_token)
-        .filter((token): token is string => Boolean(token && (token.startsWith('ExponentPushToken') || token.startsWith('ExpoPushToken'))))
+        .filter((token): token is string => Boolean(token && !token.startsWith('web_pwa_') && !token.startsWith('expo_local_') && token.length > 10))
 
       if (expoTokens.length > 0) {
         console.log(`[Push] Dispatching Expo/FCM push to ${expoTokens.length} staff device(s)...`)
 
         const expoMessages = expoTokens.map((token) => ({
           to: token,
-          sound: 'default',
+          sound: 'alarm',
           title: notificationTitle,
           body: notificationBody,
           data: {
@@ -87,6 +87,7 @@ export async function sendWebPushToHotelStaff(
           priority: 'high',
           channelId: 'hotel_staff_alarm',
           categoryId: 'URGENT_REQUEST',
+          ttl: 86400,
           _displayInForeground: true,
         }))
 
