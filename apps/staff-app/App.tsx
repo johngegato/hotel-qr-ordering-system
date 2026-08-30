@@ -31,6 +31,11 @@ import {
   triggerAlarmNotification,
   addNotificationResponseListener,
 } from './lib/notifications'
+import {
+  createNotifeeChannels,
+  startStaffMonitoringService,
+  stopStaffMonitoringService,
+} from './lib/foregroundService'
 
 import {
   saveStaffSession,
@@ -569,6 +574,7 @@ function MainAppContent() {
     } catch (err) {
       console.warn('[App] Logout clear session error:', err)
     }
+    stopStaffMonitoringService().catch(() => {})
     setActiveStaffUser(null)
     setLoginPassword('')
     setLoginError('')
@@ -576,14 +582,17 @@ function MainAppContent() {
 
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // ─── Notification Channel Setup at App Startup ───────────────
+  // ─── Notification Channels & Foreground Service Setup ────────
   // MUST run on mount (before any request arrives), not gated behind login.
-  // Creates the ALARM-stream channel so expo-notifications can fire immediately.
+  // Creates both the ALARM-stream and MONITOR channels.
   useEffect(() => {
     if (Platform.OS === 'web') return
 
     setupNotificationChannels()
       .catch((err) => console.warn('[App] setupNotificationChannels:', err))
+
+    createNotifeeChannels()
+      .catch((err) => console.warn('[App] createNotifeeChannels:', err))
 
     registerForPushNotifications()
       .then((token) => {
@@ -604,24 +613,33 @@ function MainAppContent() {
     return () => { subResponse.remove() }
   }, []) // ← empty deps: runs ONCE at mount, before login
 
-  // ─── Update push token in DB once user logs in ───────────────
+  // ─── Start Foreground Service & Update push token on login ────
   useEffect(() => {
-    if (Platform.OS === 'web' || !activeStaffUser) return
+    if (Platform.OS === 'web') return
 
-    registerForPushNotifications()
-      .then((token) => {
-        if (token && activeStaffUser) {
-          Promise.resolve(
-            supabase
-              .from('staff_users')
-              .update({ push_token: token } as any)
-              .eq('id', activeStaffUser.id)
-          ).catch(() => {})
-        }
+    if (activeStaffUser) {
+      // Start 24/7 background monitoring service to keep WebSocket alive when screen is off
+      startStaffMonitoringService(HOTEL_ID).catch((err) => {
+        console.warn('[App] startStaffMonitoringService error:', err)
       })
-      .catch((err) => {
-        console.warn('[App] Push token DB update caught:', err)
-      })
+
+      registerForPushNotifications()
+        .then((token) => {
+          if (token) {
+            Promise.resolve(
+              supabase
+                .from('staff_users')
+                .update({ push_token: token } as any)
+                .eq('id', activeStaffUser.id)
+            ).catch(() => {})
+          }
+        })
+        .catch((err) => {
+          console.warn('[App] Push token DB update caught:', err)
+        })
+    } else {
+      stopStaffMonitoringService().catch(() => {})
+    }
   }, [activeStaffUser?.id])
 
   // ─── 5-Minute Recurring Interval for Unhandled Pending Requests ──
