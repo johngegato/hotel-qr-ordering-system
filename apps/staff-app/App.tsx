@@ -322,7 +322,13 @@ function MainAppContent() {
   const [activeCallRoom, setActiveCallRoom] = useState<string | null>(null)
   const [activeCallRequestId, setActiveCallRequestId] = useState<string | null>(null)
 
-  const AGORA_APP_ID = process.env.EXPO_PUBLIC_AGORA_APP_ID ?? ''
+  // EXPO_PUBLIC_ vars are inlined at Metro/webpack build time.
+  // On Vercel, set EXPO_PUBLIC_AGORA_APP_ID in the project env settings.
+  // The hardcoded value here is the fallback so the web build never gets an empty string.
+  const AGORA_APP_ID =
+    process.env.EXPO_PUBLIC_AGORA_APP_ID ||
+    'c2e5d50d9273492d874b2a898f458334'
+
 
   const staffVoiceCall = useStaffVoiceCall({
     onCallEnded: () => {

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { RtcTokenBuilder, RtcRole } from 'agora-access-token'
 
-const APP_ID = process.env.NEXT_PUBLIC_AGORA_APP_ID ?? ''
+const APP_ID =
+  process.env.NEXT_PUBLIC_AGORA_APP_ID ||
+  'c2e5d50d9273492d874b2a898f458334'
 const APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE ?? ''
+
 
 /**
  * GET /api/agora/token?channel=<channelName>&uid=<uid>

@@ -6,7 +6,10 @@ import PhoneCaptureModal, { getStoredGuestPhone } from './PhoneCaptureModal'
 import { useGuestTheme } from './GuestThemeProvider'
 import { useGuestVoiceCall } from './GuestVoiceCallEngine'
 
-const AGORA_APP_ID = process.env.NEXT_PUBLIC_AGORA_APP_ID ?? ''
+const AGORA_APP_ID =
+  process.env.NEXT_PUBLIC_AGORA_APP_ID ||
+  'c2e5d50d9273492d874b2a898f458334'
+
 
 interface CallFrontDeskModalProps {
   isOpen: boolean
