@@ -981,15 +981,6 @@ function MainAppContent() {
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <TouchableOpacity
-                onPress={() => setShowDiagnosticsModal(true)}
-                style={styles.diagButton}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.diagButtonText}>
-                  {pushToken && !pushToken.startsWith('web_pwa_') ? '📡 FCM: OK' : '📡 FCM Status'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
                 onPress={handleManualSync}
                 style={[styles.syncButton, isManualSyncing && styles.syncButtonActive]}
                 activeOpacity={0.8}
@@ -1106,6 +1097,19 @@ function MainAppContent() {
           </View>
         )}
       </ScrollView>
+
+      {/* 📡 FCM Diagnostics FAB — floating bottom-right, never overlaps content */}
+      <TouchableOpacity
+        onPress={() => setShowDiagnosticsModal(true)}
+        style={styles.fcmFab}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.fcmFabIcon}>📡</Text>
+        <Text style={styles.fcmFabText}>
+          {pushToken && !pushToken.startsWith('web_pwa_') && !pushToken.startsWith('expo_local_') ? 'FCM ✓' : 'FCM'}
+        </Text>
+      </TouchableOpacity>
+
     </SafeAreaView>
   )
 }
@@ -1325,6 +1329,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.2,
+  },
+
+  // FCM Floating Action Button
+  fcmFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.45)',
+    borderRadius: 50,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  fcmFabIcon: {
+    fontSize: 15,
+  },
+  fcmFabText: {
+    color: '#a5b4fc',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 
   // Badge
