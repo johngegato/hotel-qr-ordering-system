@@ -86,8 +86,6 @@ export default function CallFrontDeskModal({
     return () => { supabase.removeChannel(channel) }
   }, [requestId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!isOpen) return null
-
   const executeRequestCall = async (phoneOverride?: string) => {
     setIsSubmitting(true)
     const phone = phoneOverride || getStoredGuestPhone()
@@ -215,6 +213,8 @@ export default function CallFrontDeskModal({
     const secs = seconds % 60
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
+
+  if (!isOpen) return null
 
   return (
     <>
