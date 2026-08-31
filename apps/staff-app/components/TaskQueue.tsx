@@ -33,6 +33,7 @@ interface TaskRequest {
   status: TaskStatus | string
   created_at: string
   payload?: TaskPayload | null
+  rooms?: { room_number: string } | null
 }
 
 const PRIORITY_COLORS: Record<TaskPriority, string> = {
@@ -105,7 +106,7 @@ export default function TaskQueue({
     if (!isSilent) setLoading(true)
     const { data, error } = await supabase
       .from('requests')
-      .select('*')
+      .select('*, rooms(room_number)')
       .eq('request_type', 'TASK')
       .in('status', ['PENDING', 'CLAIMED', 'ESCALATED_L1'])
       .order('created_at', { ascending: true })
@@ -264,7 +265,9 @@ export default function TaskQueue({
                 {/* Card Header */}
                 <View style={styles.cardHeader}>
                   <View style={styles.roomBadge}>
-                    <Text style={styles.roomText}>Room 302</Text>
+                    <Text style={styles.roomText}>
+                      Room {item.rooms?.room_number || item.payload?.room_number || item.room_id || '—'}
+                    </Text>
                   </View>
                   <View style={[
                     styles.priorityBadge,
