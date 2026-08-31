@@ -121,7 +121,7 @@ export async function sendWebPushToHotelStaff(
             return notifSettings.fnb_allowed_types.includes(rType)
           }
           if ((uRole === 'FRONT_DESK' || uRole === 'HOUSEKEEPING' || uRole === 'MAINTENANCE') && Array.isArray(notifSettings.frontdesk_allowed_types)) {
-            return notifSettings.frontdesk_allowed_types.includes(rType)
+            return notifSettings.frontdesk_allowed_types.includes(rType) || (rType === 'LIVE_CALL' && notifSettings.frontdesk_allowed_types.includes('CALL_REQUEST'))
           }
           if (uRole === 'SPA' && Array.isArray(notifSettings.spa_allowed_types)) {
             return notifSettings.spa_allowed_types.includes(rType)

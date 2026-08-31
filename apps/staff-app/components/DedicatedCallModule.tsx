@@ -16,11 +16,14 @@ export interface CallRequestItem {
   id: string
   status: string
   created_at: string
+  request_type?: string
+  agora_channel?: string | null
   claimed_by?: string | null
   payload: {
     room_number?: string
     note?: string
     guest_phone?: string
+    channel?: string
   }
   rooms?: { room_number: string } | null
 }
@@ -28,6 +31,7 @@ export interface CallRequestItem {
 interface DedicatedCallModuleProps {
   activeStaffId?: string
   refreshTrigger?: number
+  onAnswerLiveCall?: (channel: string, requestId: string) => void
 }
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
@@ -37,7 +41,7 @@ const isValidUuid = (value?: string | null) => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
-export default function DedicatedCallModule({ activeStaffId, refreshTrigger }: DedicatedCallModuleProps) {
+export default function DedicatedCallModule({ activeStaffId, refreshTrigger, onAnswerLiveCall }: DedicatedCallModuleProps) {
   const [calls, setCalls] = useState<CallRequestItem[]>([])
   const [loading, setLoading] = useState(true)
   const [roomSort, setRoomSort] = useState<'asc' | 'desc'>('asc')
@@ -54,14 +58,14 @@ export default function DedicatedCallModule({ activeStaffId, refreshTrigger }: D
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from('requests') as any)
         .select('*, rooms(room_number)')
-        .eq('request_type', 'CALL_REQUEST')
+        .in('request_type', ['CALL_REQUEST', 'LIVE_CALL'])
         .in('status', ['PENDING', 'CLAIMED'])
 
       if (error) {
         // Fallback without join
         const { data: fallbackData } = await (supabase.from('requests') as any)
           .select('*')
-          .eq('request_type', 'CALL_REQUEST')
+          .in('request_type', ['CALL_REQUEST', 'LIVE_CALL'])
           .in('status', ['PENDING', 'CLAIMED'])
         if (fallbackData) setCalls(fallbackData as CallRequestItem[])
       } else if (data) {
@@ -273,26 +277,43 @@ export default function DedicatedCallModule({ activeStaffId, refreshTrigger }: D
                 {/* Actions */}
                 {!isResolved && (
                   <View style={styles.actionsRow}>
-                    {/* Call Guest Button — always visible */}
-                    <TouchableOpacity
-                      style={[
-                        styles.btn,
-                        styles.btnCallGuest,
-                        (!item.payload?.guest_phone || updating === item.id) && styles.btnDisabled,
-                      ]}
-                      onPress={() => {
-                        if (!item.payload?.guest_phone) {
-                          Alert.alert('No Phone Number', 'This request does not have a guest phone number on file.')
-                          return
-                        }
-                        Linking.openURL(`tel:${item.payload.guest_phone}`).catch(() =>
-                          Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
-                        )
-                      }}
-                      disabled={!item.payload?.guest_phone || updating === item.id}
-                    >
-                      <Text style={styles.btnCallGuestText}>📞 Call</Text>
-                    </TouchableOpacity>
+                    {item.request_type === 'LIVE_CALL' ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.btn,
+                          { backgroundColor: '#22c55e', borderColor: '#22c55e' },
+                          updating === item.id && styles.btnDisabled,
+                        ]}
+                        onPress={() => {
+                          const ch = item.agora_channel || item.payload?.channel || item.id
+                          onAnswerLiveCall?.(ch, item.id)
+                        }}
+                        disabled={updating === item.id}
+                      >
+                        <Text style={[styles.btnCallGuestText, { color: '#ffffff' }]}>🎤 Answer Live Call</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      /* Call Guest Button — standard phone dialer */
+                      <TouchableOpacity
+                        style={[
+                          styles.btn,
+                          styles.btnCallGuest,
+                          (!item.payload?.guest_phone || updating === item.id) && styles.btnDisabled,
+                        ]}
+                        onPress={() => {
+                          if (!item.payload?.guest_phone) {
+                            Alert.alert('No Phone Number', 'This request does not have a guest phone number on file.')
+                            return
+                          }
+                          Linking.openURL(`tel:${item.payload.guest_phone}`).catch(() =>
+                            Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
+                          )
+                        }}
+                        disabled={!item.payload?.guest_phone || updating === item.id}
+                      >
+                        <Text style={styles.btnCallGuestText}>📞 Call</Text>
+                      </TouchableOpacity>
+                    )}
 
                     {!isClaimed && (
                       <TouchableOpacity

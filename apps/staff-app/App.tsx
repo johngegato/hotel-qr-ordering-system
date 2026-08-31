@@ -416,6 +416,43 @@ function MainAppContent() {
     }
   }, [HOTEL_ID])
 
+  // ─── Web-Only: Supabase Realtime Listener for LIVE_CALL ───────
+  // On web, FCM push doesn't deliver. Use Realtime to detect new LIVE_CALL requests.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return
+
+    const realtimeChannel = supabase
+      .channel('web-live-call-listener')
+      .on(
+        'postgres_changes' as any,
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'requests',
+        },
+        async (payload: any) => {
+          const req = payload.new
+          if (!req?.id || req.request_type !== 'LIVE_CALL') return
+          if (alertedRequestIdsRef.current.has(req.id)) return
+          alertedRequestIdsRef.current.add(req.id)
+
+          const ch = req.agora_channel || req.payload?.channel || `room-${req.room_id}`
+          const rN = req.payload?.room_number || 'Guest'
+          setIncomingLiveCall({
+            requestId: req.id,
+            roomNumber: String(rN),
+            channel: ch,
+          })
+          setRefreshKey((k) => k + 1)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(realtimeChannel)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Auto-Login / Restore Saved Session on App Startup ──────
   useEffect(() => {
     let isMounted = true
@@ -1139,6 +1176,17 @@ function MainAppContent() {
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
 
+      {/* 📞 Incoming Live Call Overlay */}
+      {incomingLiveCall && (
+        <IncomingLiveCallAlert
+          roomNumber={incomingLiveCall.roomNumber}
+          channel={incomingLiveCall.channel}
+          requestId={incomingLiveCall.requestId}
+          onAnswer={handleAnswerLiveCall}
+          onDecline={handleDeclineLiveCall}
+        />
+      )}
+
       {/* 🎤 Active Agora Voice Call Floating Bar */}
       {staffVoiceCall.isConnected && (
         <ActiveCallBar
@@ -1285,8 +1333,16 @@ function MainAppContent() {
             {activeStaffUser?.role !== 'KITCHEN' && (
               <>
                 {/* 1. Dedicated Call Requests Module & Real-time Call Queue */}
-                <DedicatedCallModule activeStaffId={activeStaffUser?.id || undefined} refreshTrigger={refreshKey} />
-                <CallQueue activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
+                <DedicatedCallModule
+                  activeStaffId={activeStaffUser?.id || undefined}
+                  refreshTrigger={refreshKey}
+                  onAnswerLiveCall={handleAnswerLiveCall}
+                />
+                <CallQueue
+                  activeStaffId={activeStaffUser?.id}
+                  refreshTrigger={refreshKey}
+                  onAnswerLiveCall={handleAnswerLiveCall}
+                />
 
                 {/* 2. Spa Timetable & Appointments Queue */}
                 <SpaTimetable activeStaffUser={activeStaffUser} activeStaffId={activeStaffUser?.id} />
