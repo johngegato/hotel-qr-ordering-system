@@ -190,8 +190,21 @@ export async function registerForPushNotifications(): Promise<string | null> {
       // ── Retrieve real Expo Push Token for FCM background delivery ──
       try {
         if (typeof Notifications.getExpoPushTokenAsync === 'function') {
+          let easProjectId: string | undefined
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const Constants = require('expo-constants').default ?? require('expo-constants')
+            easProjectId =
+              Constants?.expoConfig?.extra?.eas?.projectId ??
+              Constants?.easConfig?.projectId
+          } catch {
+            // ignore
+          }
+
+          const targetProjectId = easProjectId || 'c443e903-bcbf-4c9a-9167-bdc0f3195d1f'
+
           const tokenData = await Notifications.getExpoPushTokenAsync({
-            projectId: 'c443e903-bcbf-4c9a-9167-bdc0f3195d1f',
+            projectId: targetProjectId,
           })
           if (tokenData?.data) {
             console.log('[Notifications] ✅ Obtained Real Expo Push Token (FCM):', tokenData.data)

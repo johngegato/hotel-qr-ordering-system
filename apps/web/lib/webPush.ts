@@ -32,6 +32,12 @@ export interface PushDispatchResult {
   webSubscribersReached: number
   expoReceipts?: any[]
   errors?: string[]
+  targetUserFound?: {
+    id: string
+    name: string
+    token: string | null
+    tokenType: 'EXPO_FCM' | 'LOCAL_FALLBACK' | 'WEB_PWA' | 'MISSING'
+  }
 }
 
 /**
@@ -59,6 +65,7 @@ export async function sendWebPushToHotelStaff(
   let webSubscribersReached = 0
   const expoReceipts: any[] = []
   const errors: string[] = []
+  let targetUserFound: PushDispatchResult['targetUserFound'] = undefined
 
   const notificationTitle = payload.title || `🚨 New ${payload.requestType ? payload.requestType.replace(/_/g, ' ') : 'Guest Request'}`
   const notificationBody = payload.body || (payload.roomNumber ? `Room ${payload.roomNumber} submitted a new request.` : 'A guest request requires staff attention.')
@@ -69,14 +76,15 @@ export async function sendWebPushToHotelStaff(
   try {
     let staffQuery = supabase
       .from('staff_users')
-      .select('id, full_name, push_token')
-      .eq('is_active', true)
-      .not('push_token', 'is', null)
+      .select('id, full_name, email, push_token, is_active, hotel_id')
 
     if (options?.staffUserId) {
       staffQuery = staffQuery.eq('id', options.staffUserId)
-    } else if (targetHotelId !== defaultHotelId) {
-      staffQuery = staffQuery.or(`hotel_id.eq.${targetHotelId},hotel_id.eq.${defaultHotelId}`)
+    } else {
+      staffQuery = staffQuery.eq('is_active', true)
+      if (targetHotelId !== defaultHotelId) {
+        staffQuery = staffQuery.or(`hotel_id.eq.${targetHotelId},hotel_id.eq.${defaultHotelId},hotel_id.is.null`)
+      }
     }
 
     const { data: staffData, error: staffErr } = await staffQuery
@@ -86,9 +94,57 @@ export async function sendWebPushToHotelStaff(
     }
 
     if (!staffErr && staffData && staffData.length > 0) {
+      if (options?.staffUserId && staffData[0]) {
+        const u = staffData[0]
+        const rawToken = u.push_token as string | null
+        let tType: 'EXPO_FCM' | 'LOCAL_FALLBACK' | 'WEB_PWA' | 'MISSING' = 'MISSING'
+
+        if (!rawToken) {
+          tType = 'MISSING'
+        } else if (
+          rawToken.startsWith('ExponentPushToken[') ||
+          rawToken.startsWith('ExpoPushToken[') ||
+          (rawToken.length > 25 &&
+            !rawToken.startsWith('expo_local_') &&
+            !rawToken.startsWith('web_pwa_') &&
+            !rawToken.startsWith('notifee_'))
+        ) {
+          tType = 'EXPO_FCM'
+        } else if (rawToken.startsWith('expo_local_') || rawToken.startsWith('notifee_')) {
+          tType = 'LOCAL_FALLBACK'
+        } else if (rawToken.startsWith('web_pwa_')) {
+          tType = 'WEB_PWA'
+        }
+
+        targetUserFound = {
+          id: u.id,
+          name: u.full_name,
+          token: rawToken,
+          tokenType: tType,
+        }
+
+        if (tType === 'LOCAL_FALLBACK') {
+          errors.push(
+            `Target device registered a local fallback token ("${rawToken?.slice(0, 28)}..."). Remote push delivery requires a live ExponentPushToken[...] or native FCM token. Local alarms can be tested using the "🔔 Trigger Local Test Alarm" button in the staff app header.`
+          )
+        } else if (tType === 'MISSING') {
+          errors.push('Target staff account has no push token stored in the database.')
+        }
+      }
+
       const expoTokens = staffData
         .map((s) => s.push_token)
-        .filter((token): token is string => Boolean(token && !token.startsWith('web_pwa_') && !token.startsWith('expo_local_') && token.length > 10))
+        .filter((token): token is string =>
+          Boolean(
+            token &&
+              (token.startsWith('ExponentPushToken[') ||
+                token.startsWith('ExpoPushToken[') ||
+                (token.length > 25 &&
+                  !token.startsWith('web_pwa_') &&
+                  !token.startsWith('expo_local_') &&
+                  !token.startsWith('notifee_')))
+          )
+        )
 
       expoDevicesReached = expoTokens.length
 
@@ -143,9 +199,8 @@ export async function sendWebPushToHotelStaff(
           console.log(`[Push] Expo/FCM push result: ${sent} sent, ${failed} failed`)
         } else {
           const errText = await response.text()
-          console.warn('[Push] Expo Push API responded with error:', response.status, errText)
+          errors.push(`Expo Push API HTTP ${response.status}: ${errText}`)
           failed += expoTokens.length
-          errors.push(`Expo Push API error ${response.status}: ${errText}`)
         }
       }
     }
@@ -231,5 +286,5 @@ export async function sendWebPushToHotelStaff(
     errors.push(`WebPush dispatch exception: ${webErr?.message || webErr}`)
   }
 
-  return { sent, failed, expoDevicesReached, webSubscribersReached, expoReceipts, errors }
+  return { sent, failed, expoDevicesReached, webSubscribersReached, expoReceipts, errors, targetUserFound }
 }

@@ -110,6 +110,12 @@ export default function AdminUsersPage() {
     expoReceipts?: any[]
     errors?: string[]
     error?: string
+    targetUserFound?: {
+      id: string
+      name: string
+      token: string | null
+      tokenType: 'EXPO_FCM' | 'LOCAL_FALLBACK' | 'WEB_PWA' | 'MISSING'
+    }
   } | null>(null)
 
   // Toast notification
@@ -151,10 +157,13 @@ export default function AdminUsersPage() {
         expoReceipts: data.expoReceipts || [],
         errors: data.errors || [],
         error: data.error,
+        targetUserFound: data.targetUserFound,
       })
 
       if (data.sent > 0) {
         showToast(`⚡ High-Priority push dispatched to ${data.sent} device(s)!`, 'success')
+      } else if (data.targetUserFound?.tokenType === 'LOCAL_FALLBACK') {
+        showToast(`⚠️ Device has local fallback token. Check result dialog for details.`, 'error')
       } else if (data.expoDevicesReached === 0 && data.webSubscribersReached === 0) {
         showToast(`⚠️ No push tokens registered on target device yet.`, 'error')
       } else {
@@ -1680,6 +1689,41 @@ export default function AdminUsersPage() {
                 </div>
               </div>
 
+              {testPushResult.targetUserFound && (
+                <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700 }}>Push Token in Database:</span>
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: 6,
+                      background:
+                        testPushResult.targetUserFound.tokenType === 'EXPO_FCM'
+                          ? 'rgba(74,222,128,0.15)'
+                          : testPushResult.targetUserFound.tokenType === 'LOCAL_FALLBACK'
+                          ? 'rgba(251,191,36,0.15)'
+                          : 'rgba(239,68,68,0.15)',
+                      color:
+                        testPushResult.targetUserFound.tokenType === 'EXPO_FCM'
+                          ? '#4ade80'
+                          : testPushResult.targetUserFound.tokenType === 'LOCAL_FALLBACK'
+                          ? '#fbbf24'
+                          : '#f87171',
+                    }}>
+                      {testPushResult.targetUserFound.tokenType === 'EXPO_FCM'
+                        ? '🟢 Real FCM Token'
+                        : testPushResult.targetUserFound.tokenType === 'LOCAL_FALLBACK'
+                        ? '🟡 Local Fallback Token'
+                        : '⚠️ Token Missing'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#cbd5e1', wordBreak: 'break-all' }}>
+                    {testPushResult.targetUserFound.token || 'NULL (no push_token registered in staff_users)'}
+                  </div>
+                </div>
+              )}
+
               {testPushResult.expoReceipts && testPushResult.expoReceipts.length > 0 && (
                 <div style={{ marginTop: 12 }}>
                   <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, marginBottom: 4 }}>
@@ -1697,9 +1741,9 @@ export default function AdminUsersPage() {
 
               {testPushResult.errors && testPushResult.errors.length > 0 && (
                 <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 8 }}>
-                  <div style={{ fontSize: 11, color: '#f87171', fontWeight: 700 }}>Errors:</div>
+                  <div style={{ fontSize: 11, color: '#f87171', fontWeight: 700 }}>Diagnostics / Notes:</div>
                   {testPushResult.errors.map((e: string, idx: number) => (
-                    <div key={idx} style={{ fontSize: 11, color: '#fca5a5', marginTop: 2 }}>
+                    <div key={idx} style={{ fontSize: 11, color: '#fca5a5', marginTop: 2, lineHeight: 1.4 }}>
                       • {e}
                     </div>
                   ))}
