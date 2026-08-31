@@ -672,7 +672,7 @@ Mobile-first guest in-stay experience designed for instant browser access via ro
 - [x] ~~Phase 2 database reservation integrity work (atomic RPC, `request_id` FK on `spa_slot_locks`)~~ *(Completed in production ✅)*
 - [x] ~~Integration test for atomic duplicate prevention~~ *(Completed ✅)*
 - [x] ~~Apply migration `15_spa_time_slots.sql` in Supabase SQL editor for custom spa time slots.~~ *(Applied to production ✅)*
-- [ ] Apply migration `18_add_staff_users_push_token.sql` in Supabase SQL editor to enable native Android FCM push token storage on `staff_users`.
+- [x] Apply migration `18_add_staff_users_push_token.sql` in Supabase SQL editor to enable native Android FCM push token storage on `staff_users`.
 
 ### Remaining Open Items
 
@@ -700,3 +700,34 @@ This session solved background sleeping, WebSocket disconnection, and out-of-syn
 5. **Database Migration 18 (`packages/supabase/migrations/18_add_staff_users_push_token.sql`)**:
    - Added `push_token` column to `staff_users` table so Android FCM device tokens persist properly on staff accounts.
    - Updated TypeScript types in `packages/supabase/types/index.ts` and `apps/staff-app/components/UserManagement.tsx`.
+
+---
+
+## Session Update — 2026-08-31 Part 2 (FOREGROUND_SERVICE_REMOTE_MESSAGING, Push Diagnostics & EAS Build Pipeline)
+
+### Overview
+This session implemented the Android 14+ OEM background survival fix (`FOREGROUND_SERVICE_REMOTE_MESSAGING`), built an end-to-end FCM High-Priority Push Testing & Diagnostics Suite across Web Admin and Staff Android App, and configured Firebase & EAS cloud build credentials.
+
+### Key Additions & Changes
+1. **Android 14+ Foreground Service Permission Fix (`apps/staff-app/app.json` & `foregroundService.ts`)**:
+   - Added `"FOREGROUND_SERVICE_REMOTE_MESSAGING"` to `android.permissions` in `app.json`.
+   - Declared `foregroundServiceTypes: [AndroidForegroundServiceType.REMOTE_MESSAGING, AndroidForegroundServiceType.DATA_SYNC]` in Notifee's `startStaffMonitoringService`.
+   - Prevents Samsung OneUI / Xiaomi MIUI battery killers from terminating the background service after 15–30 minutes.
+2. **Web Admin Push Diagnostics & 1-on-1 Test Dispatches (`/admin/users`)**:
+   - Added "Device Push (FCM)" status column in staff users table (`📱 FCM Active` vs `⚠️ No FCM Token`).
+   - Added 1-on-1 "⚡ Test Push" button per user and "⚡ Test FCM Push (All)" broadcast button in the toolbar.
+   - Added interactive **Test Push Result Modal** displaying:
+     - Exact token in Supabase (`ExponentPushToken[...]`, native FCM, or fallback).
+     - Token type classification (`🟢 Real FCM Token`, `🟡 Local Fallback Token`, `⚠️ Token Missing`).
+     - Expo/FCM delivery receipt tickets (`ticketId`, `status: ok`).
+     - Reached devices count and detailed error/diagnostic logs.
+3. **Staff Android App Push Diagnostics Modal (`apps/staff-app/components/PushDiagnosticsModal.tsx`)**:
+   - Tappable `📡 FCM: OK` header button opens full diagnostics drawer.
+   - 1-tap Token Copying, Service Status verification, and Live Push Receipts history log.
+   - "🔔 Trigger Local Test Alarm" for instant audio, vibration, and full-screen intent verification on physical hardware.
+   - Multi-strategy token resolution in `notifications.ts` (`getExpoPushTokenAsync` auto, with `projectId`, and native device token fallback).
+4. **Firebase & EAS Build Pipeline**:
+   - Configured `"googleServicesFile": "./google-services.json"` in `apps/staff-app/app.json`.
+   - Configured `eas.json` with `buildType: "apk"` preview profile.
+   - Verified building with `npx eas-cli build -p android --profile preview`.
+

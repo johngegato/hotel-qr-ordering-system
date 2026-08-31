@@ -20,6 +20,7 @@
     ],
     "android": {
       "package": "com.hotelqr.staffapp",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#0f172a",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -37,7 +38,9 @@
         "FOREGROUND_SERVICE_REMOTE_MESSAGING",
         "FOREGROUND_SERVICE_DATA_SYNC",
         "SYSTEM_ALERT_WINDOW",
-        "SCHEDULE_EXACT_ALARM"
+        "SCHEDULE_EXACT_ALARM",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -58,6 +61,7 @@
       "eas": {
         "projectId": "c443e903-bcbf-4c9a-9167-bdc0f3195d1f"
       }
-    }
+    },
+    "owner": "kekehyu"
   }
 }

@@ -15,11 +15,13 @@ apps/staff-app/ios
 *.jks
 *.keystore
 
-# Environment variables
+# Environment variables & Private Keys
 .env
 .env.local
 .env.*.local
 *.env
+*-firebase-adminsdk-*.json
+*service-account*.json
 
 # Logs
 *.log

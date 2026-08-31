@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "413862801776",
+    "project_id": "hotel-qr-ordering-system-aabdb",
+    "storage_bucket": "hotel-qr-ordering-system-aabdb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:413862801776:android:ebb7cd70fb6789440f9fb5",
+        "android_client_info": {
+          "package_name": "com.hotelqr.staffapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyASzL1Z5FlmCacgaCAsEUcrP0kHCz6mWC0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
