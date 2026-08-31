@@ -213,7 +213,6 @@ export default function TaskQueue({ activeStaffId, activeStaffUser, refreshTrigg
         .from('requests')
         .update({
           status: 'RESOLVED',
-          updated_at: new Date().toISOString(),
         })
         .eq('id', task.id)
 

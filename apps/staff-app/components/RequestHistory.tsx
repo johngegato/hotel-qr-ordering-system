@@ -653,32 +653,33 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
 
                     <Text style={styles.summaryText}>{getTypeSummary(item)}</Text>
 
-                    {/* Guest phone for CALL_REQUEST history cards */}
-                    {item.request_type === 'CALL_REQUEST' && (
-                      <TouchableOpacity
-                        style={styles.callHistoryPhoneRow}
-                        activeOpacity={(item.payload as any)?.guest_phone ? 0.7 : 1}
-                        onPress={() => {
-                          const phone = (item.payload as any)?.guest_phone
-                          if (!phone) {
-                            Alert.alert('No Phone Number', 'No guest phone number was provided with this request.')
-                            return
-                          }
-                          Linking.openURL(`tel:${phone}`).catch(() =>
-                            Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
-                          )
-                        }}
-                      >
-                        {(item.payload as any)?.guest_phone ? (
-                          <>
-                            <Text style={styles.callHistoryPhoneText}>📞 {(item.payload as any).guest_phone}</Text>
+                    {/* Universal quick-call row — shown on ALL request types */}
+                    {(() => {
+                      const p = item.payload as any
+                      const phone = p?.guest_phone || p?.phone_number || p?.phone || null
+                      if (phone) {
+                        return (
+                          <TouchableOpacity
+                            style={styles.callHistoryPhoneRow}
+                            activeOpacity={0.7}
+                            onPress={() =>
+                              Linking.openURL(`tel:${phone}`).catch(() =>
+                                Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
+                              )
+                            }
+                          >
+                            <Text style={styles.callHistoryPhoneText}>📞 {phone}</Text>
                             <Text style={styles.callHistoryPhoneHint}>Tap to call</Text>
-                          </>
-                        ) : (
-                          <Text style={styles.callHistoryNoPhone}>📞 No phone number</Text>
-                        )}
-                      </TouchableOpacity>
-                    )}
+                          </TouchableOpacity>
+                        )
+                      }
+                      // Show a muted "no phone" chip so staff know it's not missing by accident
+                      return (
+                        <View style={styles.callHistoryNoPhoneChip}>
+                          <Text style={styles.callHistoryNoPhone}>📞 No phone on file</Text>
+                        </View>
+                      )
+                    })()}
 
                     {/* Actor attribution */}
                     {actorName && (
@@ -1213,6 +1214,18 @@ const styles = StyleSheet.create({
     color: '#475569',
     fontSize: 12,
     fontStyle: 'italic',
+  },
+  callHistoryNoPhoneChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 6,
+    marginBottom: 4,
   },
 
   // ── Call request detail modal phone row ──────────────────────────
