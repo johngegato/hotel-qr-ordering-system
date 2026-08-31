@@ -23,6 +23,7 @@ interface TaskPayload {
   priority: TaskPriority
   target_department: TargetDepartment
   is_custom?: boolean
+  room_number?: string
 }
 
 interface TaskRequest {
