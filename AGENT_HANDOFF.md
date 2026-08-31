@@ -731,3 +731,67 @@ This session implemented the Android 14+ OEM background survival fix (`FOREGROUN
    - Configured `eas.json` with `buildType: "apk"` preview profile.
    - Verified building with `npx eas-cli build -p android --profile preview`.
 
+---
+
+## Session Update — 2026-08-31 Part 3 (Bug Fixes, EAS/Firebase Setup, FAB UI Improvement & Chat History)
+
+### Overview
+This session completed Firebase project initialization for the new `@johngegato` Expo account, fixed the hardcoded room number bug in `TaskQueue`, improved the FCM diagnostics button UI from an obstructive header button to a floating action button (FAB), and added a structured `chat-history/` directory for conversation recovery.
+
+### Key Fixes & Additions
+
+1. **TaskQueue Room Number Bug Fix (`apps/staff-app/components/TaskQueue.tsx`)**:
+   - **Bug**: Room badge was hardcoded as the literal string `"Room 302"` regardless of the actual requesting room.
+   - **Fix**: Updated Supabase query from `.select('*')` to `.select('*, rooms(room_number)')` to join the `rooms` table.
+   - **Fix**: Added `rooms?: { room_number: string } | null` to the `TaskRequest` interface.
+   - **Fix**: Replaced hardcoded text with `item.rooms?.room_number || item.payload?.room_number || item.room_id` with safe fallback chain.
+   - **Commit**: `2dfe2f9`
+
+2. **FCM Diagnostics Button UI Fix (`apps/staff-app/App.tsx`)**:
+   - **Problem**: The `📡 FCM: OK` button was placed inside the header row alongside Sync and Logout, causing visual clutter and overlapping text on small screens.
+   - **Fix**: Removed the FCM button from the header. Header now only shows `⚡ Sync` and `↩ Logout`.
+   - **Added**: A new pill-shaped floating action button (FAB) anchored `position: 'absolute', bottom: 24, right: 20` — sits in the bottom-right corner of the screen, never overlaps content.
+   - FAB shows `📡 FCM ✓` (with checkmark) when a real FCM token is registered, or `📡 FCM` when using a local fallback.
+   - Styled with indigo glow shadow (`elevation: 8`, `shadowColor: '#6366f1'`).
+   - **Commit**: `3663c52`
+
+3. **Expo/Firebase Account Reset & EAS Credentials**:
+   - Old project was linked to `kekehyu` account (old credentials) causing `Entity not authorized` errors.
+   - Removed stale `extra.eas.projectId` and `owner` fields from `apps/staff-app/app.json`.
+   - Re-initialized via `npx eas-cli project:init` under new `@johngegato` account.
+   - New project: `@johngegato/staff-app` (ID: `4e2f24d0-60e3-4ce3-891e-1f2a1e591df6`).
+   - FCM server key must be uploaded via `npx eas-cli credentials` → Android → FCM V1 / Google Service Account to resolve "Unable to retrieve FCM server key" Expo ticket error.
+   - **Commit**: `cf09f2a`
+
+4. **Security: `.gitignore` Updated**:
+   - Added `*-firebase-adminsdk-*.json` and `*service-account*.json` patterns to prevent private Firebase service account keys from being committed to Git.
+
+5. **Chat History Directory (`chat-history/`)**:
+   - Created `chat-history/` folder in the repo root for storing AI agent conversation logs.
+   - Added `README.md` explaining the directory purpose and naming convention.
+   - Commit: current session.
+
+### Files Modified This Session
+| File | Change |
+|------|--------|
+| `apps/staff-app/components/TaskQueue.tsx` | Fixed hardcoded Room 302 → dynamic room join |
+| `apps/staff-app/App.tsx` | FCM button moved from header to floating FAB |
+| `apps/staff-app/app.json` | New EAS projectId (`4e2f24d0`), new owner (`johngegato`), `googleServicesFile` linked |
+| `.gitignore` | Private Firebase admin key patterns excluded |
+| `AGENT_HANDOFF.md` | Updated with this session |
+| `AI_AGENT_CHECKLIST.md` | All items marked complete |
+| `chat-history/README.md` | Chat history directory documentation |
+
+### Current EAS Build Status
+- **In progress**: `npx eas-cli build -p android --profile preview` under `@johngegato/staff-app`
+- Once complete: Install APK on Android, sign in → device registers real `ExponentPushToken[...]` → Vercel admin `/admin/users` can push real FCM alarms across internet
+- **Remaining credential step**: Upload Firebase Service Account JSON via `npx eas-cli credentials` → Android → FCM V1
+
+### Next Steps for Incoming Agent
+1. Verify the EAS Build completed (check [https://expo.dev/accounts/johngegato/projects/staff-app/builds](https://expo.dev/accounts/johngegato/projects/staff-app/builds))
+2. Download and install the APK on the Android device
+3. Upload FCM V1 Service Account key: `npx eas-cli credentials` in `apps/staff-app/`
+4. Test push from `/admin/users` on Vercel — should show `🟢 Real FCM Token` and delivery `status: ok`
+5. Multi-hotel RLS isolation test (still pending)
+
+

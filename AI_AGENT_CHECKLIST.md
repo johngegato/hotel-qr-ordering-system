@@ -261,3 +261,46 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
   - Staff App TypeScript `tsc --noEmit`: ✅ 0 errors
   - Next.js Production Build (`next build`): ✅ All 20 routes compiled & prerendered cleanly
   - Expo Web Export (`expo export --platform web`): ✅ 0 errors
+
+---
+
+## Session 3 Completions — 2026-08-31 Part 3
+
+### Bug Fixes
+
+- [x] **TaskQueue Room Number Bug** (`apps/staff-app/components/TaskQueue.tsx`):
+  - Bug: Room badge always displayed hardcoded `"Room 302"` regardless of actual requesting room.
+  - Fix: Changed `.select('*')` → `.select('*, rooms(room_number)')` to join `rooms` table.
+  - Fix: Added `rooms?: { room_number: string } | null` to `TaskRequest` interface.
+  - Fix: Replaced literal string with `item.rooms?.room_number || item.payload?.room_number || item.room_id`.
+  - Commit: `2dfe2f9`
+
+### UI Improvements
+
+- [x] **FCM Diagnostics Button Relocated** (`apps/staff-app/App.tsx`):
+  - Removed cluttered `📡 FCM: OK` button from the header row (was overlapping Sync & Logout on small screens).
+  - Added a pill-shaped floating action button (FAB) anchored `position: absolute`, `bottom: 24`, `right: 20`.
+  - FAB shows `📡 FCM ✓` when real FCM token active, `📡 FCM` when local fallback.
+  - Indigo glow shadow (`elevation: 8`, `shadowColor: '#6366f1'`) for premium feel.
+  - Commit: `3663c52`
+
+### Infrastructure & Credentials
+
+- [x] **Expo Account Migration** (`apps/staff-app/app.json`):
+  - Old `kekehyu` account credentials were causing `Entity not authorized` errors.
+  - Cleared stale `extra.eas.projectId` and `owner` fields.
+  - Re-initialized under `@johngegato`: new project ID `4e2f24d0-60e3-4ce3-891e-1f2a1e591df6`.
+- [x] **Security** (`.gitignore`):
+  - Added `*-firebase-adminsdk-*.json` and `*service-account*.json` to prevent private keys from being committed.
+- [x] **Chat History Directory** (`chat-history/`):
+  - Created `chat-history/` folder in repo root for storing AI session logs and conversation records.
+  - Added naming convention docs in `chat-history/README.md`.
+
+### Outstanding Items (Next Agent)
+
+- [ ] Upload Firebase FCM V1 Service Account JSON: `npx eas-cli credentials` → Android → FCM V1
+- [ ] Verify EAS Build at [https://expo.dev/accounts/johngegato/projects/staff-app/builds](https://expo.dev/accounts/johngegato/projects/staff-app/builds)
+- [ ] Install new APK on Android → verify real `ExponentPushToken[...]` token registered
+- [ ] Test end-to-end push from Vercel `/admin/users` → real FCM delivery `status: ok`
+- [ ] Multi-hotel RLS isolation test (production)
+
