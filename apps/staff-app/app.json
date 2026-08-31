@@ -25,14 +25,7 @@
     "plugins": [
       "expo-secure-store",
       "expo-av",
-      "expo-updates",
-      [
-        "react-native-agora",
-        {
-          "cameraPermission": false,
-          "microphonePermission": "Allow staff-app to access microphone for guest voice calls."
-        }
-      ]
+      "expo-updates"
     ],
     "android": {
       "package": "com.hotelqr.staffapp",
