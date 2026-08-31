@@ -97,12 +97,83 @@ export default function AdminUsersPage() {
   const [userToDelete, setUserToDelete] = useState<StaffUser | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
+  // Test Push state
+  const [testPushTarget, setTestPushTarget] = useState<StaffUser | 'ALL' | null>(null)
+  const [isTestingPush, setIsTestingPush] = useState(false)
+  const [testPushResult, setTestPushResult] = useState<{
+    targetName: string
+    timestamp: string
+    sent: number
+    failed: number
+    expoDevicesReached: number
+    webSubscribersReached: number
+    expoReceipts?: any[]
+    errors?: string[]
+    error?: string
+  } | null>(null)
+
   // Toast notification
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type })
     setTimeout(() => setToastMessage(null), 4000)
+  }
+
+  const handleSendTestPush = async (target: StaffUser | 'ALL') => {
+    setIsTestingPush(true)
+    setTestPushTarget(target)
+    setTestPushResult(null)
+    const isAll = target === 'ALL'
+    const targetName = isAll ? 'All Active Staff Devices' : `${target.full_name} (${target.email})`
+
+    try {
+      const res = await fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hotelId: HOTEL_ID,
+          title: '⚡ FCM High-Priority Push Test',
+          body: `High-priority push delivered to ${targetName} at ${new Date().toLocaleTimeString()}! If your phone woke up / alarmed, FCM is working 24/7.`,
+          staffUserId: isAll ? undefined : target.id,
+          isTestPush: true,
+        }),
+      })
+
+      const data = await res.json()
+      setTestPushResult({
+        targetName,
+        timestamp: new Date().toLocaleTimeString(),
+        sent: data.sent ?? 0,
+        failed: data.failed ?? 0,
+        expoDevicesReached: data.expoDevicesReached ?? 0,
+        webSubscribersReached: data.webSubscribersReached ?? 0,
+        expoReceipts: data.expoReceipts || [],
+        errors: data.errors || [],
+        error: data.error,
+      })
+
+      if (data.sent > 0) {
+        showToast(`⚡ High-Priority push dispatched to ${data.sent} device(s)!`, 'success')
+      } else if (data.expoDevicesReached === 0 && data.webSubscribersReached === 0) {
+        showToast(`⚠️ No push tokens registered on target device yet.`, 'error')
+      } else {
+        showToast(`Push dispatch finished with ${data.failed} error(s).`, 'error')
+      }
+    } catch (err: any) {
+      setTestPushResult({
+        targetName,
+        timestamp: new Date().toLocaleTimeString(),
+        sent: 0,
+        failed: 1,
+        expoDevicesReached: 0,
+        webSubscribersReached: 0,
+        error: err?.message || 'Network error triggering test push',
+      })
+      showToast('Failed to trigger test push.', 'error')
+    } finally {
+      setIsTestingPush(false)
+    }
   }
 
   const fetchUsers = useCallback(async () => {
@@ -495,6 +566,28 @@ export default function AdminUsersPage() {
             </button>
 
             <button
+              onClick={() => handleSendTestPush('ALL')}
+              disabled={isTestingPush}
+              title="Broadcast a high-priority FCM test push to all active Android staff devices"
+              style={{
+                background: 'rgba(99, 102, 241, 0.15)',
+                border: '1px solid rgba(99, 102, 241, 0.35)',
+                color: '#a5b4fc',
+                borderRadius: 12,
+                padding: '10px 18px',
+                fontWeight: 800,
+                fontSize: 13,
+                cursor: isTestingPush ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                transition: 'all 0.15s',
+              }}
+            >
+              <span>⚡</span> {isTestingPush && testPushTarget === 'ALL' ? 'Testing Push...' : 'Test FCM Push (All)'}
+            </button>
+
+            <button
               onClick={openCreateModal}
               style={{
                 background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
@@ -798,6 +891,7 @@ export default function AdminUsersPage() {
                     <th style={{ padding: '16px 20px' }}>Staff Member</th>
                     <th style={{ padding: '16px 20px' }}>Role / Department</th>
                     <th style={{ padding: '16px 20px' }}>Login Email</th>
+                    <th style={{ padding: '16px 20px' }}>Device Push (FCM)</th>
                     <th style={{ padding: '16px 20px' }}>Account Status</th>
                     <th style={{ padding: '16px 20px' }}>Created</th>
                     <th style={{ padding: '16px 20px', textAlign: 'right' }}>Actions</th>
@@ -817,6 +911,8 @@ export default function AdminUsersPage() {
                       day: 'numeric',
                       year: 'numeric',
                     })
+
+                    const hasPushToken = Boolean(user.push_token && !user.push_token.startsWith('web_pwa_') && !user.push_token.startsWith('expo_local_'))
 
                     return (
                       <tr
@@ -885,6 +981,69 @@ export default function AdminUsersPage() {
                           {user.email}
                         </td>
 
+                        {/* Device Push (FCM) Status */}
+                        <td style={{ padding: '16px 20px' }}>
+                          {hasPushToken ? (
+                            <div>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                  padding: '3px 9px',
+                                  borderRadius: 12,
+                                  background: 'rgba(59, 130, 246, 0.12)',
+                                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                                  color: '#60a5fa',
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                <span>📱</span>
+                                <span>FCM Active</span>
+                              </span>
+                              <div
+                                style={{
+                                  color: '#64748b',
+                                  fontSize: 10,
+                                  fontFamily: 'monospace',
+                                  marginTop: 3,
+                                  maxWidth: 160,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={user.push_token || undefined}
+                              >
+                                {user.push_token?.slice(0, 22)}...
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                  padding: '3px 9px',
+                                  borderRadius: 12,
+                                  background: 'rgba(100, 116, 139, 0.1)',
+                                  border: '1px solid rgba(100, 116, 139, 0.2)',
+                                  color: '#64748b',
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                <span>⚠️</span>
+                                <span>No FCM Token</span>
+                              </span>
+                              <div style={{ color: '#475569', fontSize: 10, marginTop: 2 }}>
+                                Login on Android app
+                              </div>
+                            </div>
+                          )}
+                        </td>
+
                         {/* Status */}
                         <td style={{ padding: '16px 20px' }}>
                           {user.is_active ? (
@@ -933,7 +1092,29 @@ export default function AdminUsersPage() {
 
                         {/* Actions */}
                         <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                          <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                            <button
+                              onClick={() => handleSendTestPush(user)}
+                              disabled={isTestingPush}
+                              title="Send a real High-Priority FCM push alarm to this user's phone"
+                              style={{
+                                background: 'rgba(99, 102, 241, 0.12)',
+                                border: '1px solid rgba(99, 102, 241, 0.3)',
+                                color: '#818cf8',
+                                borderRadius: 8,
+                                padding: '6px 10px',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: isTestingPush ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.15s',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                              }}
+                            >
+                              <span>⚡</span> {isTestingPush && testPushTarget === user ? '...' : 'Test Push'}
+                            </button>
+
                             <button
                               onClick={() => openEditModal(user)}
                               title="Edit user details and role"
@@ -942,7 +1123,7 @@ export default function AdminUsersPage() {
                                 border: '1px solid rgba(255, 255, 255, 0.12)',
                                 color: '#cbd5e1',
                                 borderRadius: 8,
-                                padding: '6px 12px',
+                                padding: '6px 10px',
                                 fontSize: 12,
                                 fontWeight: 700,
                                 cursor: 'pointer',
@@ -1399,6 +1580,156 @@ export default function AdminUsersPage() {
                 }}
               >
                 {isDeleting ? 'Deleting...' : 'Yes, Delete Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TEST PUSH RESULT MODAL */}
+      {testPushResult && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1.5rem',
+          }}
+        >
+          <div
+            style={{
+              background: '#0f172a',
+              border: '1px solid rgba(99, 102, 241, 0.3)',
+              borderRadius: 20,
+              width: '100%',
+              maxWidth: 520,
+              padding: '24px',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    background: testPushResult.sent > 0 ? 'rgba(74, 222, 128, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    color: testPushResult.sent > 0 ? '#4ade80' : '#f87171',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 22,
+                  }}
+                >
+                  {testPushResult.sent > 0 ? '⚡' : '⚠️'}
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#f8fafc' }}>
+                    FCM Push Dispatch Result
+                  </h3>
+                  <p style={{ margin: '2px 0 0', color: '#94a3b8', fontSize: 12 }}>
+                    Dispatched at {testPushResult.timestamp}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setTestPushResult(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#64748b',
+                  fontSize: 18,
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: 14,
+                padding: '14px',
+                marginBottom: 16,
+              }}
+            >
+              <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>
+                Target: <strong style={{ color: '#f8fafc' }}>{testPushResult.targetName}</strong>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginTop: 10 }}>
+                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Android FCM Reached</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#818cf8', marginTop: 2 }}>
+                    {testPushResult.expoDevicesReached} device(s)
+                  </div>
+                </div>
+                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Delivery Receipts (OK)</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: testPushResult.sent > 0 ? '#4ade80' : '#f87171', marginTop: 2 }}>
+                    {testPushResult.sent} confirmed
+                  </div>
+                </div>
+              </div>
+
+              {testPushResult.expoReceipts && testPushResult.expoReceipts.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, marginBottom: 4 }}>
+                    Expo / FCM Receipt Tickets:
+                  </div>
+                  <div style={{ maxHeight: 100, overflowY: 'auto', background: 'rgba(0,0,0,0.4)', borderRadius: 8, padding: '8px' }}>
+                    {testPushResult.expoReceipts.map((rcpt: any, i: number) => (
+                      <div key={i} style={{ fontSize: 11, fontFamily: 'monospace', color: rcpt.status === 'ok' ? '#4ade80' : '#f87171', marginBottom: 2 }}>
+                        ✓ {rcpt.token ? rcpt.token.slice(0, 16) + '...' : ''} → status: {rcpt.status} {rcpt.id ? `(id: ${rcpt.id})` : ''}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {testPushResult.errors && testPushResult.errors.length > 0 && (
+                <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 11, color: '#f87171', fontWeight: 700 }}>Errors:</div>
+                  {testPushResult.errors.map((e: string, idx: number) => (
+                    <div key={idx} style={{ fontSize: 11, color: '#fca5a5', marginTop: 2 }}>
+                      • {e}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 12, padding: '12px', marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: '#a5b4fc', lineHeight: 1.4 }}>
+                💡 <strong>Verification Tip:</strong> If the target Android device is asleep or locked, this High-Priority FCM push will trigger the alarm sound, wake lock, and full-screen intent immediately!
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setTestPushResult(null)}
+                style={{
+                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '10px 20px',
+                  borderRadius: 10,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(99,102,241,0.3)',
+                }}
+              >
+                Close
               </button>
             </div>
           </div>

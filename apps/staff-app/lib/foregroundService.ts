@@ -364,6 +364,15 @@ export async function startStaffMonitoringService(hotelId: string): Promise<void
   }
 
   try {
+    const { AndroidForegroundServiceType } = getNotifeeEnums()
+    const serviceTypes: any[] = []
+    if (AndroidForegroundServiceType?.REMOTE_MESSAGING) {
+      serviceTypes.push(AndroidForegroundServiceType.REMOTE_MESSAGING)
+    }
+    if (AndroidForegroundServiceType?.DATA_SYNC) {
+      serviceTypes.push(AndroidForegroundServiceType.DATA_SYNC)
+    }
+
     await notifee.startForegroundService({
       id: MONITOR_NOTIF_ID,
       title: '🏨 Hotel Staff — Active',
@@ -373,6 +382,7 @@ export async function startStaffMonitoringService(hotelId: string): Promise<void
         channelId: MONITOR_CHANNEL_ID,
         ongoing: true,
         asForegroundService: true,
+        ...(serviceTypes.length > 0 ? { foregroundServiceTypes: serviceTypes } : {}),
         color: '#0f172a',
         colorized: false,
         showTimestamp: false,

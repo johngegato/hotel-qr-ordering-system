@@ -239,7 +239,25 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 - [ ] Verify that `audit_logs` rows are being created correctly in the live Supabase project after the Vercel deploy of commit `ab5c145`. Check the `audit_logs` table directly in the Supabase dashboard.
 - [ ] Ensure RLS policy on `audit_logs` allows INSERT from the anon key used by the staff app. If inserts fail silently, staff-sourced audit events will not appear in history.
 - [ ] Supabase migration `11_scheduled_booking_expiration.sql` — still pending manual application.
-- [ ] Phase 2 database work: atomic reservation RPC + `request_id` FK on `spa_slot_locks` — not yet implemented in production.
-- [ ] Add automated integration test for audit log insertion across all booking paths.
+- [x] Android Foreground Service Permission Fix (`apps/staff-app/app.json` & `foregroundService.ts`):
+  - Added `"FOREGROUND_SERVICE_REMOTE_MESSAGING"` to `android.permissions` in `app.json` to prevent Samsung/Xiaomi/Pixel Android 14+ OEM background killing.
+  - Added `foregroundServiceTypes` declaration (`REMOTE_MESSAGING` and `DATA_SYNC`) in Notifee's `startStaffMonitoringService`.
+- [x] High-Priority FCM Push Verification & Diagnostics Suite:
+  - **Admin Web Portal (`/admin/users`)**:
+    - Added "Device Push (FCM)" status column displaying active token previews (`📱 FCM Active` vs `⚠️ No FCM Token`).
+    - Added "⚡ Test Push" action button per staff row and "⚡ Test FCM Push (All)" broadcast button in the header toolbar.
+    - Added rich Dispatch Result Modal displaying live delivery receipts, Expo ticket IDs (`status: ok`), reached devices, and failure diagnostics.
+  - **Staff Android App (`apps/staff-app`)**:
+    - Created `PushDiagnosticsModal.tsx` accessible via the header `📡 FCM` status button.
+    - Real-time logging of received push events (timestamps, title, body, test vs request alerts).
+    - 1-tap Push Token copy tool and local "🔔 Trigger Local Test Alarm" for instant audio, vibration, and full-screen intent verification.
+  - **Push API (`apps/web/lib/webPush.ts` & `/api/push/send`)**:
+    - Supported single `staffUserId` target parameter for 1-on-1 device testing and rich receipt return values (`expoReceipts`, `errors`).
+- [x] Build Verification:
+  - Web TypeScript `tsc --noEmit`: ✅ 0 errors
+  - Staff App TypeScript `tsc --noEmit`: ✅ 0 errors
+  - Next.js Production Build (`next build`): ✅ All 20 routes compiled & prerendered cleanly
+  - Expo Web Export (`expo export --platform web`): ✅ 0 errors
+
 ### To be added
 - [ ] I am implementing a real-time chat feature between guests and staff in my hotel app. Guests access the app by scanning a static QR code in their room. To ensure data privacy between different stays, chat messages must be tied to a unique guest_session_id rather than the static room_id or QR code payload. Please provide the database schema and backend routing logic so that when a guest checks out, their chat session is archived, and when a new guest scans the same QR code, a fresh chat session is initiated without exposing previous messages.

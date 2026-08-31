@@ -4,7 +4,7 @@ import { sendWebPushToHotelStaff, WebPushPayload } from '@/lib/webPush'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { hotelId, title, body: contentBody, requestId, roomNumber, requestType, url } = body
+    const { hotelId, title, body: contentBody, requestId, roomNumber, requestType, url, staffUserId, isTestPush } = body
 
     const targetHotelId = hotelId || '00000000-0000-0000-0000-000000000001'
 
@@ -15,9 +15,10 @@ export async function POST(req: NextRequest) {
       roomNumber,
       requestType,
       url: url || '/',
+      isTestPush: Boolean(isTestPush),
     }
 
-    const result = await sendWebPushToHotelStaff(targetHotelId, payload)
+    const result = await sendWebPushToHotelStaff(targetHotelId, payload, staffUserId ? { staffUserId } : undefined)
 
     return NextResponse.json({ success: true, ...result })
   } catch (err: any) {

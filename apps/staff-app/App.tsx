@@ -25,6 +25,7 @@ import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
 import IncomingRequestAlert, { type IncomingRequest } from './components/IncomingRequestAlert'
 import PendingRequestsReminderModal, { type PendingRequestItem } from './components/PendingRequestsReminderModal'
+import PushDiagnosticsModal, { type PushLogItem } from './components/PushDiagnosticsModal'
 import {
   setupNotificationChannels,
   registerForPushNotifications,
@@ -585,6 +586,31 @@ function MainAppContent() {
 
   const [refreshKey, setRefreshKey] = useState(0)
 
+  // ─── Push Diagnostics & Real-time Logs ────────────────────────
+  const [pushToken, setPushToken] = useState<string | null>(null)
+  const [pushLogs, setPushLogs] = useState<PushLogItem[]>([])
+  const [showDiagnosticsModal, setShowDiagnosticsModal] = useState(false)
+
+  const handleTriggerTestAlarm = useCallback(() => {
+    triggerAlarmNotification({
+      title: 'Local Test Alarm',
+      body: 'Testing ALARM audio stream, full-screen intent & vibration on device.',
+      requestId: `test-${Date.now()}`,
+      roomNumber: 'Test 888',
+      requestType: 'TEST_ALARM',
+    })
+    setPushLogs((prev) => [
+      {
+        id: `local-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        title: '🔔 Local Test Alarm Triggered',
+        body: 'Fired full-screen intent, audio stream & vibration test.',
+        isTest: true,
+      },
+      ...prev.slice(0, 19),
+    ])
+  }, [])
+
   // ─── Notification Channels & Foreground Service Setup ────────
   // MUST run on mount (before any request arrives), not gated behind login.
   // Creates both the ALARM-stream and MONITOR channels.
@@ -599,6 +625,7 @@ function MainAppContent() {
 
     registerForPushNotifications()
       .then((token) => {
+        if (token) setPushToken(token)
         if (!token && Platform.OS === 'android') {
           Alert.alert(
             '🔔 Enable Notifications',
@@ -610,7 +637,30 @@ function MainAppContent() {
       .catch((err) => console.warn('[App] registerForPushNotifications:', err))
 
     const subResponse = addNotificationResponseListener(async (data) => {
-      if (data?.requestId) {
+      const isTest = Boolean(data?.isTestPush)
+      const title = data?.title || (isTest ? '⚡ FCM High-Priority Push (Tapped)' : '🚨 Incoming Request (Tapped)')
+      const body = data?.body || (data?.roomNumber ? `Room ${data.roomNumber}` : 'Guest notification tapped')
+
+      setPushLogs((prev) => [
+        {
+          id: `resp-${Date.now()}-${Math.random()}`,
+          timestamp: new Date().toLocaleTimeString(),
+          title: String(title),
+          body: String(body),
+          isTest,
+        },
+        ...prev.slice(0, 19),
+      ])
+
+      if (isTest) {
+        Alert.alert(
+          '⚡ High-Priority FCM Push Tapped!',
+          `FCM High-Priority push was tapped at ${new Date().toLocaleTimeString()}.\n\nBackground delivery is functioning properly!`,
+          [{ text: 'OK' }]
+        )
+      }
+
+      if (data?.requestId && !isTest) {
         setRefreshKey((k) => k + 1)
         try {
           const { data: req } = await supabase
@@ -632,7 +682,30 @@ function MainAppContent() {
 
     const subReceived = addNotificationReceivedListener(async (notif) => {
       const data = notif?.request?.content?.data
-      if (data?.requestId) {
+      const isTest = Boolean(data?.isTestPush)
+      const title = notif?.request?.content?.title || (isTest ? '⚡ FCM High-Priority Push' : '🚨 Incoming Request')
+      const body = notif?.request?.content?.body || (data?.roomNumber ? `Room ${data.roomNumber}` : 'Notification received')
+
+      setPushLogs((prev) => [
+        {
+          id: `recv-${Date.now()}-${Math.random()}`,
+          timestamp: new Date().toLocaleTimeString(),
+          title: String(title),
+          body: String(body),
+          isTest,
+        },
+        ...prev.slice(0, 19),
+      ])
+
+      if (isTest) {
+        Alert.alert(
+          '⚡ High-Priority FCM Push Received!',
+          `Your Android device received the FCM High-Priority push test at ${new Date().toLocaleTimeString()}!`,
+          [{ text: 'Great!' }]
+        )
+      }
+
+      if (data?.requestId && !isTest) {
         setRefreshKey((k) => k + 1)
         try {
           const { data: req } = await supabase
@@ -676,6 +749,7 @@ function MainAppContent() {
       registerForPushNotifications()
         .then((token) => {
           if (token) {
+            setPushToken(token)
             Promise.resolve(
               supabase
                 .from('staff_users')
@@ -880,6 +954,17 @@ function MainAppContent() {
         }}
       />
 
+      {/* 📡 FCM Push & Background Diagnostics Modal */}
+      <PushDiagnosticsModal
+        visible={showDiagnosticsModal}
+        onClose={() => setShowDiagnosticsModal(false)}
+        activeStaffUser={activeStaffUser}
+        pushToken={pushToken}
+        pushLogs={pushLogs}
+        onTriggerTestAlarm={handleTriggerTestAlarm}
+        onCheckBattery={checkAndPromptBatteryOptimization}
+      />
+
       <ScrollView
         style={styles.scrollContainer}
         contentContainerStyle={styles.scrollContent}
@@ -895,6 +980,15 @@ function MainAppContent() {
               <Text style={styles.headerSubtitle}>Tablet Interface</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => setShowDiagnosticsModal(true)}
+                style={styles.diagButton}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.diagButtonText}>
+                  {pushToken && !pushToken.startsWith('web_pwa_') ? '📡 FCM: OK' : '📡 FCM Status'}
+                </Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleManualSync}
                 style={[styles.syncButton, isManualSyncing && styles.syncButtonActive]}
@@ -1214,6 +1308,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0.3,
+  },
+  diagButton: {
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.35)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  diagButtonText: {
+    color: '#a5b4fc',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 
   // Badge

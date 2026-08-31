@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BDZiJJ2o83qDdtVUQaVEEekgX3KVABFYZZzCRM76dtNgyEp3Sxe4TT9cBmcNcDTQ9RUIcQUjD0tu9pCoWkH4Xkg'
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'Sd_eLFno7SUy-ViectiaP-0GAowqSXv8H9CoQcR9w5k'
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:support@kekehyuhotel.com'
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:gegatojohn93@gmail.com'
 
 // Configure web-push with VAPID details
 try {
@@ -25,16 +25,26 @@ export interface WebPushPayload {
   [key: string]: any
 }
 
+export interface PushDispatchResult {
+  sent: number
+  failed: number
+  expoDevicesReached: number
+  webSubscribersReached: number
+  expoReceipts?: any[]
+  errors?: string[]
+}
+
 /**
- * Dispatch a high-priority push notification (both Web Push & Expo / FCM) to all active staff devices for a hotel.
+ * Dispatch a high-priority push notification (both Web Push & Expo / FCM) to active staff devices for a hotel.
  * Works across:
  *  - Android Staff APK (via Expo / FCM High Priority push with wake lock & alarm channel)
  *  - Browser PWA (via WebPush VAPID)
  */
 export async function sendWebPushToHotelStaff(
   hotelId: string,
-  payload: WebPushPayload
-): Promise<{ sent: number; failed: number }> {
+  payload: WebPushPayload,
+  options?: { staffUserId?: string }
+): Promise<PushDispatchResult> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bsjnlawhdgfilcfejbji.supabase.co'
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
@@ -45,6 +55,10 @@ export async function sendWebPushToHotelStaff(
 
   let sent = 0
   let failed = 0
+  let expoDevicesReached = 0
+  let webSubscribersReached = 0
+  const expoReceipts: any[] = []
+  const errors: string[] = []
 
   const notificationTitle = payload.title || `🚨 New ${payload.requestType ? payload.requestType.replace(/_/g, ' ') : 'Guest Request'}`
   const notificationBody = payload.body || (payload.roomNumber ? `Room ${payload.roomNumber} submitted a new request.` : 'A guest request requires staff attention.')
@@ -55,20 +69,28 @@ export async function sendWebPushToHotelStaff(
   try {
     let staffQuery = supabase
       .from('staff_users')
-      .select('id, push_token')
+      .select('id, full_name, push_token')
       .eq('is_active', true)
       .not('push_token', 'is', null)
 
-    if (targetHotelId !== defaultHotelId) {
+    if (options?.staffUserId) {
+      staffQuery = staffQuery.eq('id', options.staffUserId)
+    } else if (targetHotelId !== defaultHotelId) {
       staffQuery = staffQuery.or(`hotel_id.eq.${targetHotelId},hotel_id.eq.${defaultHotelId}`)
     }
 
     const { data: staffData, error: staffErr } = await staffQuery
 
+    if (staffErr) {
+      errors.push(`Staff query error: ${staffErr.message}`)
+    }
+
     if (!staffErr && staffData && staffData.length > 0) {
       const expoTokens = staffData
         .map((s) => s.push_token)
         .filter((token): token is string => Boolean(token && !token.startsWith('web_pwa_') && !token.startsWith('expo_local_') && token.length > 10))
+
+      expoDevicesReached = expoTokens.length
 
       if (expoTokens.length > 0) {
         console.log(`[Push] Dispatching Expo/FCM push to ${expoTokens.length} staff device(s)...`)
@@ -83,6 +105,8 @@ export async function sendWebPushToHotelStaff(
             roomNumber: payload.roomNumber,
             requestType: payload.requestType,
             url: payload.url || '/',
+            isTestPush: payload.isTestPush || false,
+            dispatchedAt: new Date().toISOString(),
           },
           priority: 'high',
           channelId: 'hotel_staff_alarm',
@@ -105,19 +129,29 @@ export async function sendWebPushToHotelStaff(
         if (response.ok) {
           const resJson = await response.json()
           const receipts = resJson.data || []
-          receipts.forEach((r: any) => {
+          receipts.forEach((r: any, idx: number) => {
+            expoReceipts.push({
+              token: expoTokens[idx],
+              ...r,
+            })
             if (r.status === 'ok') sent++
-            else failed++
+            else {
+              failed++
+              errors.push(`Expo ticket error: ${r.message || r.details?.error || 'Unknown error'}`)
+            }
           })
           console.log(`[Push] Expo/FCM push result: ${sent} sent, ${failed} failed`)
         } else {
-          console.warn('[Push] Expo Push API responded with error:', response.status, await response.text())
+          const errText = await response.text()
+          console.warn('[Push] Expo Push API responded with error:', response.status, errText)
           failed += expoTokens.length
+          errors.push(`Expo Push API error ${response.status}: ${errText}`)
         }
       }
     }
-  } catch (expoErr) {
+  } catch (expoErr: any) {
     console.error('[Push] Error dispatching Expo/FCM push:', expoErr)
+    errors.push(`Expo dispatch exception: ${expoErr?.message || expoErr}`)
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -180,6 +214,7 @@ export async function sendWebPushToHotelStaff(
         })
       )
 
+      webSubscribersReached = subscriptions.length
       if (expiredIds.length > 0) {
         try {
           await supabase
@@ -191,9 +226,10 @@ export async function sendWebPushToHotelStaff(
         }
       }
     }
-  } catch (webErr) {
+  } catch (webErr: any) {
     console.error('[WebPush] Error sending WebPush:', webErr)
+    errors.push(`WebPush dispatch exception: ${webErr?.message || webErr}`)
   }
 
-  return { sent, failed }
+  return { sent, failed, expoDevicesReached, webSubscribersReached, expoReceipts, errors }
 }
