@@ -17,12 +17,16 @@ interface StaffVoiceCallState {
 }
 
 /**
- * React Native hook for staff-side Agora voice calling.
+ * Universal Agora voice call hook for staff-side (Mobile Android + Web Browser).
  * Staff always joins as UID=2.
- * Guarded to only run on native platforms (Android/iOS).
+ * - On Native (Android/iOS): Uses `react-native-agora` + `react-native-incall-manager`.
+ * - On Web (Browser): Uses `agora-rtc-sdk-ng` for direct WebRTC microphone streaming.
  */
 export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}): StaffVoiceCallState {
   const engineRef = useRef<any>(null)
+  const webClientRef = useRef<any>(null)
+  const webLocalTrackRef = useRef<any>(null)
+
   const [isConnected, setIsConnected] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [isSpeakerOn, setIsSpeakerOn] = useState(true)
@@ -46,8 +50,58 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
 
   const joinChannel = useCallback(
     async (channel: string, token: string | null, appId: string) => {
-      if (Platform.OS === 'web') return
+      // ─────────────────────────────────────────────────────────────────────────────
+      // WEB BROWSER IMPLEMENTATION (agora-rtc-sdk-ng)
+      // ─────────────────────────────────────────────────────────────────────────────
+      if (Platform.OS === 'web') {
+        try {
+          const AgoraRTC = (await import('agora-rtc-sdk-ng')).default
+          AgoraRTC.setLogLevel(4)
 
+          const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' })
+          webClientRef.current = client
+
+          // Staff joins as UID=2
+          await client.join(appId, channel, token ?? null, 2)
+
+          // Capture and publish staff microphone
+          const micTrack = await AgoraRTC.createMicrophoneAudioTrack()
+          webLocalTrackRef.current = micTrack
+          await client.publish([micTrack])
+
+          // Play incoming audio from guest (UID 1)
+          client.on('user-published', async (user: any, mediaType: 'audio' | 'video') => {
+            await client.subscribe(user, mediaType)
+            if (mediaType === 'audio') {
+              user.audioTrack?.play()
+            }
+          })
+
+          client.on('user-unpublished', (user: any, mediaType: 'audio' | 'video') => {
+            if (mediaType === 'audio') {
+              user.audioTrack?.stop()
+            }
+          })
+
+          client.on('user-left', () => {
+            console.log('[StaffVoiceCall:Web] Guest left call')
+            setIsConnected(false)
+            onCallEnded?.()
+          })
+
+          setIsConnected(true)
+          setIsMuted(false)
+          setIsSpeakerOn(true)
+          return
+        } catch (err) {
+          console.error('[StaffVoiceCall:Web] Join error:', err)
+          throw err
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────────
+      // NATIVE ANDROID / IOS IMPLEMENTATION (react-native-agora)
+      // ─────────────────────────────────────────────────────────────────────────────
       try {
         const agoraMod = await import('react-native-agora')
         const InCallManagerMod = await import('react-native-incall-manager')
@@ -77,20 +131,20 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
         if (typeof engine.registerEventHandler === 'function') {
           engine.registerEventHandler({
             onUserJoined: (_connection: any, uid: number) => {
-              console.log('[StaffVoiceCall] Remote user joined:', uid)
+              console.log('[StaffVoiceCall:Native] Remote user joined:', uid)
             },
             onUserOffline: (_connection: any, uid: number) => {
-              console.log('[StaffVoiceCall] Remote user left:', uid)
+              console.log('[StaffVoiceCall:Native] Remote user left:', uid)
               setIsConnected(false)
               onCallEnded?.()
             },
           })
         } else if (typeof engine.addListener === 'function') {
           engine.addListener('UserJoined', (uid: number) => {
-            console.log('[StaffVoiceCall] Remote user joined:', uid)
+            console.log('[StaffVoiceCall:Native] Remote user joined:', uid)
           })
           engine.addListener('UserOffline', (uid: number) => {
-            console.log('[StaffVoiceCall] Remote user left:', uid)
+            console.log('[StaffVoiceCall:Native] Remote user left:', uid)
             setIsConnected(false)
             onCallEnded?.()
           })
@@ -116,7 +170,7 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
         setIsMuted(false)
         setIsSpeakerOn(true)
       } catch (err) {
-        console.error('[StaffVoiceCall] Join error:', err)
+        console.error('[StaffVoiceCall:Native] Join error:', err)
         throw err
       }
     },
@@ -124,7 +178,22 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
   )
 
   const leaveChannel = useCallback(async () => {
-    if (Platform.OS === 'web') return
+    // Web cleanup
+    if (Platform.OS === 'web') {
+      try {
+        webLocalTrackRef.current?.stop()
+        webLocalTrackRef.current?.close()
+        await webClientRef.current?.leave()
+      } catch (err) {
+        console.warn('[StaffVoiceCall:Web] Leave error:', err)
+      } finally {
+        setIsConnected(false)
+        onCallEnded?.()
+      }
+      return
+    }
+
+    // Native cleanup
     try {
       const InCallManagerMod = await import('react-native-incall-manager')
       const InCallManager = InCallManagerMod.default ?? InCallManagerMod
@@ -143,7 +212,7 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
         engineRef.current = null
       }
     } catch (err) {
-      console.warn('[StaffVoiceCall] Leave error:', err)
+      console.warn('[StaffVoiceCall:Native] Leave error:', err)
     } finally {
       setIsConnected(false)
       onCallEnded?.()
@@ -152,15 +221,22 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
 
   const toggleMute = useCallback(async () => {
     const next = !isMuted
-    if (engineRef.current && typeof engineRef.current.muteLocalAudioStream === 'function') {
-      await engineRef.current.muteLocalAudioStream(next)
+    if (Platform.OS === 'web') {
+      const track = webLocalTrackRef.current
+      if (track) {
+        track.setEnabled(!next)
+      }
+    } else {
+      if (engineRef.current && typeof engineRef.current.muteLocalAudioStream === 'function') {
+        await engineRef.current.muteLocalAudioStream(next)
+      }
     }
     setIsMuted(next)
   }, [isMuted])
 
   const toggleSpeaker = useCallback(async () => {
     const next = !isSpeakerOn
-    if (engineRef.current && typeof engineRef.current.setEnableSpeakerphone === 'function') {
+    if (Platform.OS !== 'web' && engineRef.current && typeof engineRef.current.setEnableSpeakerphone === 'function') {
       await engineRef.current.setEnableSpeakerphone(next)
     }
     setIsSpeakerOn(next)
@@ -170,7 +246,11 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
-      if (engineRef.current) {
+      if (Platform.OS === 'web') {
+        webLocalTrackRef.current?.stop()
+        webLocalTrackRef.current?.close()
+        webClientRef.current?.leave().catch(() => {})
+      } else if (engineRef.current) {
         try {
           if (typeof engineRef.current.leaveChannel === 'function') {
             engineRef.current.leaveChannel()
