@@ -308,7 +308,10 @@ export default function TaskQueue({ activeStaffId, activeStaffUser, refreshTrigg
             const slaMinutes = 20
 
             // Extract guest phone number if provided
-            const guestPhone = payload?.guest_phone || payload?.phone || payload?.custom_notes?.match(/\d{7,15}/)?.[0]
+            const notesPhone = typeof payload?.custom_notes === 'string'
+              ? (payload.custom_notes.match(/\[Guest Phone:\s*([^\]]+)\]/)?.[1]?.trim() || payload.custom_notes.match(/\+?\d[\d\s-]{6,15}\d/)?.[0]?.trim())
+              : null
+            const guestPhone = payload?.guest_phone || payload?.phone || notesPhone || null
 
             return (
               <View

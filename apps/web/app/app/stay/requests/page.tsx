@@ -163,6 +163,7 @@ function GuestRequestsContent() {
       catalog_item_id: isCustom ? undefined : selectedItem?.id,
       is_custom: isCustom,
       room_number: roomNumber || undefined,
+      guest_phone: phone || undefined,
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

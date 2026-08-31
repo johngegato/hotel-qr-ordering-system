@@ -392,37 +392,57 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
                   <DetailRow label="Duration" value={p?.duration_mins ? `${p.duration_mins} min` : '—'} />
                   <DetailRow label="Price" value={p?.price ? `₱${Number(p.price).toLocaleString()}` : '—'} />
                   {p?.therapist_name && <DetailRow label="Therapist" value={p.therapist_name} />}
-                  {p?.guest_phone && <DetailRow label="Guest Phone" value={p.guest_phone} />}
                   {p?.intake_note && <DetailRow label="Notes" value={p.intake_note} />}
+                </>}
+
+                {req.request_type === 'TASK' && <>
+                  <DetailRow label="Task Name" value={p?.task_name || 'Room Request'} />
+                  {p?.target_department && <DetailRow label="Department" value={p.target_department.replace(/_/g, ' ')} />}
+                  {p?.priority && <DetailRow label="Priority" value={p.priority} />}
+                  {(p?.quantity ?? 1) > 1 && <DetailRow label="Quantity" value={`× ${p.quantity}`} />}
+                  {p?.custom_notes && <DetailRow label="Notes" value={p.custom_notes.replace(/\[Guest Phone:\s*[^\]]+\]/, '').trim() || p.custom_notes} />}
                 </>}
 
                 {req.request_type === 'CALL_REQUEST' && <>
                   {p?.note && <DetailRow label="Guest Note" value={p.note} />}
-                  {p?.guest_phone ? (
-                    <View style={styles.callPhoneRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.detailLabel}>Guest Phone</Text>
-                        <Text style={styles.callPhoneNumber}>{p.guest_phone}</Text>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.callPhoneBtn}
-                        onPress={() => {
-                          Linking.openURL(`tel:${p.guest_phone}`).catch(() =>
-                            Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
-                          )
-                        }}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={styles.callPhoneBtnText}>📞 Dial Now</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <DetailRow label="Guest Phone" value="No number provided" />
-                  )}
                 </>}
 
-                {p?.special_instructions && req.request_type !== 'SPA_BOOKING' && (
-                  <DetailRow label="Notes" value={p.special_instructions} />
+                {/* Universal Guest Phone Dialing Row in Detail Modal */}
+                {(() => {
+                  const notesPhone = typeof p?.custom_notes === 'string'
+                    ? (p.custom_notes.match(/\[Guest Phone:\s*([^\]]+)\]/)?.[1]?.trim() || p.custom_notes.match(/\+?\d[\d\s-]{6,15}\d/)?.[0]?.trim())
+                    : null
+                  const instructionsPhone = typeof p?.special_instructions === 'string'
+                    ? p.special_instructions.match(/\+?\d[\d\s-]{6,15}\d/)?.[0]?.trim()
+                    : null
+                  const phone = p?.guest_phone || p?.phone_number || p?.phone || notesPhone || instructionsPhone || null
+
+                  if (phone) {
+                    return (
+                      <View style={styles.callPhoneRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.detailLabel}>Guest Phone</Text>
+                          <Text style={styles.callPhoneNumber}>{phone}</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.callPhoneBtn}
+                          onPress={() => {
+                            Linking.openURL(`tel:${phone}`).catch(() =>
+                              Alert.alert('Cannot Open Dialer', 'Unable to open the phone dialer on this device.')
+                            )
+                          }}
+                          activeOpacity={0.75}
+                        >
+                          <Text style={styles.callPhoneBtnText}>📞 Dial Now</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )
+                  }
+                  return <DetailRow label="Guest Phone" value="No number provided" />
+                })()}
+
+                {p?.special_instructions && req.request_type !== 'SPA_BOOKING' && req.request_type !== 'TASK' && (
+                  <DetailRow label="Special Instructions" value={p.special_instructions} />
                 )}
               </View>
 
@@ -656,7 +676,14 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
                     {/* Universal quick-call row — shown on ALL request types */}
                     {(() => {
                       const p = item.payload as any
-                      const phone = p?.guest_phone || p?.phone_number || p?.phone || null
+                      // Check dedicated fields first, then parse legacy "[Guest Phone: xxx]" or phone patterns from custom_notes / special_instructions
+                      const notesPhone = typeof p?.custom_notes === 'string'
+                        ? (p.custom_notes.match(/\[Guest Phone:\s*([^\]]+)\]/)?.[1]?.trim() || p.custom_notes.match(/\+?\d[\d\s-]{6,15}\d/)?.[0]?.trim())
+                        : null
+                      const instructionsPhone = typeof p?.special_instructions === 'string'
+                        ? p.special_instructions.match(/\+?\d[\d\s-]{6,15}\d/)?.[0]?.trim()
+                        : null
+                      const phone = p?.guest_phone || p?.phone_number || p?.phone || notesPhone || instructionsPhone || null
                       if (phone) {
                         return (
                           <TouchableOpacity
