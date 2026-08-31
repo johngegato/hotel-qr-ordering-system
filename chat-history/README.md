@@ -34,6 +34,39 @@ Examples:
 | 2026-08-31 | [2026-08-31_eas-build-firebase-setup.md](./2026-08-31_eas-build-firebase-setup.md) | Firebase project setup, google-services.json, EAS credentials, account migration to @johngegato |
 | 2026-08-31 | [2026-08-31_taskqueue-bug-fixes-fab-ui.md](./2026-08-31_taskqueue-bug-fixes-fab-ui.md) | TaskQueue room number bug fix, FCM button moved to floating FAB |
 | 2026-08-31 | [2026-08-31_fnb-access-control-guest-dialing-manual-orders.md](./2026-08-31_fnb-access-control-guest-dialing-manual-orders.md) | F&B access control (KITCHEN RBAC), universal guest dialing, manual food orders, FnBDiningFAB, TaskQueue resolution fix |
+| 2026-08-31 | [2026-08-31_automated-fcm-push-token-lifecycle-admin-settings.md](./2026-08-31_automated-fcm-push-token-lifecycle-admin-settings.md) | Automated DB-triggered FCM push, token lifecycle 1:1 binding & logout cleansing, role-based routing, alert deduplication, admin notification controls |
+| 2026-08-31 | [2026-08-31_expo-updates-ota-configuration.md](./2026-08-31_expo-updates-ota-configuration.md) | EAS OTA auto-updates via `expo-updates`, launch & foreground auto-check hook, silent download & auto-restart |
+
+---
+
+## OTA Updates Reference (How to Publish Updates)
+
+### 1. Publishing an Over-The-Air Update via EAS CLI
+To deploy code, styling, UI, or bug fixes directly to staff devices without rebuilding the APK:
+
+```bash
+# Navigate to staff-app directory
+cd apps/staff-app
+
+# Publish update to the preview branch (or production branch)
+npx eas-cli update --branch preview --message "Description of changes"
+```
+
+### 2. How Staff Devices Apply Updates
+1. **On App Launch / Foreground Resume**: `useAutoUpdate()` checks EAS servers automatically.
+2. **Silent Download**: New JavaScript bundles and assets download in the background.
+3. **Prompt & Restart**: A dialog *"🔄 Update Ready — Restarting now to apply the latest features"* appears, and the app reloads with the latest code.
+
+### 3. OTA Update vs. Full APK Rebuild Decision Matrix
+
+| Scenario | OTA Update (`eas update`) | Rebuild APK (`eas build -p android`) |
+| :--- | :---: | :---: |
+| **Bug fixes in React Native / TypeScript code** | ✅ **Yes (Instant)** | ❌ No |
+| **Adding or modifying UI screens, components, queues** | ✅ **Yes (Instant)** | ❌ No |
+| **Styling, theme colors, CSS layout changes** | ✅ **Yes (Instant)** | ❌ No |
+| **Modifying Supabase queries & API endpoints** | ✅ **Yes (Instant)** | ❌ No |
+| **Adding new native Android permissions in `app.json`** | ❌ No | ✅ **Rebuild Required** |
+| **Adding new native Android packages with native code (Java/C++/Gradle)** | ❌ No | ✅ **Rebuild Required** |
 
 ---
 
@@ -42,3 +75,4 @@ Examples:
 1. Create a new `.md` file using the naming convention above.
 2. Add a one-line entry to the Sessions Index table above.
 3. Commit with message: `docs: add chat history for YYYY-MM-DD session`
+
