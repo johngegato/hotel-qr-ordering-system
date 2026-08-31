@@ -1,9 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import PhoneCaptureModal, { getStoredGuestPhone } from './PhoneCaptureModal'
 import { useGuestTheme } from './GuestThemeProvider'
+import { useGuestVoiceCall } from './GuestVoiceCallEngine'
+
+const AGORA_APP_ID = process.env.NEXT_PUBLIC_AGORA_APP_ID ?? ''
 
 interface CallFrontDeskModalProps {
   isOpen: boolean
@@ -25,9 +28,20 @@ export default function CallFrontDeskModal({
   const theme = useGuestTheme()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [requestId, setRequestId] = useState<string | null>(null)
-  const [status, setStatus] = useState<'IDLE' | 'PENDING' | 'CLAIMED' | 'FAILED'>('IDLE')
+  const [status, setStatus] = useState<'IDLE' | 'PENDING' | 'CLAIMED' | 'FAILED' | 'VOICE_JOINING' | 'VOICE_LIVE' | 'VOICE_ENDED'>('IDLE')
   const [countdown, setCountdown] = useState(180) // 3 minutes
   const [showPhoneModal, setShowPhoneModal] = useState(false)
+
+  // Agora voice call state
+  const [agoraChannel, setAgoraChannel] = useState<string>('')
+  const [agoraToken, setAgoraToken] = useState<string | null>(null)
+
+  const isVoiceActive = status === 'VOICE_LIVE'
+  const voiceCall = useGuestVoiceCall(
+    isVoiceActive
+      ? { appId: AGORA_APP_ID, channel: agoraChannel, token: agoraToken }
+      : { appId: '', channel: '', token: null }
+  )
 
   // Countdown timer effect for PENDING state
   useEffect(() => {
@@ -40,7 +54,7 @@ export default function CallFrontDeskModal({
     return () => clearInterval(timer)
   }, [status, countdown])
 
-  // Supabase Realtime Subscription for loop closure
+  // Supabase Realtime Subscription — watch for CLAIMED or LIVE
   useEffect(() => {
     if (!requestId) return
 
@@ -55,17 +69,22 @@ export default function CallFrontDeskModal({
           filter: `id=eq.${requestId}`,
         },
         (payload: { new: { status: string } }) => {
-          if (payload.new && payload.new.status === 'CLAIMED') {
+          if (payload.new?.status === 'CLAIMED') {
             setStatus('CLAIMED')
+          }
+          if (payload.new?.status === 'LIVE') {
+            setStatus('VOICE_LIVE')
+          }
+          if (payload.new?.status === 'RESOLVED') {
+            setStatus('VOICE_ENDED')
+            voiceCall.endCall()
           }
         }
       )
       .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [requestId])
+    return () => { supabase.removeChannel(channel) }
+  }, [requestId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null
 
@@ -128,6 +147,69 @@ export default function CallFrontDeskModal({
     }
   }
 
+  // ── Live Voice Call flow ────────────────────────────────────────────────
+  const handleLiveVoiceCall = useCallback(async () => {
+    setStatus('VOICE_JOINING')
+    try {
+      // 1. Get Agora token from server
+      const channelName = `room-${roomId}-${Date.now()}`
+      const res = await fetch(`/api/agora/token?channel=${channelName}&uid=1`)
+      const { token } = await res.json()
+
+      setAgoraChannel(channelName)
+      setAgoraToken(token ?? null)
+
+      // 2. Insert LIVE_CALL request in Supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.from('requests') as any)
+        .insert([{
+          hotel_id: hotelId,
+          room_id: roomId,
+          request_type: 'LIVE_CALL',
+          status: 'PENDING',
+          agora_channel: channelName,
+          payload: { room_number: roomNumber, note: 'Guest initiated a live voice call' },
+        }])
+        .select('id')
+        .single()
+
+      if (error || !data?.id) throw error ?? new Error('Failed to create call request')
+
+      setRequestId(data.id)
+      setStatus('VOICE_LIVE') // Guest joins Agora immediately; staff answers when ready
+
+      // 3. Fire FCM push to staff
+      fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hotelId: hotelId || '00000000-0000-0000-0000-000000000001',
+          title: `📞 Live Voice Call — Room ${roomNumber}`,
+          body: 'Guest is calling. Tap to answer.',
+          requestId: data.id,
+          roomNumber,
+          requestType: 'LIVE_CALL',
+          agoraChannel: channelName,
+          url: '/',
+        }),
+      }).catch(() => {})
+    } catch (err) {
+      console.error('[LiveVoiceCall] Setup error:', err)
+      setStatus('IDLE')
+    }
+  }, [hotelId, roomId, roomNumber])
+
+  const handleEndLiveCall = useCallback(async () => {
+    await voiceCall.endCall()
+    if (requestId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('requests') as any)
+        .update({ status: 'RESOLVED' })
+        .eq('id', requestId)
+    }
+    setStatus('VOICE_ENDED')
+  }, [voiceCall, requestId])
+
   const formatCountdown = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -161,9 +243,9 @@ export default function CallFrontDeskModal({
             <p className="text-slate-400 text-sm font-medium">Room {roomNumber} · We&apos;re here to help</p>
           </div>
 
-          {/* State 1: IDLE */}
+          {/* ── State: IDLE ─────────────────────────────────────── */}
           {status === 'IDLE' && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {/* Primary CTA — Direct dial */}
               <a
                 href={`tel:${hotelPhone}`}
@@ -178,6 +260,22 @@ export default function CallFrontDeskModal({
                 <span>Call Front Desk Directly</span>
                 <span className="text-[11px] opacity-70 font-medium">{hotelPhone}</span>
               </a>
+
+              {/* Live Voice Call CTA */}
+              <button
+                onClick={handleLiveVoiceCall}
+                disabled={isSubmitting}
+                className="w-full flex flex-col items-center justify-center gap-1 py-5 px-5 rounded-2xl font-bold text-base transition-all duration-200 active:scale-95 disabled:opacity-50 min-h-[72px]"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.15) 100%)',
+                  border: '1px solid rgba(99,102,241,0.4)',
+                  color: '#a5b4fc',
+                }}
+              >
+                <span className="text-2xl">🎤</span>
+                <span>Live Voice Call</span>
+                <span className="text-[11px] opacity-60 font-medium">Talk directly with staff</span>
+              </button>
 
               {/* Secondary CTA — Staff callback request */}
               <button
@@ -196,7 +294,83 @@ export default function CallFrontDeskModal({
             </div>
           )}
 
-          {/* State 2: PENDING */}
+          {/* ── State: VOICE_JOINING ─────────────────────────────── */}
+          {status === 'VOICE_JOINING' && (
+            <div className="text-center py-8 space-y-4">
+              <div className="text-5xl animate-pulse">🎤</div>
+              <p className="text-white font-bold text-lg">Setting up call…</p>
+              <p className="text-slate-400 text-sm">Connecting to voice server</p>
+            </div>
+          )}
+
+          {/* ── State: VOICE_LIVE ────────────────────────────────── */}
+          {status === 'VOICE_LIVE' && (
+            <div className="text-center py-4 space-y-5">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold text-green-400 bg-green-400/10 border border-green-400/25">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-400" />
+                </span>
+                {voiceCall.isConnected ? 'Connected — Staff Joined' : 'Waiting for staff…'}
+              </div>
+
+              <div className="text-6xl">
+                {voiceCall.isMuted ? '🔇' : '🎤'}
+              </div>
+
+              <p className="text-slate-300 text-sm">
+                {voiceCall.isConnected
+                  ? 'You\'re speaking with Front Desk'
+                  : 'Staff has been alerted. Please wait…'}
+              </p>
+
+              <div className="flex gap-3 justify-center">
+                {/* Mute toggle */}
+                <button
+                  onClick={voiceCall.toggleMute}
+                  className="flex flex-col items-center gap-1 px-6 py-4 rounded-2xl text-sm font-bold transition-all active:scale-95"
+                  style={{
+                    background: voiceCall.isMuted ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.08)',
+                    border: `1px solid ${voiceCall.isMuted ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.15)'}`,
+                    color: voiceCall.isMuted ? '#f87171' : '#cbd5e1',
+                  }}
+                >
+                  <span className="text-xl">{voiceCall.isMuted ? '🔇' : '🎤'}</span>
+                  <span>{voiceCall.isMuted ? 'Unmute' : 'Mute'}</span>
+                </button>
+
+                {/* End call */}
+                <button
+                  onClick={handleEndLiveCall}
+                  className="flex flex-col items-center gap-1 px-6 py-4 rounded-2xl text-sm font-bold transition-all active:scale-95"
+                  style={{
+                    background: 'rgba(239,68,68,0.2)',
+                    border: '1px solid rgba(239,68,68,0.4)',
+                    color: '#f87171',
+                  }}
+                >
+                  <span className="text-xl">📵</span>
+                  <span>End Call</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── State: VOICE_ENDED ───────────────────────────────── */}
+          {status === 'VOICE_ENDED' && (
+            <div className="text-center py-6 space-y-4 animate-fade-in">
+              <div className="text-5xl">📵</div>
+              <p className="text-white font-bold text-lg">Call Ended</p>
+              <button
+                onClick={onClose}
+                className="w-full py-4 rounded-2xl font-bold text-slate-200 bg-white/8 hover:bg-white/15 transition-all active:scale-95 min-h-[56px]"
+              >
+                Close
+              </button>
+            </div>
+          )}
+
+          {/* ── State: PENDING (callback) ────────────────────────── */}
           {status === 'PENDING' && (
             <div className="text-center py-6 space-y-5">
               <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full text-sm font-bold text-amber-400 bg-amber-400/10 border border-amber-400/25">
@@ -217,7 +391,7 @@ export default function CallFrontDeskModal({
             </div>
           )}
 
-          {/* State 3: CLAIMED */}
+          {/* ── State: CLAIMED ───────────────────────────────────── */}
           {status === 'CLAIMED' && (
             <div className="text-center py-6 space-y-5 animate-fade-in">
               <div className="w-20 h-20 rounded-full mx-auto flex items-center justify-center text-4xl bg-green-500/20 border-2 border-green-500/50 text-green-400 shadow-xl">
@@ -243,7 +417,7 @@ export default function CallFrontDeskModal({
             </div>
           )}
 
-          {/* State 4: FAILED */}
+          {/* ── State: FAILED ────────────────────────────────────── */}
           {status === 'FAILED' && (
             <div className="text-center py-6 space-y-4">
               <div className="text-4xl">⚠️</div>

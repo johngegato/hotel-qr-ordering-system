@@ -334,7 +334,7 @@ export function canRoleReceiveNotification(
     case 'MAINTENANCE':
       return rType === 'TASK'
     case 'FRONT_DESK':
-      return rType === 'CALL_REQUEST' || rType === 'TASK'
+      return rType === 'CALL_REQUEST' || rType === 'LIVE_CALL' || rType === 'TASK'
     default:
       return true
   }

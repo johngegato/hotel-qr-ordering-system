@@ -9,6 +9,12 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
 - [x] Run local builds:
   - Staff app type check: `tsc --noEmit` in `apps/staff-app` ✅
   - Web app build: `npm run build` in `apps/web` ✅
+- [x] 2-Way Live Voice Calling via Agora RTC:
+  - Database schema: `21_live_call_channel.sql` (`agora_channel` on `requests` table).
+  - Server token endpoint: `apps/web/app/api/agora/token/route.ts` using `agora-access-token`.
+  - Guest Web client: `GuestVoiceCallEngine.tsx` & `CallFrontDeskModal.tsx` Live Voice Call CTA.
+  - Staff App client: `useStaffVoiceCall.ts`, `IncomingLiveCallAlert.tsx`, `ActiveCallBar.tsx`, and `App.tsx` integration.
+  - Native permissions & config: `app.json` `react-native-agora` plugin + audio/Bluetooth permissions.
 - [x] OTA Auto-Updates in `staff-app` via `expo-updates`:
   - `app.json` updates configuration (`checkAutomatically: "ON_LOAD"`, `fallbackToCacheTimeout: 0`, `runtimeVersion: { policy: "appVersion" }`).
   - `apps/staff-app/lib/useAutoUpdate.ts` custom hook monitoring launch & `AppState` foreground events.

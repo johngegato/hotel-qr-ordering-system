@@ -24,6 +24,9 @@ import { StaffUser } from './components/UserManagement'
 import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
 import IncomingRequestAlert, { type IncomingRequest } from './components/IncomingRequestAlert'
+import IncomingLiveCallAlert from './components/IncomingLiveCallAlert'
+import ActiveCallBar from './components/ActiveCallBar'
+import { useStaffVoiceCall } from './lib/useStaffVoiceCall'
 import PendingRequestsReminderModal, { type PendingRequestItem } from './components/PendingRequestsReminderModal'
 import PushDiagnosticsModal, { type PushLogItem } from './components/PushDiagnosticsModal'
 import {
@@ -311,6 +314,74 @@ function MainAppContent() {
   }, [activeStaffUser])
   const [isRestoringSession, setIsRestoringSession] = useState(true)
   const [incomingAlert, setIncomingAlert] = useState<IncomingRequest | null>(null)
+  const [incomingLiveCall, setIncomingLiveCall] = useState<{
+    requestId: string
+    roomNumber: string
+    channel: string
+  } | null>(null)
+  const [activeCallRoom, setActiveCallRoom] = useState<string | null>(null)
+  const [activeCallRequestId, setActiveCallRequestId] = useState<string | null>(null)
+
+  const AGORA_APP_ID = process.env.EXPO_PUBLIC_AGORA_APP_ID ?? ''
+
+  const staffVoiceCall = useStaffVoiceCall({
+    onCallEnded: () => {
+      setActiveCallRoom(null)
+      setActiveCallRequestId(null)
+    },
+  })
+
+  const handleAnswerLiveCall = useCallback(
+    async (channel: string, reqId: string) => {
+      try {
+        setIncomingLiveCall(null)
+        setActiveCallRequestId(reqId)
+
+        // Lookup room number for display
+        const { data: req } = await supabase
+          .from('requests')
+          .select('*, rooms(room_number)')
+          .eq('id', reqId)
+          .maybeSingle()
+
+        const roomNum =
+          (req?.rooms as any)?.room_number ||
+          (req?.payload as any)?.room_number ||
+          'Guest'
+        setActiveCallRoom(String(roomNum))
+
+        // Join Agora voice channel as staff (UID 2)
+        await staffVoiceCall.joinChannel(channel, null, AGORA_APP_ID)
+
+        // Mark request status as LIVE
+        await supabase.from('requests').update({ status: 'LIVE' }).eq('id', reqId)
+      } catch (err) {
+        console.error('[App] Answer live call error:', err)
+        Alert.alert('Call Failed', 'Could not connect to live voice call.')
+      }
+    },
+    [AGORA_APP_ID, staffVoiceCall]
+  )
+
+  const handleDeclineLiveCall = useCallback(async (reqId: string) => {
+    setIncomingLiveCall(null)
+    try {
+      await supabase.from('requests').update({ status: 'DECLINED' }).eq('id', reqId)
+    } catch (err) {
+      console.warn('[App] Decline live call error:', err)
+    }
+  }, [])
+
+  const handleEndStaffCall = useCallback(async () => {
+    const reqId = activeCallRequestId
+    await staffVoiceCall.leaveChannel()
+    setActiveCallRoom(null)
+    setActiveCallRequestId(null)
+    if (reqId) {
+      await supabase.from('requests').update({ status: 'RESOLVED' }).eq('id', reqId)
+    }
+  }, [activeCallRequestId, staffVoiceCall])
+
   const [unhandledPendingList, setUnhandledPendingList] = useState<PendingRequestItem[] | null>(null)
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
@@ -725,6 +796,16 @@ function MainAppContent() {
             .eq('id', data.requestId)
             .maybeSingle()
           if (req) {
+            if (req.request_type === 'LIVE_CALL') {
+              const ch = data?.agoraChannel || req.agora_channel || (req.payload as any)?.channel || `room-${req.room_id}`
+              const rN = (req.rooms as any)?.room_number || (req.payload as any)?.room_number || 'Room'
+              setIncomingLiveCall({
+                requestId: req.id,
+                roomNumber: String(rN),
+                channel: ch,
+              })
+              return
+            }
             const nextReq = await hydrateIncomingAlert(req)
             if (nextReq) {
               setIncomingAlert(nextReq)
@@ -770,6 +851,16 @@ function MainAppContent() {
             .eq('id', data.requestId)
             .maybeSingle()
           if (req) {
+            if (req.request_type === 'LIVE_CALL') {
+              const ch = data?.agoraChannel || req.agora_channel || (req.payload as any)?.channel || `room-${req.room_id}`
+              const rN = (req.rooms as any)?.room_number || (req.payload as any)?.room_number || 'Room'
+              setIncomingLiveCall({
+                requestId: req.id,
+                roomNumber: String(rN),
+                channel: ch,
+              })
+              return
+            }
             const nextReq = await hydrateIncomingAlert(req)
             if (nextReq) {
               setIncomingAlert(nextReq)
@@ -912,6 +1003,27 @@ function MainAppContent() {
             alertedRequestIdsRef.current = new Set(arr.slice(-100))
           }
 
+          if (reqType === 'LIVE_CALL') {
+            const ch = (payload.new as any)?.agora_channel || (payload.new as any)?.payload?.channel || `room-${(payload.new as any)?.room_id}`
+            const rNum = (payload.new as any)?.payload?.room_number || 'Room'
+            setIncomingLiveCall({
+              requestId: reqId,
+              roomNumber: String(rNum),
+              channel: ch,
+            })
+            if (notificationSettingsRef.current?.enable_sound_alert !== false) {
+              triggerAlarmNotification({
+                title: '📞 Incoming Live Voice Call',
+                body: `Room ${rNum} is calling live! Tap to answer.`,
+                requestId: reqId,
+                roomNumber: String(rNum),
+                requestType: 'LIVE_CALL',
+                payloadData: (payload.new as any)?.payload,
+              })
+            }
+            return
+          }
+
           hydrateIncomingAlert(payload.new as any)
             .then((nextRequest) => {
               if (nextRequest) {
@@ -1027,24 +1139,18 @@ function MainAppContent() {
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
 
-      {/* ⚠️ Aggressive incoming request alert */}
-      <IncomingRequestAlert
-        request={incomingAlert}
-        onDismiss={() => {
-          setIncomingAlert(null)
-          setRefreshKey(k => k + 1)
-        }}
-      />
-
-      {/* 🔔 5-Minute Recurring Reminder for Unhandled Pending Requests */}
-      <PendingRequestsReminderModal
-        pendingRequests={unhandledPendingList}
-        onDismiss={() => {
-          lastDismissedReminderAtRef.current = Date.now()
-          setUnhandledPendingList(null)
-          setRefreshKey(k => k + 1)
-        }}
-      />
+      {/* 🎤 Active Agora Voice Call Floating Bar */}
+      {staffVoiceCall.isConnected && (
+        <ActiveCallBar
+          roomNumber={activeCallRoom || 'Guest'}
+          callDurationSeconds={staffVoiceCall.callDurationSeconds}
+          isMuted={staffVoiceCall.isMuted}
+          isSpeakerOn={staffVoiceCall.isSpeakerOn}
+          onToggleMute={staffVoiceCall.toggleMute}
+          onToggleSpeaker={staffVoiceCall.toggleSpeaker}
+          onEndCall={handleEndStaffCall}
+        />
+      )}
 
       {/* 📡 FCM Push & Background Diagnostics Modal */}
       <PushDiagnosticsModal
@@ -1226,6 +1332,17 @@ function MainAppContent() {
           {pushToken && !pushToken.startsWith('web_pwa_') && !pushToken.startsWith('expo_local_') ? 'FCM ✓' : 'FCM'}
         </Text>
       </TouchableOpacity>
+
+      {/* 📞 Incoming Live Voice Call Overlay Alert */}
+      {incomingLiveCall && (
+        <IncomingLiveCallAlert
+          roomNumber={incomingLiveCall.roomNumber}
+          channel={incomingLiveCall.channel}
+          requestId={incomingLiveCall.requestId}
+          onAnswer={handleAnswerLiveCall}
+          onDecline={handleDeclineLiveCall}
+        />
+      )}
 
       {/* 🚨 Incoming Request Aggressive Alert Modal */}
       <IncomingRequestAlert
