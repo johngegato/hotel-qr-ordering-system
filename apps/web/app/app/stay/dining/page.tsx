@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { CatalogItem, CartItem, DietaryTag, MenuCategory } from '@hotel-qr/supabase/types'
 import FrontDeskFAB from '../components/FrontDeskFAB'
+import FnBDiningFAB from '../components/FnBDiningFAB'
 
 const CART_KEY = 'hotel_qr_cart'
 
@@ -791,7 +792,8 @@ function GuestDiningContent() {
         </div>
       )}
 
-      {/* Floating Front Desk FAB */}
+      {/* Floating F&B Direct Call FAB & Front Desk FAB */}
+      <FnBDiningFAB hotelId={HOTEL_ID} />
       <FrontDeskFAB roomId={roomId} roomNumber={roomId} />
 
     </div>

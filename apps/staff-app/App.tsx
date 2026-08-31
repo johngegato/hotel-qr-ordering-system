@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Alert,
   StyleSheet,
@@ -297,6 +297,10 @@ function MainAppContent() {
   const [totalRequests, setTotalRequests] = useState(0)
   const [resolvedToday, setResolvedToday] = useState(0)
   const [activeStaffUser, setActiveStaffUser] = useState<StaffUser | null>(null)
+  const activeStaffUserRef = useRef<StaffUser | null>(null)
+  useEffect(() => {
+    activeStaffUserRef.current = activeStaffUser
+  }, [activeStaffUser])
   const [isRestoringSession, setIsRestoringSession] = useState(true)
   const [incomingAlert, setIncomingAlert] = useState<IncomingRequest | null>(null)
   const [unhandledPendingList, setUnhandledPendingList] = useState<PendingRequestItem[] | null>(null)
@@ -375,11 +379,15 @@ function MainAppContent() {
         return
       }
 
+      const allowedTypes = activeStaffUser?.role === 'KITCHEN'
+        ? ['FOOD_ORDER']
+        : ['CALL_REQUEST', 'SPA_BOOKING', 'TASK', 'FOOD_ORDER']
+
       const { data, error } = await supabase
         .from('requests')
         .select('id, request_type, status, payload, created_at, room_id, rooms(room_number)')
         .eq('hotel_id', HOTEL_ID)
-        .in('request_type', ['CALL_REQUEST', 'SPA_BOOKING', 'TASK', 'FOOD_ORDER'])
+        .in('request_type', allowedTypes)
         .in('status', ['PENDING', 'PENDING_ON_CALL'])
         .order('created_at', { ascending: true })
 
@@ -408,7 +416,7 @@ function MainAppContent() {
     } catch (err) {
       console.warn('[PendingReminder] Check error:', err)
     }
-  }, [HOTEL_ID])
+  }, [HOTEL_ID, activeStaffUser?.role])
 
   const fetchStats = async () => {
     const todayStart = new Date()
@@ -825,7 +833,15 @@ function MainAppContent() {
         }
         // Fire aggressive alert on every new PENDING or PENDING_ON_CALL request
         const isNewPending = (payload.new as any)?.status === 'PENDING' || (payload.new as any)?.status === 'PENDING_ON_CALL'
+        const reqType = (payload.new as any)?.request_type
+        const isKitchenStaff = activeStaffUserRef.current?.role === 'KITCHEN'
+
         if (payload.eventType === 'INSERT' && isNewPending) {
+          // If logged in as KITCHEN, suppress popups/alarms for non-dining requests
+          if (isKitchenStaff && reqType && reqType !== 'FOOD_ORDER') {
+            return
+          }
+
           hydrateIncomingAlert(payload.new as any)
             .then((nextRequest) => {
               if (nextRequest) {
@@ -974,10 +990,14 @@ function MainAppContent() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <Text style={styles.headerIcon}>🏨</Text>
+            <Text style={styles.headerIcon}>{activeStaffUser?.role === 'KITCHEN' ? '🍳' : '🏨'}</Text>
             <View style={styles.headerMeta}>
-              <Text style={styles.headerTitle}>Front Desk</Text>
-              <Text style={styles.headerSubtitle}>Tablet Interface</Text>
+              <Text style={styles.headerTitle}>
+                {activeStaffUser?.role === 'KITCHEN' ? 'F&B Kitchen' : 'Front Desk'}
+              </Text>
+              <Text style={styles.headerSubtitle}>
+                {activeStaffUser?.role === 'KITCHEN' ? 'Kitchen & Room Service Portal' : 'Tablet Interface'}
+              </Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <TouchableOpacity
@@ -1015,7 +1035,9 @@ function MainAppContent() {
             {/* Hotel Card */}
             <View style={styles.hotelCard}>
               <View style={styles.hotelCardHeader}>
-                <Text style={styles.hotelCardLabel}>Active Property</Text>
+                <Text style={styles.hotelCardLabel}>
+                  {activeStaffUser?.role === 'KITCHEN' ? 'F&B Station' : 'Active Property'}
+                </Text>
                 <View style={styles.activePill}>
                   <Text style={styles.activePillText}>LIVE</Text>
                 </View>
@@ -1027,23 +1049,37 @@ function MainAppContent() {
 
               {/* Stats */}
               <View style={styles.statsRow}>
-                <StatCard icon="🚪" label="Rooms" value={String(roomCount)} />
-                <View style={styles.statsDivider} />
-                <StatCard icon="📋" label="Requests Today" value={String(totalRequests)} />
-                <View style={styles.statsDivider} />
-                <StatCard icon="✅" label="Resolved Today" value={String(resolvedToday)} />
+                {activeStaffUser?.role === 'KITCHEN' ? (
+                  <>
+                    <StatCard icon="🍽️" label="Pending Orders" value={String(pendingFood)} />
+                    <View style={styles.statsDivider} />
+                    <StatCard icon="📋" label="Orders Today" value={String(totalRequests)} />
+                    <View style={styles.statsDivider} />
+                    <StatCard icon="✅" label="Resolved Today" value={String(resolvedToday)} />
+                  </>
+                ) : (
+                  <>
+                    <StatCard icon="🚪" label="Rooms" value={String(roomCount)} />
+                    <View style={styles.statsDivider} />
+                    <StatCard icon="📋" label="Requests Today" value={String(totalRequests)} />
+                    <View style={styles.statsDivider} />
+                    <StatCard icon="✅" label="Resolved Today" value={String(resolvedToday)} />
+                  </>
+                )}
               </View>
             </View>
 
             {/* Module Cards */}
             <Text style={styles.sectionTitle}>Modules</Text>
             <View style={styles.moduleGrid}>
-              {[
+              {(activeStaffUser?.role === 'KITCHEN' ? [
+                { icon: '🍽️', label: 'Food Orders', badge: String(pendingFood), color: '#34d399' },
+              ] : [
                 { icon: '📞', label: 'Call Queue',   badge: String(pendingCalls), color: COLORS.gold },
                 { icon: '💆', label: 'Spa Bookings', badge: String(pendingSpa),   color: '#a78bfa' },
                 { icon: '🍽️', label: 'Food Orders',  badge: String(pendingFood),  color: '#34d399' },
                 { icon: '🛎️', label: 'Room Tasks',   badge: String(pendingTasks), color: '#60a5fa' },
-              ].map((mod) => (
+              ]).map((mod) => (
                 <TouchableOpacity
                   key={mod.label}
                   style={styles.moduleCard}
@@ -1063,18 +1099,23 @@ function MainAppContent() {
               ))}
             </View>
 
-            {/* 1. Dedicated Call Requests Module & Real-time Call Queue */}
-            <DedicatedCallModule activeStaffId={activeStaffUser?.id || undefined} refreshTrigger={refreshKey} />
-            <CallQueue activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
+            {/* Non-Kitchen modules restricted for KITCHEN role */}
+            {activeStaffUser?.role !== 'KITCHEN' && (
+              <>
+                {/* 1. Dedicated Call Requests Module & Real-time Call Queue */}
+                <DedicatedCallModule activeStaffId={activeStaffUser?.id || undefined} refreshTrigger={refreshKey} />
+                <CallQueue activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
 
-            {/* 2. Spa Timetable & Appointments Queue */}
-            <SpaTimetable activeStaffUser={activeStaffUser} activeStaffId={activeStaffUser?.id} />
-            <SpaQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} refreshTrigger={refreshKey} />
+                {/* 2. Spa Timetable & Appointments Queue */}
+                <SpaTimetable activeStaffUser={activeStaffUser} activeStaffId={activeStaffUser?.id} />
+                <SpaQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} refreshTrigger={refreshKey} />
 
-            {/* 3. Room Task Queue */}
-            <TaskQueue activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
+                {/* 3. Room Task Queue */}
+                <TaskQueue activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
+              </>
+            )}
 
-            {/* 4. Food Orders Queue */}
+            {/* 4. Food Orders Queue (Always visible to Kitchen, Admin, Front Desk) */}
             <FoodQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} refreshTrigger={refreshKey} />
 
             {/* 5. All Request History Logs */}

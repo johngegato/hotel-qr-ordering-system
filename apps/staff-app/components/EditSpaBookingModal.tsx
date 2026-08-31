@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
+  Linking,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
 import { StaffUser } from './UserManagement'
@@ -659,8 +660,21 @@ export default function EditSpaBookingModal({
 
           {/* ── Guest Contact ── */}
           <View style={styles.contactBanner}>
-            <Text style={styles.contactLabel}>📞 Guest Contact</Text>
-            <Text style={styles.contactPhone}>{booking.guestPhone || 'Not provided'}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.contactLabel}>📞 Guest Contact</Text>
+              <Text style={styles.contactPhone}>{booking.guestPhone || 'Not provided'}</Text>
+            </View>
+            {booking.guestPhone ? (
+              <TouchableOpacity
+                style={styles.callGuestModalBtn}
+                onPress={() => Linking.openURL(`tel:${booking.guestPhone}`).catch(() => Alert.alert('Call', `Dialing ${booking.guestPhone}`))}>
+                <Text style={styles.callGuestModalBtnText}>📞 Call Guest</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={[styles.callGuestModalBtn, styles.callGuestModalBtnDisabled]} disabled>
+                <Text style={styles.callGuestModalBtnDisabledText}>📞 No Phone</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <ScrollView
@@ -958,6 +972,30 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  callGuestModalBtn: {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    borderColor: 'rgba(96, 165, 250, 0.4)',
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  callGuestModalBtnText: {
+    color: '#93c5fd',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  callGuestModalBtnDisabled: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  callGuestModalBtnDisabledText: {
+    color: 'rgba(255, 255, 255, 0.3)',
+    fontWeight: '600',
+    fontSize: 11,
   },
   sectionLabel: {
     color: '#64748b',

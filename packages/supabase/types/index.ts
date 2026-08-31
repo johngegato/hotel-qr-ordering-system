@@ -15,8 +15,11 @@ export interface Hotel {
   name: string
   address: string | null
   phone: string | null
+  fnb_phone_number?: string | null
   logo_url: string | null
   color_scheme: string | null
+  service_charge_enabled?: boolean
+  service_charge_pct?: number
   created_at: string
 }
 

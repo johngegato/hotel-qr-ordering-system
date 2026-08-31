@@ -341,7 +341,11 @@ export default function SpaQueue({
                     >
                       <Text style={styles.callBtnText}>📞 Call</Text>
                     </TouchableOpacity>
-                  ) : null}
+                  ) : (
+                    <TouchableOpacity style={[styles.callBtn, styles.callBtnDisabled]} disabled>
+                      <Text style={styles.callBtnDisabledText}>📞 No Phone</Text>
+                    </TouchableOpacity>
+                  )}
 
                   <TouchableOpacity
                     style={[styles.declineBtn, isProcessing && styles.btnDisabled]}
@@ -642,6 +646,15 @@ const styles = StyleSheet.create({
     color: '#93c5fd',
     fontWeight: '700',
     fontSize: 12,
+  },
+  callBtnDisabled: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  callBtnDisabledText: {
+    color: 'rgba(255, 255, 255, 0.3)',
+    fontWeight: '600',
+    fontSize: 11,
   },
   declineBtn: {
     flex: 1,
