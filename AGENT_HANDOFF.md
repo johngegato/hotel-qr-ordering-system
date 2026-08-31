@@ -14,6 +14,23 @@ Key goals
 - Fix actor attribution bug in RequestHistory showing guest names with STAFF role badge.
 
 Recent session additions:
+- Database & Schema (Migration 20): Created `20_notification_settings.sql` in both `packages/supabase/migrations/` and `apps/web/supabase/migrations/`.
+  - Added unique partial index `idx_staff_users_push_token_unique` on `staff_users(push_token) WHERE push_token IS NOT NULL` preventing token duplicates across multiple accounts on shared devices.
+  - Created `notification_settings` table (`hotel_id`, `reminder_interval_minutes`, `enable_sound_alert`, `max_alert_duration_seconds`, `fnb_allowed_types`, `frontdesk_allowed_types`, `spa_allowed_types`) with default seed row for default hotel and RLS policies.
+- Staff App Token Lifecycle Cleansing (`apps/staff-app/lib/notifications.ts` & `App.tsx`):
+  - Added `bindPushTokenToStaffUser`: unlinks device token from any other accounts before assigning to current user.
+  - Added `clearPushTokenFromStaffUser`: nullifies `push_token` on logout to prevent orphaned push delivery to logged-out users.
+  - Wired into `handleLogout` and push registration lifecycle.
+- Role-Based Notification Routing & Deduplication (`apps/staff-app/` & `apps/web/`):
+  - Added `canRoleReceiveNotification` helper in `notifications.ts` and `App.tsx`.
+  - Added `alertedRequestIdsRef` deduplication cache in `App.tsx` suppressing duplicate alarms for the same request ID.
+  - Updated `apps/staff-app/components/IncomingRequestAlert.tsx` with `enableSound` and `maxDurationSeconds` props, auto-stopping loop and dismissing according to configured duration.
+  - Updated `apps/web/lib/webPush.ts`: Added role-targeted staff filtering based on request type (`FOOD_ORDER` $\rightarrow$ F&B, `CALL_REQUEST`/`TASK` $\rightarrow$ Front Desk/Housekeeping, `SPA_BOOKING` $\rightarrow$ Spa, `ADMIN`/`MANAGER` $\rightarrow$ All).
+- Automated Database Webhook Endpoint (`apps/web/app/api/push/webhook/route.ts` [NEW]):
+  - Webhook route for Supabase Database Webhooks / database triggers on `requests` INSERT, resolving room number and dispatching high-priority push notifications to role-targeted staff devices.
+- Admin Notification Settings Controls (`apps/web/app/admin/settings/page.tsx`):
+  - Added "Staff Push & Alarm Controls" panel: reminder interval dropdown (1m, 2m, 5m, 10m, 15m, disabled), audio alarm toggle, max alarm ring duration slider (10s-120s), role routing matrix with department checkboxes, and instant test push dispatcher (`🔔 Send Test Notification`).
+  - Saves to `notification_settings` and logs to `audit_logs`.
 - Database & Schema (Migration 19): Added `fnb_phone_number` (TEXT) to `hotels` table in both `packages/supabase/migrations/19_fnb_phone_number.sql` and `apps/web/supabase/migrations/19_fnb_phone_number.sql`. Updated `Hotel` interface in `packages/supabase/types/index.ts`.
 - apps/web/app/admin/settings/page.tsx: Added F&B Direct Phone Number field to Admin Settings with live fetching, persistent save to `hotels` table, and audit trail logging.
 - apps/web/app/app/stay/components/FnBDiningFAB.tsx [NEW] & dining/page.tsx: Created persistent floating action button (FAB) for direct calling F&B with dynamic phone loading from hotel record.

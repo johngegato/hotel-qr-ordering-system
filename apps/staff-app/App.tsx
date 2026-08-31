@@ -32,6 +32,10 @@ import {
   triggerAlarmNotification,
   addNotificationResponseListener,
   addNotificationReceivedListener,
+  bindPushTokenToStaffUser,
+  clearPushTokenFromStaffUser,
+  canRoleReceiveNotification,
+  type NotificationSettings,
 } from './lib/notifications'
 import {
   createNotifeeChannels,
@@ -311,8 +315,31 @@ function MainAppContent() {
   const fadeAnim = React.useRef(new Animated.Value(0)).current
   const slideAnim = React.useRef(new Animated.Value(30)).current
   const lastDismissedReminderAtRef = React.useRef<number>(0)
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null)
+  const notificationSettingsRef = useRef<NotificationSettings | null>(null)
+  useEffect(() => {
+    notificationSettingsRef.current = notificationSettings
+  }, [notificationSettings])
+
+  const alertedRequestIdsRef = useRef<Set<string>>(new Set())
 
   const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
+
+  // ─── Fetch Hotel Notification Settings ───────────────────────
+  const fetchNotificationSettings = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('notification_settings')
+        .select('*')
+        .eq('hotel_id', HOTEL_ID)
+        .maybeSingle()
+      if (!error && data) {
+        setNotificationSettings(data as NotificationSettings)
+      }
+    } catch (err) {
+      console.warn('[App] fetchNotificationSettings caught:', err)
+    }
+  }, [HOTEL_ID])
 
   // ─── Auto-Login / Restore Saved Session on App Startup ──────
   useEffect(() => {
@@ -320,6 +347,7 @@ function MainAppContent() {
 
     async function restoreSession() {
       try {
+        fetchNotificationSettings()
         const savedUser = await getSavedStaffSession()
         if (savedUser && isMounted) {
           setActiveStaffUser(savedUser)
@@ -367,21 +395,34 @@ function MainAppContent() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [fetchNotificationSettings])
 
-  // ─── 5-Minute Recurring Check for Unhandled Requests ────────
+  // ─── Dynamic Recurring Check for Unhandled Requests ─────────
   const checkUnhandledRequests = useCallback(async (isScheduledOrInitial = false) => {
     try {
-      const now = Date.now()
-      const timeSinceDismissed = now - lastDismissedReminderAtRef.current
-      // If user acknowledged within the last 5 minutes (300,000 ms), do NOT re-show popup unless 5-min timer explicitly fired
-      if (!isScheduledOrInitial && timeSinceDismissed < 5 * 60 * 1000) {
+      const settings = notificationSettingsRef.current
+      const intervalMins = settings?.reminder_interval_minutes ?? 5
+      // If reminder interval is disabled (0), skip recurring reminders
+      if (intervalMins <= 0) {
+        setUnhandledPendingList(null)
         return
       }
 
-      const allowedTypes = activeStaffUser?.role === 'KITCHEN'
-        ? ['FOOD_ORDER']
-        : ['CALL_REQUEST', 'SPA_BOOKING', 'TASK', 'FOOD_ORDER']
+      const now = Date.now()
+      const timeSinceDismissed = now - lastDismissedReminderAtRef.current
+      const intervalMs = intervalMins * 60 * 1000
+      if (!isScheduledOrInitial && timeSinceDismissed < intervalMs) {
+        return
+      }
+
+      const userRole = activeStaffUserRef.current?.role
+      const allTypes = ['CALL_REQUEST', 'SPA_BOOKING', 'TASK', 'FOOD_ORDER']
+      const allowedTypes = allTypes.filter((t) => canRoleReceiveNotification(userRole, t, settings))
+
+      if (allowedTypes.length === 0) {
+        setUnhandledPendingList(null)
+        return
+      }
 
       const { data, error } = await supabase
         .from('requests')
@@ -397,10 +438,10 @@ function MainAppContent() {
       }
 
       if (data && data.length > 0) {
-        if (isScheduledOrInitial || timeSinceDismissed >= 5 * 60 * 1000) {
+        if (isScheduledOrInitial || timeSinceDismissed >= intervalMs) {
           setUnhandledPendingList(data as PendingRequestItem[])
           // Trigger aggressive alarm notification if on mobile/tablet
-          if (Platform.OS !== 'web') {
+          if (Platform.OS !== 'web' && settings?.enable_sound_alert !== false) {
             triggerAlarmNotification({
               title: `${data.length} Unhandled Requests Pending`,
               body: `Reminder: ${data.length} pending guest requests require staff attention!`,
@@ -416,7 +457,7 @@ function MainAppContent() {
     } catch (err) {
       console.warn('[PendingReminder] Check error:', err)
     }
-  }, [HOTEL_ID, activeStaffUser?.role])
+  }, [HOTEL_ID])
 
   const fetchStats = async () => {
     const todayStart = new Date()
@@ -581,6 +622,9 @@ function MainAppContent() {
   }, [loginEmail, loginPassword])
 
   const handleLogout = async () => {
+    if (activeStaffUser?.id) {
+      await clearPushTokenFromStaffUser(supabase, activeStaffUser.id)
+    }
     try {
       await clearStaffSession()
     } catch (err) {
@@ -755,15 +799,10 @@ function MainAppContent() {
       })
 
       registerForPushNotifications()
-        .then((token) => {
-          if (token) {
+        .then(async (token) => {
+          if (token && activeStaffUser?.id) {
             setPushToken(token)
-            Promise.resolve(
-              supabase
-                .from('staff_users')
-                .update({ push_token: token } as any)
-                .eq('id', activeStaffUser.id)
-            ).catch(() => {})
+            await bindPushTokenToStaffUser(supabase, activeStaffUser.id, token)
           }
         })
         .catch((err) => {
@@ -774,20 +813,26 @@ function MainAppContent() {
     }
   }, [activeStaffUser?.id])
 
-  // ─── 5-Minute Recurring Interval for Unhandled Pending Requests ──
+  // ─── Dynamic Recurring Interval for Unhandled Pending Requests ──
   useEffect(() => {
     if (!activeStaffUser) return
+
+    const intervalMins = notificationSettings?.reminder_interval_minutes ?? 5
+    if (intervalMins <= 0) {
+      setUnhandledPendingList(null)
+      return
+    }
 
     // Run check immediately on login / mount
     checkUnhandledRequests(true)
 
-    // Setup 5-minute recurring timer (300,000 ms)
+    // Setup dynamic recurring timer
     const timer = setInterval(() => {
       checkUnhandledRequests(true)
-    }, 5 * 60 * 1000)
+    }, intervalMins * 60 * 1000)
 
     return () => clearInterval(timer)
-  }, [activeStaffUser, checkUnhandledRequests])
+  }, [activeStaffUser, checkUnhandledRequests, notificationSettings?.reminder_interval_minutes])
 
   // ─── Automated Polling & Focus Synchronization for Top-Level Stats & Queues ──
   useAutoSync(
@@ -815,7 +860,17 @@ function MainAppContent() {
   useEffect(() => {
     fetchData()
 
-    // Subscribe to ALL requests changes to keep stats and queues live
+    // 1. Subscribe to notification_settings changes
+    const settingsChannel = supabase
+      .channel('app-notification-settings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notification_settings' }, (payload) => {
+        if (payload.new) {
+          setNotificationSettings(payload.new as NotificationSettings)
+        }
+      })
+      .subscribe()
+
+    // 2. Subscribe to ALL requests changes to keep stats and queues live
     const channel = supabase
       .channel('app-stats')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
@@ -834,12 +889,23 @@ function MainAppContent() {
         // Fire aggressive alert on every new PENDING or PENDING_ON_CALL request
         const isNewPending = (payload.new as any)?.status === 'PENDING' || (payload.new as any)?.status === 'PENDING_ON_CALL'
         const reqType = (payload.new as any)?.request_type
-        const isKitchenStaff = activeStaffUserRef.current?.role === 'KITCHEN'
+        const userRole = activeStaffUserRef.current?.role
+        const reqId = (payload.new as any)?.id
 
-        if (payload.eventType === 'INSERT' && isNewPending) {
-          // If logged in as KITCHEN, suppress popups/alarms for non-dining requests
-          if (isKitchenStaff && reqType && reqType !== 'FOOD_ORDER') {
+        if (payload.eventType === 'INSERT' && isNewPending && reqId) {
+          // Role-based notification permission check
+          if (!canRoleReceiveNotification(userRole, reqType, notificationSettingsRef.current)) {
             return
+          }
+
+          // Alert deduplication: suppress duplicate alarm triggers for the same request ID
+          if (alertedRequestIdsRef.current.has(reqId)) {
+            return
+          }
+          alertedRequestIdsRef.current.add(reqId)
+          if (alertedRequestIdsRef.current.size > 200) {
+            const arr = Array.from(alertedRequestIdsRef.current)
+            alertedRequestIdsRef.current = new Set(arr.slice(-100))
           }
 
           hydrateIncomingAlert(payload.new as any)
@@ -849,14 +915,17 @@ function MainAppContent() {
                 // Fire aggressive Full-Screen Intent alarm (Notifee: wakes screen, loops alarm)
                 const rType = nextRequest.request_type || 'REQUEST'
                 const rNum = (nextRequest.payload as any)?.room_number || 'Room'
-                triggerAlarmNotification({
-                  title: `Incoming ${rType.replace('_', ' ')}`,
-                  body: `${rNum} submitted a new request requiring immediate staff attention!`,
-                  requestId: nextRequest.id,
-                  roomNumber: rNum,
-                  requestType: rType,
-                  payloadData: nextRequest.payload as any,
-                })
+                const soundEnabled = notificationSettingsRef.current?.enable_sound_alert !== false
+                if (soundEnabled) {
+                  triggerAlarmNotification({
+                    title: `Incoming ${rType.replace('_', ' ')}`,
+                    body: `${rNum} submitted a new request requiring immediate staff attention!`,
+                    requestId: nextRequest.id,
+                    roomNumber: rNum,
+                    requestType: rType,
+                    payloadData: nextRequest.payload as any,
+                  })
+                }
               }
             })
             .catch(() => {
@@ -871,7 +940,10 @@ function MainAppContent() {
         }
       })
 
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      supabase.removeChannel(channel)
+      supabase.removeChannel(settingsChannel)
+    }
   }, [])
 
   if (isRestoringSession) {
@@ -1150,6 +1222,44 @@ function MainAppContent() {
           {pushToken && !pushToken.startsWith('web_pwa_') && !pushToken.startsWith('expo_local_') ? 'FCM ✓' : 'FCM'}
         </Text>
       </TouchableOpacity>
+
+      {/* 🚨 Incoming Request Aggressive Alert Modal */}
+      <IncomingRequestAlert
+        request={incomingAlert}
+        onDismiss={() => setIncomingAlert(null)}
+        enableSound={notificationSettings?.enable_sound_alert !== false}
+        maxDurationSeconds={notificationSettings?.max_alert_duration_seconds || 30}
+      />
+
+      {/* ⏰ Dynamic Recurring Reminder Popup for Unhandled Requests */}
+      <PendingRequestsReminderModal
+        pendingRequests={unhandledPendingList}
+        onDismiss={() => {
+          lastDismissedReminderAtRef.current = Date.now()
+          setUnhandledPendingList(null)
+        }}
+      />
+
+      {/* 📡 Push Diagnostics & Logs Modal */}
+      <PushDiagnosticsModal
+        visible={showDiagnosticsModal}
+        onClose={() => setShowDiagnosticsModal(false)}
+        activeStaffUser={activeStaffUser}
+        pushToken={pushToken}
+        pushLogs={pushLogs}
+        onTriggerTestAlarm={() => {
+          triggerAlarmNotification({
+            title: '🔔 Test Alarm Triggered',
+            body: 'Manual test alarm executed successfully from diagnostics.',
+            requestId: 'test-' + Date.now(),
+            roomNumber: 'Test Room',
+            requestType: 'TEST',
+          })
+        }}
+        onCheckBattery={() => {
+          checkAndPromptBatteryOptimization().catch(() => {})
+        }}
+      />
 
     </SafeAreaView>
   )

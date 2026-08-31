@@ -275,6 +275,124 @@ export async function registerForPushNotifications(): Promise<string | null> {
   return null
 }
 
+// ─── Token Lifecycle & Cleansing Helpers ─────────────────────────────────────
+
+export interface NotificationSettings {
+  id?: string
+  hotel_id: string
+  reminder_interval_minutes: number
+  enable_sound_alert: boolean
+  max_alert_duration_seconds: number
+  fnb_allowed_types: string[]
+  frontdesk_allowed_types: string[]
+  spa_allowed_types: string[]
+  created_at?: string
+  updated_at?: string
+}
+
+/**
+ * Role-Based Notification Permission Check:
+ * Determines if a given staff role should receive alerts / push for a request type.
+ */
+export function canRoleReceiveNotification(
+  userRole?: string | null,
+  requestType?: string | null,
+  settings?: NotificationSettings | {
+    fnb_allowed_types?: string[]
+    frontdesk_allowed_types?: string[]
+    spa_allowed_types?: string[]
+  } | null
+): boolean {
+  if (!userRole || !requestType) return true
+  const role = String(userRole).toUpperCase()
+  const rType = String(requestType).toUpperCase()
+
+  // Admins and Managers receive all notifications
+  if (role === 'ADMIN' || role === 'MANAGER') return true
+
+  // If custom hotel notification_settings are available, check custom configured rules
+  if (settings) {
+    if ((role === 'KITCHEN' || role === 'FNB') && Array.isArray(settings.fnb_allowed_types) && settings.fnb_allowed_types.length > 0) {
+      return settings.fnb_allowed_types.includes(rType)
+    }
+    if ((role === 'FRONT_DESK' || role === 'HOUSEKEEPING' || role === 'MAINTENANCE') && Array.isArray(settings.frontdesk_allowed_types) && settings.frontdesk_allowed_types.length > 0) {
+      return settings.frontdesk_allowed_types.includes(rType)
+    }
+    if (role === 'SPA' && Array.isArray(settings.spa_allowed_types) && settings.spa_allowed_types.length > 0) {
+      return settings.spa_allowed_types.includes(rType)
+    }
+  }
+
+  // Default hardcoded routing rules
+  switch (role) {
+    case 'KITCHEN':
+    case 'FNB':
+      return rType === 'FOOD_ORDER'
+    case 'SPA':
+      return rType === 'SPA_BOOKING'
+    case 'HOUSEKEEPING':
+    case 'MAINTENANCE':
+      return rType === 'TASK'
+    case 'FRONT_DESK':
+      return rType === 'CALL_REQUEST' || rType === 'TASK'
+    default:
+      return true
+  }
+}
+
+/**
+ * Bind an active device push token to a staff user with strict 1:1 mapping.
+ * 1. Unlinks the token from any other staff accounts that previously used this physical device/browser.
+ * 2. Assigns the token to the newly logged-in userId.
+ */
+export async function bindPushTokenToStaffUser(
+  supabaseClient: any,
+  userId: string,
+  token: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!userId || !token) return { success: false, error: 'Missing userId or token' }
+  try {
+    // 1. Unbind token from any other accounts on this shared device
+    await supabaseClient
+      .from('staff_users')
+      .update({ push_token: null })
+      .eq('push_token', token)
+      .neq('id', userId)
+
+    // 2. Bind token to the current user
+    const { error } = await supabaseClient
+      .from('staff_users')
+      .update({ push_token: token })
+      .eq('id', userId)
+
+    if (error) throw error
+    console.log(`[Notifications] ✅ Push token successfully bound exclusively to staff user ${userId}`)
+    return { success: true }
+  } catch (err: any) {
+    console.warn('[Notifications] bindPushTokenToStaffUser error:', err?.message || err)
+    return { success: false, error: err?.message || String(err) }
+  }
+}
+
+/**
+ * Unbind and clean up push token from staff user upon logout.
+ */
+export async function clearPushTokenFromStaffUser(
+  supabaseClient: any,
+  userId: string
+): Promise<void> {
+  if (!userId) return
+  try {
+    await supabaseClient
+      .from('staff_users')
+      .update({ push_token: null })
+      .eq('id', userId)
+    console.log(`[Notifications] 🧹 Cleaned push_token to NULL for staff user ${userId} on logout`)
+  } catch (err) {
+    console.warn('[Notifications] clearPushTokenFromStaffUser caught:', err)
+  }
+}
+
 // ─── Alarm Trigger ─────────────────────────────────────────────────────────────
 
 /**

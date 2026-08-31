@@ -31,21 +31,30 @@ export interface IncomingRequest {
 interface IncomingRequestAlertProps {
   request: IncomingRequest | null
   onDismiss: () => void
+  enableSound?: boolean
+  maxDurationSeconds?: number
 }
 
 // Aggressive vibration: 4 long buzzes with short gaps
 const VIBE_PATTERN = [0, 400, 100, 400, 100, 400, 100, 600]
 
-export default function IncomingRequestAlert({ request, onDismiss }: IncomingRequestAlertProps) {
+export default function IncomingRequestAlert({
+  request,
+  onDismiss,
+  enableSound = true,
+  maxDurationSeconds = 30,
+}: IncomingRequestAlertProps) {
   const pulseAnim  = useRef(new Animated.Value(1)).current
   const flashAnim  = useRef(new Animated.Value(0)).current
   const slideAnim  = useRef(new Animated.Value(-60)).current
-  const [countdown, setCountdown] = useState(60)
+  const initialDuration = Math.max(5, maxDurationSeconds || 30)
+  const [countdown, setCountdown] = useState(initialDuration)
   const soundRef = useRef<Audio.Sound | null>(null)
 
   // ── Entrance animation + pulse + flash bg ─────────────────────────────────
   useEffect(() => {
     if (!request) return
+    setCountdown(initialDuration)
 
     // Slide-in
     Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 8 }).start()
@@ -79,22 +88,24 @@ export default function IncomingRequestAlert({ request, onDismiss }: IncomingReq
       // ignore haptics failures on unsupported platforms
     }
 
-    // Play built-in system alert sound (works without native build in Expo Go)
-    ;(async () => {
-      try {
-        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true })
-        const { sound } = await Audio.Sound.createAsync(
-          // Use Expo's built-in notification sound URL
-          { uri: 'https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg' },
-          { shouldPlay: true, isLooping: true, volume: 1.0 }
-        )
-        soundRef.current = sound
-      } catch {
-        // Fallback: just vibrate — no crash
-      }
-    })()
+    // Play built-in system alert sound (if enabled)
+    if (enableSound !== false) {
+      ;(async () => {
+        try {
+          await Audio.setAudioModeAsync({ playsInSilentModeIOS: true })
+          const { sound } = await Audio.Sound.createAsync(
+            // Use Expo's built-in notification sound URL
+            { uri: 'https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg' },
+            { shouldPlay: true, isLooping: true, volume: 1.0 }
+          )
+          soundRef.current = sound
+        } catch {
+          // Fallback: just vibrate — no crash
+        }
+      })()
+    }
 
-    // Auto-dismiss countdown
+    // Auto-dismiss countdown based on maxDurationSeconds
     const tick = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) { clearInterval(tick); handleDismiss(); return 0 }
@@ -112,7 +123,7 @@ export default function IncomingRequestAlert({ request, onDismiss }: IncomingReq
       soundRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request?.id])
+  }, [request?.id, initialDuration, enableSound])
 
   const handleDismiss = () => {
     Vibration.cancel()
