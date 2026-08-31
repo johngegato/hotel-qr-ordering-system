@@ -422,21 +422,29 @@ function GuestRequestsContent() {
           </div>
         )}
 
-        {/* Modal Sheet - Mobile-Optimized Bottom Sheet / Centered Modal */}
+        {/* Modal Sheet - Centered & Mobile-Optimized Dialog */}
         {step === 'modal' && (
           <div
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-            style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)' }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+            style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(12px)' }}
+            onClick={() => setStep('grid')}
           >
             <div
-              className="w-full max-w-md rounded-t-3xl sm:rounded-3xl border border-white/20 p-6 space-y-5 text-center animate-fade-up shadow-2xl"
+              className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border border-white/20 p-6 space-y-5 text-center animate-fade-up shadow-2xl my-auto"
               style={{ background: '#0f172a' }}
+              onClick={e => e.stopPropagation()}
             >
-              {/* Modal Handle Bar for Mobile */}
-              <div className="w-12 h-1.5 rounded-full bg-white/20 mx-auto -mt-1 mb-2 sm:hidden" />
+              {/* Top-Right Quick Close Button */}
+              <button
+                onClick={() => setStep('grid')}
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-slate-300 hover:text-white flex items-center justify-center text-sm font-bold transition-all border border-white/10"
+                aria-label="Close dialog"
+              >
+                ✕
+              </button>
 
               {isCustom ? (
-                <div className="space-y-3">
+                <div className="space-y-3 pt-2">
                   <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-3xl mx-auto">
                     ✍️
                   </div>
@@ -455,7 +463,7 @@ function GuestRequestsContent() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-4 pt-1">
                   <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/15 flex items-center justify-center text-4xl mx-auto shadow-inner">
                     {getTaskEmoji(selectedItem?.name || '', selectedItem?.target_department || 'FRONT_DESK')}
                   </div>
