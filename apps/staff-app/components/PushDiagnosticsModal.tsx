@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native'
 import type { StaffUser } from './UserManagement'
+import { getLastPushTokenError } from '../lib/notifications'
 
 export interface PushLogItem {
   id: string
@@ -140,6 +141,19 @@ export default function PushDiagnosticsModal({
                   {pushToken || 'No push token generated yet. Ensure device has internet and permissions enabled.'}
                 </Text>
               </View>
+
+              {!isRealFcmToken && (
+                <View style={{ marginTop: 8, padding: 10, borderRadius: 10, backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#f87171', marginBottom: 2 }}>
+                    Token Status:
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#fca5a5', lineHeight: 15 }}>
+                    {getLastPushTokenError()
+                      ? `Error: ${getLastPushTokenError()}`
+                      : 'Running in local fallback mode. Remote push from Vercel across the internet requires an EAS build with a linked Expo projectId.'}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Background & Service Details */}

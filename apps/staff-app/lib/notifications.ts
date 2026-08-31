@@ -143,10 +143,18 @@ export async function setupNotificationChannels(): Promise<void> {
 
 // ─── Permissions ───────────────────────────────────────────────────────────────
 
+let lastTokenError: string | null = null
+
+export function getLastPushTokenError(): string | null {
+  return lastTokenError
+}
+
 /**
  * Request notification permissions on the current platform.
  */
 export async function registerForPushNotifications(): Promise<string | null> {
+  lastTokenError = null
+
   // Web fallback
   if (Platform.OS === 'web') {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -181,13 +189,27 @@ export async function registerForPushNotifications(): Promise<string | null> {
       }
 
       if (finalStatus !== 'granted') {
+        lastTokenError = 'Notification permission was denied by user in Android settings.'
         console.warn('[Notifications] Expo permission not granted')
         return null
       }
 
       console.log('[Notifications] expo-notifications permission granted ✅')
 
-      // ── Retrieve real Expo Push Token for FCM background delivery ──
+      // ── Strategy 1: getExpoPushTokenAsync() without projectId ──
+      try {
+        if (typeof Notifications.getExpoPushTokenAsync === 'function') {
+          const tokenData = await Notifications.getExpoPushTokenAsync()
+          if (tokenData?.data) {
+            console.log('[Notifications] ✅ Obtained Real Expo Push Token (auto-config):', tokenData.data)
+            return tokenData.data
+          }
+        }
+      } catch (err1: any) {
+        console.warn('[Notifications] Strategy 1 getExpoPushTokenAsync() without args failed:', err1?.message)
+      }
+
+      // ── Strategy 2: getExpoPushTokenAsync() with EAS Project ID ──
       try {
         if (typeof Notifications.getExpoPushTokenAsync === 'function') {
           let easProjectId: string | undefined
@@ -211,10 +233,12 @@ export async function registerForPushNotifications(): Promise<string | null> {
             return tokenData.data
           }
         }
-      } catch (tokenErr) {
-        console.warn('[Notifications] getExpoPushTokenAsync failed (trying device token):', tokenErr)
+      } catch (tokenErr: any) {
+        lastTokenError = tokenErr?.message || String(tokenErr)
+        console.warn('[Notifications] getExpoPushTokenAsync failed (trying native device token):', tokenErr)
       }
 
+      // ── Strategy 3: Native FCM Device Token ──
       try {
         if (typeof Notifications.getDevicePushTokenAsync === 'function') {
           const deviceToken = await Notifications.getDevicePushTokenAsync()
@@ -223,12 +247,14 @@ export async function registerForPushNotifications(): Promise<string | null> {
             return deviceToken.data
           }
         }
-      } catch (devErr) {
+      } catch (devErr: any) {
+        lastTokenError = `${lastTokenError ? lastTokenError + ' | ' : ''}getDevicePushTokenAsync: ${devErr?.message || devErr}`
         console.warn('[Notifications] getDevicePushTokenAsync failed:', devErr)
       }
 
       return `expo_local_${Platform.OS}_${Date.now()}`
-    } catch (err) {
+    } catch (err: any) {
+      lastTokenError = err?.message || String(err)
       console.warn('[Notifications] expo-notifications permission request failed:', err)
     }
   }
