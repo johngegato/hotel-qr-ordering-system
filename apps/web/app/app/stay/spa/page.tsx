@@ -230,6 +230,16 @@ function GuestSpaContent() {
     const start = new Date()
     if (dayTarget === 'TOMORROW') {
       start.setDate(start.getDate() + 1)
+    } else if (dayTarget === 'TODAY') {
+      // Early-morning slots (midnight to 5:59 AM) that follow a late evening:
+      // e.g. if it's currently 11 PM and the slot is 12:00 AM or 2:00 AM,
+      // those slots actually occur the next calendar day — bump the date forward.
+      const currentHour = start.getHours()
+      const isEarlyMorningSlot = hours < 6
+      const isLateEvening = currentHour >= 18 // 6 PM or later
+      if (isEarlyMorningSlot && isLateEvening) {
+        start.setDate(start.getDate() + 1)
+      }
     }
     start.setHours(hours, minutes, 0, 0)
     start.setMilliseconds(0)
@@ -237,6 +247,7 @@ function GuestSpaContent() {
     const end = new Date(start.getTime() + durationMinutes * 60 * 1000)
     return { start, end }
   }
+
 
   // Check slot status: 'PAST' | 'LOCKED' | 'ON_CALL' | 'AVAILABLE'
   const getSlotStatus = (slotTime: string, durationMinutes: number): {
