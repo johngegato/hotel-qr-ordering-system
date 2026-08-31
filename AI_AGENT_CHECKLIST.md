@@ -9,6 +9,10 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
 - [x] Run local builds:
   - Staff app type check: `tsc --noEmit` in `apps/staff-app` ✅
   - Web app build: `npm run build` in `apps/web` ✅
+- [x] OTA Auto-Updates in `staff-app` via `expo-updates`:
+  - `app.json` updates configuration (`checkAutomatically: "ON_LOAD"`, `fallbackToCacheTimeout: 0`, `runtimeVersion: { policy: "appVersion" }`).
+  - `apps/staff-app/lib/useAutoUpdate.ts` custom hook monitoring launch & `AppState` foreground events.
+  - Root integration in `apps/staff-app/App.tsx`.
 - [x] Automated FCM Push Notifications & Database Triggers:
   - Database schema: `20_notification_settings.sql` (unique partial index `idx_staff_users_push_token_unique`, `notification_settings` table).
   - Automated Database Webhook endpoint at `apps/web/app/api/push/webhook/route.ts` triggered on `requests` INSERT.

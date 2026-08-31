@@ -14,6 +14,10 @@ Key goals
 - Fix actor attribution bug in RequestHistory showing guest names with STAFF role badge.
 
 Recent session additions:
+- Over-The-Air (OTA) Auto-Updates via `expo-updates` (`apps/staff-app`):
+  - `app.json`: Configured `"runtimeVersion": { "policy": "appVersion" }`, `"updates": { "url": "https://u.expo.dev/4e2f24d0-60e3-4ce3-891e-1f2a1e591df6", "checkAutomatically": "ON_LOAD", "fallbackToCacheTimeout": 0 }`, and added `"expo-updates"` to plugins.
+  - `apps/staff-app/lib/useAutoUpdate.ts` [NEW]: Custom hook checking `Updates.checkForUpdateAsync()` on app launch and foreground resume (`AppState === 'active'`), downloading bundles silently via `Updates.fetchUpdateAsync()`, and prompting staff with a non-cancelable restart dialog that calls `Updates.reloadAsync()`.
+  - `apps/staff-app/App.tsx`: Wired `useAutoUpdate()` directly at the root `MainAppContent` component.
 - Database & Schema (Migration 20): Created `20_notification_settings.sql` in both `packages/supabase/migrations/` and `apps/web/supabase/migrations/`.
   - Added unique partial index `idx_staff_users_push_token_unique` on `staff_users(push_token) WHERE push_token IS NOT NULL` preventing token duplicates across multiple accounts on shared devices.
   - Created `notification_settings` table (`hotel_id`, `reminder_interval_minutes`, `enable_sound_alert`, `max_alert_duration_seconds`, `fnb_allowed_types`, `frontdesk_allowed_types`, `spa_allowed_types`) with default seed row for default hotel and RLS policies.

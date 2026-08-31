@@ -14,9 +14,18 @@
     "ios": {
       "supportsTablet": true
     },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/4e2f24d0-60e3-4ce3-891e-1f2a1e591df6",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "plugins": [
       "expo-secure-store",
-      "expo-av"
+      "expo-av",
+      "expo-updates"
     ],
     "android": {
       "package": "com.hotelqr.staffapp",

@@ -51,6 +51,7 @@ import {
   clearStaffSession,
 } from './lib/authStorage'
 import { useAutoSync } from './lib/useAutoSync'
+import { useAutoUpdate } from './lib/useAutoUpdate'
 
 // ─── Global Error Boundary ───────────────────────────────────
 
@@ -291,6 +292,9 @@ export default function App() {
 // ─── Main App Content ────────────────────────────────────────
 
 function MainAppContent() {
+  // Check and apply OTA updates automatically on launch & foreground resume
+  useAutoUpdate()
+
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [hotelInfo, setHotelInfo] = useState<HotelInfo | null>(null)
   const [roomCount, setRoomCount] = useState<number>(0)
