@@ -4,6 +4,40 @@ Summary of recent changes implemented by the agent (staff-app focus)
 
 This document records the edits, fixes, and feature work performed during the current session. It is intended to help a human developer pick up where the agent left off.
 
+---
+
+## ⚠️ Deploy Reminder — OTA Update vs. APK Rebuild
+
+After every change, the agent (or developer) **must** assess whether deploying requires an OTA push or a full Android rebuild.
+
+### ✅ OTA Update Only — `npx eas-cli update --branch preview --message "..."`
+Run from `apps/staff-app/`. No APK reinstall required on staff devices.
+| Change Type | Examples |
+| :--- | :--- |
+| **TypeScript / React Native code** | Bug fixes, UI logic, component state, hooks |
+| **New screens or UI components** | New queues, modals, cards, buttons |
+| **Styling & layout** | Colors, spacing, fonts, animations |
+| **Supabase queries & API calls** | Filters, inserts, realtime subscriptions |
+| **Notification logic** | Routing rules, deduplication, alert timing |
+| **Business logic** | RBAC checks, order calculations, validations |
+
+### 🔴 Full APK Rebuild Required — `eas build -p android --profile preview`
+Native configuration changes that require Gradle compilation and a new `.apk`.
+| Change Type | Examples |
+| :--- | :--- |
+| **New native Android permissions** | Added to `"permissions"` in `app.json` |
+| **New native Expo plugins** | Added to `"plugins"` array in `app.json` (e.g. `expo-av`, `expo-updates`) |
+| **New packages with native code** | Java, Kotlin, C++ bindings (e.g. `react-native-mmkv`, new Firebase SDKs) |
+| **Changes to `google-services.json`** | Firebase config update |
+| **Android `versionCode` / `versionName` bump** | Major release |
+| **`runtimeVersion` policy change** | Alters OTA compatibility window |
+
+> [!IMPORTANT]
+> The current build is on EAS project `johngegato/hotel-staff-app` (ID: `4e2f24d0-60e3-4ce3-891e-1f2a1e591df6`).  
+> Branch in use: **`backup-8-31-26-4pm`** — do **NOT** commit or push to `main` until testing is complete.
+
+---
+
 Key goals
 - Merge backup into repo (prefer repo files on conflicts).
 - Fix spa booking flows: ensure staff manual bookings create `spa_slot_locks` and the master timetable shows guest bookings created on other days.
