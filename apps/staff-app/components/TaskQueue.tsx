@@ -7,6 +7,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Animated,
+  Linking,
+  Alert,
 } from 'react-native'
 import { supabase } from '../lib/supabase'
 import { useAutoSync } from '../lib/useAutoSync'
@@ -23,6 +25,9 @@ interface TaskPayload {
   priority: TaskPriority
   target_department: TargetDepartment
   is_custom?: boolean
+  room_number?: string
+  guest_phone?: string
+  phone?: string
 }
 
 interface TaskRequest {
@@ -44,196 +49,251 @@ const PRIORITY_COLORS: Record<TaskPriority, string> = {
 }
 
 const DEPT_CONFIG: Record<TargetDepartment, { label: string; icon: string; color: string }> = {
-  HOUSEKEEPING: { label: 'Housekeeping', icon: '🧹', color: '#60a5fa' },
+  HOUSEKEEPING: { label: 'Housekeeping', icon: '🧹', color: '#38bdf8' },
   MAINTENANCE:  { label: 'Maintenance',  icon: '🔧', color: '#f97316' },
-  FRONT_DESK:   { label: 'Front Desk',   icon: '🎩', color: '#a78bfa' },
+  FRONT_DESK:   { label: 'Front Desk',   icon: '🛎️', color: '#a78bfa' },
 }
 
-// ─── SLA Countdown Timer ──────────────────────────────────────
+// ── Overdue threshold: 15 min ────────────────────────────────────────────────
+const OVERDUE_MINUTES = 15
+
+// ── SlaTimer Sub-component ───────────────────────────────────────────────────
 function SlaTimer({ createdAt, slaMinutes }: { createdAt: string; slaMinutes: number }) {
-  const [secsLeft, setSecsLeft] = useState(() => {
-    const deadline = new Date(createdAt).getTime() + slaMinutes * 60 * 1000
-    return Math.max(0, Math.floor((deadline - Date.now()) / 1000))
-  })
-  const pulseAnim = useRef(new Animated.Value(1)).current
+  const [elapsedMin, setElapsedMin] = useState(0)
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setSecsLeft(prev => Math.max(0, prev - 1))
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [])
-
-  useEffect(() => {
-    if (secsLeft === 0) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.08, duration: 500, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
-        ])
-      ).start()
+    const calc = () => {
+      const ms = Date.now() - new Date(createdAt).getTime()
+      setElapsedMin(Math.floor(ms / 60000))
     }
-  }, [secsLeft, pulseAnim])
+    calc()
+    const t = setInterval(calc, 15000)
+    return () => clearInterval(t)
+  }, [createdAt])
 
-  const breached = secsLeft === 0
-  const mins = Math.floor(secsLeft / 60)
-  const secs = secsLeft % 60
-  const label = breached ? 'SLA BREACHED' : `${mins}:${String(secs).padStart(2, '0')} left`
+  const remaining = slaMinutes - elapsedMin
+  const isOverdue = remaining < 0
 
   return (
-    <Animated.View style={[styles.slaTimer, breached && styles.slaBreached, { transform: [{ scale: pulseAnim }] }]}>
-      <Text style={[styles.slaTimerText, breached && styles.slaBreachedText]}>
-        {breached ? '⚠️ ' : '⏱ '}{label}
+    <View style={[styles.slaBadge, isOverdue ? styles.slaOverdue : remaining <= 5 ? styles.slaWarning : styles.slaNormal]}>
+      <Text style={[styles.slaText, isOverdue ? styles.slaTextOverdue : remaining <= 5 ? styles.slaTextWarning : styles.slaTextNormal]}>
+        {isOverdue
+          ? `⏱️ ${Math.abs(remaining)}m overdue`
+          : `⏱️ ${remaining}m remaining (SLA ${slaMinutes}m)`}
       </Text>
-    </Animated.View>
+    </View>
   )
 }
 
-// ─── Main Component ────────────────────────────────────────────
-export default function TaskQueue({
-  activeStaffId,
-  refreshTrigger,
-}: {
-  activeStaffId?: string
-  refreshTrigger?: number
-}) {
+// ── Main TaskQueue Component ─────────────────────────────────────────────────
+export default function TaskQueue({ activeStaffId, activeStaffUser, refreshTrigger }: { activeStaffId?: string; activeStaffUser?: any; refreshTrigger?: number }) {
   const [tasks, setTasks] = useState<TaskRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
-  const [deptFilter, setDeptFilter] = useState<TargetDepartment | 'ALL'>('ALL')
+  const [filterDept, setFilterDept] = useState<'ALL' | TargetDepartment>('ALL')
 
-  const fetchTasks = useCallback(async (isSilent = false) => {
-    if (!isSilent) setLoading(true)
-    const { data, error } = await supabase
-      .from('requests')
-      .select('*, rooms(room_number)')
-      .eq('request_type', 'TASK')
-      .in('status', ['PENDING', 'CLAIMED', 'ESCALATED_L1'])
-      .order('created_at', { ascending: true })
-    if (!error) setTasks((data as TaskRequest[]) || [])
-    if (!isSilent) setLoading(false)
-  }, [])
-
-  // Mutable ref to always call the latest fetchTasks
-  const fetchRef = useRef(fetchTasks)
-  useEffect(() => {
-    fetchRef.current = fetchTasks
-  }, [fetchTasks])
-
-  // ─── Automated Polling & Focus Synchronization ─────────────
-  useAutoSync(() => fetchRef.current(true), { intervalMs: 6000 })
-
-  // ─── Triggered from Parent App Event Bus ───────────────────
-  const isFirstRender = useRef(true)
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false
+  const callGuest = (phone?: string, roomNumber?: string) => {
+    if (!phone) {
+      Alert.alert('No Phone Number', 'No phone number is registered for this guest request.')
       return
     }
-    fetchRef.current(true)
-  }, [refreshTrigger])
+    Linking.openURL(`tel:${phone}`).catch(() => {
+      Alert.alert('Call Guest', `Dialing Room ${roomNumber ?? '—'} at ${phone}`)
+    })
+  }
 
-  useEffect(() => {
-    fetchRef.current()
-    const channel: RealtimeChannel = supabase
-      .channel('task-queue')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
-        fetchRef.current(true)
-      })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          fetchRef.current(true)
+  // ── Stable fetchTasks via useCallback ─────────────────────────────────────
+  const fetchTasks = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('requests')
+        .select('*, rooms(room_number)')
+        .eq('request_type', 'TASK')
+        .in('status', ['PENDING', 'CLAIMED', 'ESCALATED_L1'])
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        console.warn('[TaskQueue] Join failed, falling back to simple query:', error.message)
+        const { data: fallback, error: fallbackErr } = await supabase
+          .from('requests')
+          .select('*')
+          .eq('request_type', 'TASK')
+          .in('status', ['PENDING', 'CLAIMED', 'ESCALATED_L1'])
+          .order('created_at', { ascending: true })
+
+        if (fallbackErr) {
+          console.error('[TaskQueue] Fallback fetch failed:', fallbackErr)
+          return
         }
-      })
-    return () => { supabase.removeChannel(channel) }
+        setTasks((fallback ?? []) as unknown as TaskRequest[])
+      } else {
+        setTasks((data ?? []) as unknown as TaskRequest[])
+      }
+    } catch (err) {
+      console.error('[TaskQueue] fetchTasks error:', err)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
+  // Ref allows realtime callback to always invoke the latest fetchTasks without stale closures
+  const fetchTasksRef = useRef(fetchTasks)
+  useEffect(() => { fetchTasksRef.current = fetchTasks }, [fetchTasks])
+
+  // Automated background synchronization
+  useAutoSync(() => fetchTasksRef.current(), { intervalMs: 6000 })
+
+  // Trigger sync on refreshTrigger
+  useEffect(() => {
+    if (refreshTrigger) {
+      fetchTasksRef.current()
+    }
+  }, [refreshTrigger])
+
+  // Realtime subscription
+  useEffect(() => {
+    fetchTasksRef.current()
+
+    const ch: RealtimeChannel = supabase
+      .channel('staff-tasks-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+        fetchTasksRef.current()
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
+  // ── Claim Task ─────────────────────────────────────────────────────────────
   const handleClaim = async (task: TaskRequest) => {
     setProcessingId(task.id)
-    const snapshot = tasks.find(t => t.id === task.id)
-    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'CLAIMED' } : t))
-    const { error } = await supabase
-      .from('requests')
-      .update({ status: 'CLAIMED', claimed_by: activeStaffId || null, claimed_at: new Date().toISOString() })
-      .eq('id', task.id)
-    if (error && snapshot) setTasks(prev => prev.map(t => t.id === task.id ? snapshot : t))
-    setProcessingId(null)
+    try {
+      const { error } = await supabase
+        .from('requests')
+        .update({
+          status: 'CLAIMED',
+          claimed_by: activeStaffId || null,
+          claimed_at: new Date().toISOString(),
+        })
+        .eq('id', task.id)
+
+      if (error) throw error
+
+      setTasks(prev => prev.map(t =>
+        t.id === task.id ? { ...t, status: 'CLAIMED' } : t
+      ))
+
+      try {
+        await (supabase.from('audit_logs') as any).insert([{
+          hotel_id: task.hotel_id,
+          request_id: task.id,
+          action: 'CLAIM_TASK',
+          actor_id: activeStaffId || null,
+          details: {
+            actor_name: activeStaffUser?.full_name || 'Staff Member',
+            task_name: task.payload?.task_name,
+            timestamp: new Date().toISOString(),
+          }
+        }])
+      } catch (auditErr) {
+        console.warn('[TaskQueue] Non-fatal audit log error:', auditErr)
+      }
+    } catch (err) {
+      console.error('[TaskQueue] handleClaim error:', err)
+    } finally {
+      setProcessingId(null)
+    }
   }
 
+  // ── Resolve Task ───────────────────────────────────────────────────────────
   const handleResolve = async (task: TaskRequest) => {
     setProcessingId(task.id)
-    const snapshot = tasks.find(t => t.id === task.id)
-    setTasks(prev => prev.filter(t => t.id !== task.id))
-    const { error } = await supabase
-      .from('requests')
-      .update({ status: 'RESOLVED', claimed_by: activeStaffId || null, claimed_at: new Date().toISOString() })
-      .eq('id', task.id)
-    if (error && snapshot) setTasks(prev => [snapshot, ...prev])
-    setProcessingId(null)
+    try {
+      const { error } = await supabase
+        .from('requests')
+        .update({
+          status: 'RESOLVED',
+        })
+        .eq('id', task.id)
+
+      if (error) throw error
+
+      setTasks(prev => prev.filter(t => t.id !== task.id))
+
+      try {
+        await (supabase.from('audit_logs') as any).insert([{
+          hotel_id: task.hotel_id,
+          request_id: task.id,
+          action: 'RESOLVE_TASK',
+          actor_id: activeStaffId || null,
+          details: {
+            actor_name: activeStaffUser?.full_name || 'Staff Member',
+            task_name: task.payload?.task_name,
+            timestamp: new Date().toISOString(),
+          }
+        }])
+      } catch (auditErr) {
+        console.warn('[TaskQueue] Non-fatal audit log error:', auditErr)
+      }
+    } catch (err) {
+      console.error('[TaskQueue] handleResolve error:', err)
+    } finally {
+      setProcessingId(null)
+    }
   }
 
-  const filtered = deptFilter === 'ALL'
-    ? tasks
-    : tasks.filter(t => t.payload?.target_department === deptFilter)
+  const filtered = tasks.filter(t => {
+    if (filterDept === 'ALL') return true
+    return t.payload?.target_department === filterDept
+  })
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#60a5fa" />
-        <Text style={styles.loadingText}>Loading task queue...</Text>
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator size="large" color="#38bdf8" />
+        <Text style={styles.loadingText}>Loading task queue…</Text>
       </View>
     )
   }
 
-  const deptTabs: (TargetDepartment | 'ALL')[] = ['ALL', 'HOUSEKEEPING', 'MAINTENANCE', 'FRONT_DESK']
-
   return (
-    // ─── container: NO flex:1 inside ScrollView — causes height collapse on RN Web
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>🛎️ Room Tasks</Text>
-        <View style={styles.countBadge}>
-          <Text style={styles.countText}>{tasks.length} Active</Text>
+      {/* Header & Filter Row */}
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>🛠️ Task Queue</Text>
+          <View style={styles.countBadge}>
+            <Text style={styles.countText}>{filtered.length}</Text>
+          </View>
         </View>
+
+        {/* Department Filter Tabs */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+          {(['ALL', 'HOUSEKEEPING', 'MAINTENANCE', 'FRONT_DESK'] as const).map((dept) => {
+            const isSelected = filterDept === dept
+            const label = dept === 'ALL' ? 'All Tasks' : DEPT_CONFIG[dept].label
+            const icon = dept === 'ALL' ? '📋' : DEPT_CONFIG[dept].icon
+            return (
+              <TouchableOpacity
+                key={dept}
+                style={[styles.filterTab, isSelected && styles.filterTabActive]}
+                onPress={() => setFilterDept(dept)}
+              >
+                <Text style={[styles.filterTabText, isSelected && styles.filterTabTextActive]}>
+                  {icon} {label}
+                </Text>
+              </TouchableOpacity>
+            )
+          })}
+        </ScrollView>
       </View>
 
-      {/* Department Filter Tabs */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterScroll}
-        contentContainerStyle={styles.filterScrollContent}
-      >
-        {deptTabs.map(d => {
-          const cfg = d !== 'ALL' ? DEPT_CONFIG[d as TargetDepartment] : null
-          const isActive = deptFilter === d
-          return (
-            <TouchableOpacity
-              key={d}
-              onPress={() => setDeptFilter(d)}
-              style={[
-                styles.filterTab,
-                isActive && {
-                  borderColor: cfg?.color ?? '#818cf8',
-                  backgroundColor: `${cfg?.color ?? '#818cf8'}18`,
-                },
-              ]}
-            >
-              <Text style={[styles.filterTabText, isActive && { color: cfg?.color ?? '#818cf8' }]}>
-                {d === 'ALL' ? '📋 All' : `${cfg!.icon} ${cfg!.label}`}
-              </Text>
-            </TouchableOpacity>
-          )
-        })}
-      </ScrollView>
-
-      {/* Task Cards — rendered as plain Views, NOT FlatList inside ScrollView (anti-pattern on RN Web) */}
+      {/* Task Cards List */}
       {filtered.length === 0 ? (
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyIcon}>✨</Text>
-          <Text style={styles.emptyTitle}>No Active Tasks</Text>
-          <Text style={styles.emptySub}>All room requests have been handled.</Text>
+          <Text style={styles.emptyIcon}>🎉</Text>
+          <Text style={styles.emptyTitle}>All Caught Up!</Text>
+          <Text style={styles.emptySub}>No pending or active tasks at this moment.</Text>
         </View>
       ) : (
         <View style={styles.taskList}>
@@ -247,6 +307,12 @@ export default function TaskQueue({
             const isProcessing = processingId === item.id
             const slaMinutes = 20
 
+            // Extract guest phone number if provided
+            const notesPhone = typeof payload?.custom_notes === 'string'
+              ? (payload.custom_notes.match(/\[Guest Phone:\s*([^\]]+)\]/)?.[1]?.trim() || payload.custom_notes.match(/\+?\d[\d\s-]{6,15}\d/)?.[0]?.trim())
+              : null
+            const guestPhone = payload?.guest_phone || payload?.phone || notesPhone || null
+
             return (
               <View
                 key={item.id}
@@ -258,7 +324,7 @@ export default function TaskQueue({
               >
                 {isEscalated && (
                   <View style={styles.escalatedBanner}>
-                    <Text style={styles.escalatedBannerText}>⚠️ OVERDUE — ESCALATED TO MANAGER</Text>
+                    <Text style={styles.escalatedBannerText}>⚠️ OVERDUE — ESCALATED</Text>
                   </View>
                 )}
 
@@ -291,6 +357,19 @@ export default function TaskQueue({
                   {isClaimed && <Text style={styles.claimedBadge}>🏃 In Progress</Text>}
                 </View>
 
+                {/* Guest Direct Call Button */}
+                {guestPhone ? (
+                  <TouchableOpacity
+                    style={styles.callGuestBtn}
+                    onPress={() => callGuest(guestPhone, item.rooms?.room_number || item.payload?.room_number)}>
+                    <Text style={styles.callGuestBtnText}>📞 Call Guest ({guestPhone})</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={[styles.callGuestBtn, styles.callGuestBtnDisabled]} disabled>
+                    <Text style={styles.callGuestBtnDisabledText}>📞 No Phone Provided</Text>
+                  </TouchableOpacity>
+                )}
+
                 {!!payload?.custom_notes && (
                   <View style={styles.notesBox}>
                     <Text style={styles.notesLabel}>Guest Notes:</Text>
@@ -301,7 +380,7 @@ export default function TaskQueue({
                 {/* SLA Timer */}
                 <SlaTimer createdAt={item.created_at} slaMinutes={slaMinutes} />
 
-                {/* Actions — full-width row, no overflow clipping */}
+                {/* Actions */}
                 <View style={styles.actionRow}>
                   {(isPending || isEscalated) && (
                     <TouchableOpacity
@@ -338,7 +417,6 @@ export default function TaskQueue({
 }
 
 const styles = StyleSheet.create({
-  // ── No flex:1 on container — prevents height collapse inside ScrollView on RN Web ──
   container: {
     width: '100%',
     maxWidth: 600,
@@ -347,14 +425,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 4,
   },
-  loadingContainer: { padding: 32, alignItems: 'center' },
+  loadingWrap: { padding: 32, alignItems: 'center' },
   loadingText: { color: '#94a3b8', marginTop: 12, fontSize: 14 },
 
-  headerRow: {
+  header: { marginBottom: 14 },
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   title: { fontSize: 20, fontWeight: 'bold', color: '#ffffff' },
   countBadge: {
@@ -367,19 +446,23 @@ const styles = StyleSheet.create({
   },
   countText: { color: '#60a5fa', fontWeight: '600', fontSize: 13 },
 
-  // ── Horizontal scroll for filter tabs — prevents wrapping issues ──
-  filterScroll: { marginBottom: 14 },
-  filterScrollContent: { gap: 8, paddingRight: 8 },
+  filterScroll: { marginBottom: 4 },
   filterTab: {
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
+    marginRight: 6,
+  },
+  filterTabActive: {
+    borderColor: '#38bdf8',
+    backgroundColor: 'rgba(56,189,248,0.15)',
   },
   filterTabText: { color: '#64748b', fontSize: 12, fontWeight: '700' },
+  filterTabTextActive: { color: '#38bdf8' },
 
-  emptyCard: {
+  emptyWrap: {
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
@@ -390,7 +473,50 @@ const styles = StyleSheet.create({
   },
   emptyIcon: { fontSize: 36, marginBottom: 10 },
   emptyTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
+  emptySubtitle: { color: '#64748b', fontSize: 13 },
+  emptyCard: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   emptySub: { color: '#64748b', fontSize: 13 },
+
+  callGuestBtn: {
+    backgroundColor: 'rgba(59,130,246,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.3)',
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  callGuestBtnText: { color: '#60a5fa', fontWeight: '700', fontSize: 12 },
+  callGuestBtnDisabled: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  callGuestBtnDisabledText: { color: 'rgba(255,255,255,0.3)', fontWeight: '600', fontSize: 12 },
+
+  slaBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  slaNormal: { backgroundColor: 'rgba(56,189,248,0.1)', borderWidth: 1, borderColor: 'rgba(56,189,248,0.25)' },
+  slaWarning: { backgroundColor: 'rgba(251,191,36,0.15)', borderWidth: 1, borderColor: 'rgba(251,191,36,0.4)' },
+  slaOverdue: { backgroundColor: 'rgba(248,113,113,0.15)', borderWidth: 1, borderColor: 'rgba(248,113,113,0.5)' },
+  slaText: { fontSize: 12, fontWeight: '700' },
+  slaTextNormal: { color: '#38bdf8' },
+  slaTextWarning: { color: '#fbbf24' },
+  slaTextOverdue: { color: '#f87171' },
+
 
   // ── taskList replaces FlatList — no height constraints, no overflow clipping ──
   taskList: {

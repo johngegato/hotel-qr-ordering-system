@@ -113,6 +113,7 @@ function ArrivalTimer({ target }: { target: string }) {
 export default function FoodQueue({ activeStaffId, activeStaffUser, refreshTrigger }: { activeStaffId?: string; activeStaffUser?: any; refreshTrigger?: number }) {
   const [orders, setOrders] = useState<FoodRequest[]>([])
   const [catalogItems, setCatalogItems] = useState<CatalogMenuItem[]>([])
+  const [roomsList, setRoomsList] = useState<{ id: string; room_number: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
 
@@ -123,6 +124,21 @@ export default function FoodQueue({ activeStaffId, activeStaffUser, refreshTrigg
   const [menuSearchQuery, setMenuSearchQuery] = useState('')
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All')
   const [addedItemToast, setAddedItemToast] = useState<string | null>(null)
+
+  // Manual Food Order Modal States
+  const [isManualOrderOpen, setIsManualOrderOpen] = useState(false)
+  const [manualRoomId, setManualRoomId] = useState('')
+  const [manualRoomNumber, setManualRoomNumber] = useState('')
+  const [manualGuestName, setManualGuestName] = useState('')
+  const [manualGuestPhone, setManualGuestPhone] = useState('')
+  const [manualOrderType, setManualOrderType] = useState<'ROOM_SERVICE' | 'DINE_IN'>('ROOM_SERVICE')
+  const [manualDeliveryPref, setManualDeliveryPref] = useState<'HAND_TO_ME' | 'LEAVE_AT_DOOR'>('HAND_TO_ME')
+  const [manualNotes, setManualNotes] = useState('')
+  const [manualInitialStatus, setManualInitialStatus] = useState<'PREPARING' | 'PENDING'>('PREPARING')
+  const [manualSelectedItems, setManualSelectedItems] = useState<Record<string, number>>({})
+  const [manualSearchQuery, setManualSearchQuery] = useState('')
+  const [manualCategoryFilter, setManualCategoryFilter] = useState('All')
+  const [submittingManualOrder, setSubmittingManualOrder] = useState(false)
 
   // Reject Modal States
   const [cancellingOrder, setCancellingOrder] = useState<FoodRequest | null>(null)
@@ -183,10 +199,22 @@ export default function FoodQueue({ activeStaffId, activeStaffUser, refreshTrigg
           }))
         : FALLBACK_MENU
 
+      // 3. Fetch active rooms for manual order picker
+      const { data: dbRooms } = await supabase
+        .from('rooms')
+        .select('id, room_number')
+        .eq('hotel_id', HOTEL_ID)
+        .eq('is_active', true)
+        .order('room_number', { ascending: true })
+
+      if (dbRooms && dbRooms.length > 0) {
+        setRoomsList(dbRooms as { id: string; room_number: string }[])
+      }
+
       setOrders(orderList)
       setCatalogItems(itemsList)
 
-      // 3. Fetch Hotel Service Charge Setting
+      // 4. Fetch Hotel Service Charge Setting
       const { data: hotelData } = await (supabase as any)
         .from('hotels')
         .select('service_charge_enabled, service_charge_pct')
@@ -562,13 +590,16 @@ export default function FoodQueue({ activeStaffId, activeStaffUser, refreshTrigg
 
   // Handle phone dialing to guest
   const callGuest = (phone?: string, roomNumber?: string) => {
-    const num = phone || '+18005550100'
-    Linking.openURL(`tel:${num}`).catch(() => {
-      Alert.alert('Call Guest', `Dialing Room ${roomNumber ?? '—'} at ${num}`)
+    if (!phone) {
+      Alert.alert('No Phone Number', 'No phone number is registered for this guest.')
+      return
+    }
+    Linking.openURL(`tel:${phone}`).catch(() => {
+      Alert.alert('Call Guest', `Dialing Room ${roomNumber ?? '—'} at ${phone}`)
     })
   }
 
-  // Filter full catalog items by search query and category
+  // Filter full catalog items by search query and category for Edit Modal
   const filteredFullMenu = catalogItems.filter(item => {
     const q = menuSearchQuery.toLowerCase().trim()
     const matchesSearch =
@@ -584,93 +615,273 @@ export default function FoodQueue({ activeStaffId, activeStaffUser, refreshTrigg
     return matchesSearch && matchesCategory
   })
 
+  // Available categories across active catalog items
+  const availableCategories = useMemo(() => {
+    const set = new Set<string>()
+    catalogItems.forEach(i => { if (i.category) set.add(i.category) })
+    return ['All', ...Array.from(set)]
+  }, [catalogItems])
+
+  // Filter catalog items for Manual Order Creation Modal
+  const filteredManualMenu = catalogItems.filter(item => {
+    const q = manualSearchQuery.toLowerCase().trim()
+    const matchesSearch =
+      !q ||
+      item.name.toLowerCase().includes(q) ||
+      (item.category && item.category.toLowerCase().includes(q)) ||
+      (item.description && item.description.toLowerCase().includes(q))
+
+    const matchesCategory =
+      manualCategoryFilter === 'All' ||
+      (item.category && item.category.toLowerCase() === manualCategoryFilter.toLowerCase())
+
+    return matchesSearch && matchesCategory
+  })
+
+  // Live Manual Order Price Calculations
+  const manualChosenItemsList: FoodOrderItem[] = useMemo(() => {
+    return Object.entries(manualSelectedItems)
+      .filter(([_, qty]) => qty > 0)
+      .map(([itemId, qty]) => {
+        const cat = catalogItems.find(c => c.id === itemId)
+        return {
+          id: itemId,
+          name: cat?.name || 'Menu Item',
+          quantity: qty,
+          unit_price: cat?.price || 0,
+          is_available: true,
+        }
+      })
+  }, [manualSelectedItems, catalogItems])
+
+  const manualSubtotal = useMemo(() => {
+    return manualChosenItemsList.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
+  }, [manualChosenItemsList])
+
+  const manualScPct = hotelServiceChargeEnabled ? hotelServiceChargePct : 0
+  const manualScAmount = hotelServiceChargeEnabled ? (manualSubtotal * manualScPct) / 100 : 0
+  const manualGrandTotal = manualSubtotal + manualScAmount
+
+  // Create Manual / Telephone Order
+  const handleCreateManualOrder = async () => {
+    const roomNo = manualRoomNumber.trim()
+    if (!roomNo) {
+      Alert.alert('Room Required', 'Please select or enter a valid room number.')
+      return
+    }
+
+    if (manualChosenItemsList.length === 0) {
+      Alert.alert('Items Required', 'Please select at least one menu item.')
+      return
+    }
+
+    setSubmittingManualOrder(true)
+
+    try {
+      let resolvedRoomId = manualRoomId
+      if (!resolvedRoomId) {
+        const matchingRoom = roomsList.find(r => r.room_number.toLowerCase() === roomNo.toLowerCase())
+        if (matchingRoom) {
+          resolvedRoomId = matchingRoom.id
+        } else {
+          // Fallback room query or default
+          const { data: rData } = await supabase.from('rooms').select('id').eq('room_number', roomNo).maybeSingle()
+          resolvedRoomId = rData?.id || (roomsList[0]?.id || '10000000-0000-0000-0000-000000000101')
+        }
+      }
+
+      const orderPayload: FoodOrderPayload = {
+        order_type: manualOrderType,
+        items: manualChosenItemsList,
+        special_instructions: manualNotes.trim(),
+        delivery_preference: manualDeliveryPref,
+        total_price: manualGrandTotal,
+        subtotal: manualSubtotal,
+        service_charge_pct: manualScPct,
+        service_charge_amount: manualScAmount,
+        room_number: roomNo,
+        guest_phone: manualGuestPhone.trim() || undefined,
+        booked_by: manualGuestName.trim() || 'Manual Phone Order',
+        modified_by_staff: true,
+        last_modified_by: activeStaffUser?.full_name || 'Kitchen Staff',
+      }
+
+      const { data: newOrder, error: insertErr } = await supabase
+        .from('requests')
+        .insert([{
+          hotel_id: HOTEL_ID,
+          room_id: resolvedRoomId,
+          request_type: 'FOOD_ORDER',
+          status: manualInitialStatus,
+          payload: orderPayload,
+          claimed_by: activeStaffId || null,
+          claimed_at: manualInitialStatus === 'PREPARING' ? new Date().toISOString() : null,
+        }])
+        .select('*, rooms(room_number)')
+        .single()
+
+      if (insertErr) {
+        throw insertErr
+      }
+
+      // Insert audit log record
+      try {
+        await (supabase.from('audit_logs') as any).insert([{
+          hotel_id: HOTEL_ID,
+          request_id: newOrder?.id || null,
+          action: 'CREATE_MANUAL_FOOD_ORDER',
+          actor_id: activeStaffId || null,
+          details: {
+            actor_name: activeStaffUser?.full_name || 'Kitchen Staff',
+            actor_role: activeStaffUser?.role || 'KITCHEN',
+            room_number: roomNo,
+            guest_name: manualGuestName.trim(),
+            guest_phone: manualGuestPhone.trim(),
+            items: manualChosenItemsList.map(i => `${i.quantity}x ${i.name}`),
+            subtotal: manualSubtotal,
+            service_charge_pct: manualScPct,
+            service_charge_amount: manualScAmount,
+            total_price: manualGrandTotal,
+            status: manualInitialStatus,
+            timestamp: new Date().toISOString(),
+          }
+        }])
+      } catch (auditErr) {
+        console.warn('[FoodQueue] Non-fatal audit log error:', auditErr)
+      }
+
+      if (newOrder) {
+        setOrders(prev => [newOrder as unknown as FoodRequest, ...prev])
+      }
+
+      // Reset modal state
+      setIsManualOrderOpen(false)
+      setManualRoomId('')
+      setManualRoomNumber('')
+      setManualGuestName('')
+      setManualGuestPhone('')
+      setManualNotes('')
+      setManualSelectedItems({})
+      setManualSearchQuery('')
+      setManualCategoryFilter('All')
+      Alert.alert('Order Created', `Order for Room ${roomNo} has been successfully submitted!`)
+    } catch (err: any) {
+      console.error('[FoodQueue] Error creating manual order:', err)
+      Alert.alert('Error', err?.message || 'Failed to create manual order.')
+    } finally {
+      setSubmittingManualOrder(false)
+      fetchData()
+    }
+  }
+
   if (loading) return (
     <View style={styles.emptyWrap}>
       <Text style={styles.emptyText}>Loading food orders…</Text>
     </View>
   )
 
-  if (orders.length === 0) return (
-    <View style={styles.emptyWrap}>
-      <Text style={styles.emptyIcon}>🍽️</Text>
-      <Text style={styles.emptyText}>No pending food orders</Text>
-    </View>
-  )
-
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Food Orders ({orders.length})</Text>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {orders.map(order => {
-          const payload = order.payload
-          const isDineIn = payload.order_type === 'DINE_IN'
-          const isPreparing = order.status === 'PREPARING'
+      {/* Heading Row with Manual Order Action Button */}
+      <View style={styles.headingRow}>
+        <Text style={styles.heading}>Food Orders ({orders.length})</Text>
+        <TouchableOpacity
+          style={styles.createOrderHeaderBtn}
+          onPress={() => setIsManualOrderOpen(true)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.createOrderHeaderBtnText}>+ Phone / Manual Order</Text>
+        </TouchableOpacity>
+      </View>
 
-          // Extract guest phone number if available
-          const guestPhone = payload.guest_phone || (payload.special_instructions?.match(/\d{7,15}/)?.[0])
+      {orders.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyIcon}>🍽️</Text>
+          <Text style={styles.emptyText}>No pending food orders</Text>
+          <TouchableOpacity
+            style={[styles.createOrderHeaderBtn, { marginTop: 12 }]}
+            onPress={() => setIsManualOrderOpen(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.createOrderHeaderBtnText}>+ Place Telephone / Room Order</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {orders.map(order => {
+            const payload = order.payload
+            const isDineIn = payload.order_type === 'DINE_IN'
+            const isPreparing = order.status === 'PREPARING'
 
-          // Check if any item in this order is currently marked unavailable
-          const hasUnavailableItem = payload.items?.some(i => !checkItemAvailability(i.name))
+            // Extract guest phone number if available
+            const guestPhone = payload.guest_phone || (payload.special_instructions?.match(/\d{7,15}/)?.[0])
 
-          return (
-            <View
-              key={order.id}
-              style={[
-                styles.card,
-                isDineIn && styles.cardDineIn,
-                isPreparing && styles.cardPreparing,
-                hasUnavailableItem && styles.cardWarning,
-              ]}>
-              {/* Unavailable Item Alert Banner */}
-              {hasUnavailableItem && (
-                <View style={styles.warningBanner}>
-                  <Text style={styles.warningBannerText}>
-                    ⚠️ Contains out-of-stock item(s). Click &quot;Edit&quot; to substitute or call guest.
-                  </Text>
-                </View>
-              )}
+            // Check if any item in this order is currently marked unavailable
+            const hasUnavailableItem = payload.items?.some(i => !checkItemAvailability(i.name))
 
-              {/* Dine In Target Arrival Timer */}
-              {isDineIn && payload.target_arrival_time && (
-                <View style={styles.dineInBadge}>
-                  <Text style={styles.dineInBadgeText}>
-                    🍽️ DINE IN · Arrival: {ARRIVAL_LABELS[payload.target_arrival_time] ?? payload.target_arrival_time}
-                  </Text>
-                  <ArrivalTimer target={payload.target_arrival_time} />
-                </View>
-              )}
+            return (
+              <View
+                key={order.id}
+                style={[
+                  styles.card,
+                  isDineIn && styles.cardDineIn,
+                  isPreparing && styles.cardPreparing,
+                  hasUnavailableItem && styles.cardWarning,
+                ]}>
+                {/* Unavailable Item Alert Banner */}
+                {hasUnavailableItem && (
+                  <View style={styles.warningBanner}>
+                    <Text style={styles.warningBannerText}>
+                      ⚠️ Contains out-of-stock item(s). Click &quot;Edit&quot; to substitute or call guest.
+                    </Text>
+                  </View>
+                )}
 
-              {/* Header: Room & Status */}
-              <View style={styles.headerRow}>
-                <View>
-                  <Text style={styles.roomNumber}>
-                    Room {order.rooms?.room_number || order.payload?.room_number || '—'}
-                  </Text>
-                  <View style={[styles.statusBadge, isPreparing ? styles.statusPreparing : styles.statusPending]}>
-                    <Text style={styles.statusText}>{order.status}</Text>
+                {/* Dine In Target Arrival Timer */}
+                {isDineIn && payload.target_arrival_time && (
+                  <View style={styles.dineInBadge}>
+                    <Text style={styles.dineInBadgeText}>
+                      🍽️ DINE IN · Arrival: {ARRIVAL_LABELS[payload.target_arrival_time] ?? payload.target_arrival_time}
+                    </Text>
+                    <ArrivalTimer target={payload.target_arrival_time} />
+                  </View>
+                )}
+
+                {/* Header: Room & Status */}
+                <View style={styles.headerRow}>
+                  <View>
+                    <Text style={styles.roomNumber}>
+                      Room {order.rooms?.room_number || order.payload?.room_number || '—'}
+                    </Text>
+                    <View style={[styles.statusBadge, isPreparing ? styles.statusPreparing : styles.statusPending]}>
+                      <Text style={styles.statusText}>{order.status}</Text>
+                    </View>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <ElapsedTimer createdAt={order.created_at} />
+                    <Text style={styles.totalText}>
+                      ₱{Number(payload.total_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                    {!!payload.service_charge_amount && (
+                      <Text style={{ fontSize: 11, color: '#fbbf24', fontWeight: '600', marginTop: 1 }}>
+                        incl. {payload.service_charge_pct || 10}% SC
+                      </Text>
+                    )}
                   </View>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <ElapsedTimer createdAt={order.created_at} />
-                  <Text style={styles.totalText}>
-                    ₱{Number(payload.total_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Text>
-                  {!!payload.service_charge_amount && (
-                    <Text style={{ fontSize: 11, color: '#fbbf24', fontWeight: '600', marginTop: 1 }}>
-                      incl. {payload.service_charge_pct || 10}% SC
-                    </Text>
-                  )}
-                </View>
-              </View>
 
-              {/* Guest Direct Call Button */}
-              {!!guestPhone && (
-                <TouchableOpacity
-                  style={styles.callGuestBtn}
-                  onPress={() => callGuest(guestPhone, order.rooms?.room_number || order.payload?.room_number)}>
-                  <Text style={styles.callGuestBtnText}>📞 Call Guest ({guestPhone})</Text>
-                </TouchableOpacity>
-              )}
+                {/* Universal Guest Direct Call Button */}
+                {guestPhone ? (
+                  <TouchableOpacity
+                    style={styles.callGuestBtn}
+                    onPress={() => callGuest(guestPhone, order.rooms?.room_number || order.payload?.room_number)}>
+                    <Text style={styles.callGuestBtnText}>📞 Call Guest ({guestPhone})</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={[styles.callGuestBtn, styles.callGuestBtnDisabled]} disabled>
+                    <Text style={styles.callGuestBtnDisabledText}>📞 No Phone Provided</Text>
+                  </TouchableOpacity>
+                )}
 
               {/* Items List with Live Availability Badges */}
               <View style={styles.itemsList}>
@@ -766,6 +977,373 @@ export default function FoodQueue({ activeStaffId, activeStaffUser, refreshTrigg
           )
         })}
       </ScrollView>
+      )}
+
+      {/* ─── MODAL 0: MANUAL / PHONE FOOD ORDER CREATION MODAL ────────────────── */}
+      <Modal visible={isManualOrderOpen} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCardLarge}>
+            {/* Modal Header */}
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={styles.modalTitle}>📞 Create Manual Food Order</Text>
+                  <View style={[styles.roomPill, { backgroundColor: 'rgba(34,197,94,0.15)', borderColor: 'rgba(34,197,94,0.3)' }]}>
+                    <Text style={[styles.roomPillText, { color: '#4ade80' }]}>Phone / Walk-in</Text>
+                  </View>
+                </View>
+                <Text style={styles.modalSubtitle}>
+                  Enter guest details, select menu items, and send directly to the kitchen
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsManualOrderOpen(false)}
+                style={styles.closeBtn}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} nestedScrollEnabled={true}>
+              {/* SECTION 1: ROOM & GUEST DETAILS */}
+              <View style={styles.sectionContainer}>
+                <Text style={styles.sectionHeading}>🏨 Guest &amp; Room Assignment</Text>
+
+                {/* Room Number Input & Quick Room Chips */}
+                <View style={{ marginBottom: 8 }}>
+                  <Text style={styles.fieldLabel}>Room Number *</Text>
+                  <TextInput
+                    value={manualRoomNumber}
+                    onChangeText={(val) => {
+                      setManualRoomNumber(val)
+                      const match = roomsList.find(r => r.room_number.toLowerCase() === val.trim().toLowerCase())
+                      setManualRoomId(match?.id || '')
+                    }}
+                    placeholder="e.g. 101, 204, 305..."
+                    placeholderTextColor="rgba(255,255,255,0.35)"
+                    style={styles.inputField}
+                  />
+
+                  {/* Quick Room Selector Chips */}
+                  {roomsList.length > 0 && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+                      {roomsList.slice(0, 10).map((r) => {
+                        const isSelected = manualRoomNumber === r.room_number
+                        return (
+                          <TouchableOpacity
+                            key={r.id}
+                            style={[styles.quickRoomChip, isSelected && styles.quickRoomChipSelected]}
+                            onPress={() => {
+                              setManualRoomNumber(r.room_number)
+                              setManualRoomId(r.id)
+                            }}
+                          >
+                            <Text style={[styles.quickRoomChipText, isSelected && styles.quickRoomChipTextSelected]}>
+                              Room {r.room_number}
+                            </Text>
+                          </TouchableOpacity>
+                        )
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
+
+                {/* Guest Name & Guest Phone (2 Columns) */}
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Guest Name</Text>
+                    <TextInput
+                      value={manualGuestName}
+                      onChangeText={setManualGuestName}
+                      placeholder="e.g. John Doe"
+                      placeholderTextColor="rgba(255,255,255,0.35)"
+                      style={styles.inputField}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Guest Phone (for quick call)</Text>
+                    <TextInput
+                      value={manualGuestPhone}
+                      onChangeText={setManualGuestPhone}
+                      placeholder="e.g. +1 555-0199"
+                      placeholderTextColor="rgba(255,255,255,0.35)"
+                      keyboardType="phone-pad"
+                      style={styles.inputField}
+                    />
+                  </View>
+                </View>
+
+                {/* Order Type & Initial Status */}
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Order Type</Text>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <TouchableOpacity
+                        style={[styles.toggleBtn, manualOrderType === 'ROOM_SERVICE' && styles.toggleBtnActive]}
+                        onPress={() => setManualOrderType('ROOM_SERVICE')}
+                      >
+                        <Text style={[styles.toggleBtnText, manualOrderType === 'ROOM_SERVICE' && styles.toggleBtnTextActive]}>
+                          🚪 Room Service
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.toggleBtn, manualOrderType === 'DINE_IN' && styles.toggleBtnActive]}
+                        onPress={() => setManualOrderType('DINE_IN')}
+                      >
+                        <Text style={[styles.toggleBtnText, manualOrderType === 'DINE_IN' && styles.toggleBtnTextActive]}>
+                          🍽️ Dine In
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Initial Kitchen Status</Text>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <TouchableOpacity
+                        style={[styles.toggleBtn, manualInitialStatus === 'PREPARING' && styles.toggleBtnActive]}
+                        onPress={() => setManualInitialStatus('PREPARING')}
+                      >
+                        <Text style={[styles.toggleBtnText, manualInitialStatus === 'PREPARING' && styles.toggleBtnTextActive]}>
+                          👨‍🍳 Preparing
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.toggleBtn, manualInitialStatus === 'PENDING' && styles.toggleBtnActive]}
+                        onPress={() => setManualInitialStatus('PENDING')}
+                      >
+                        <Text style={[styles.toggleBtnText, manualInitialStatus === 'PENDING' && styles.toggleBtnTextActive]}>
+                          🟡 Pending
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* SECTION 2: CHOSEN ITEMS */}
+              <View style={styles.sectionContainer}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionHeading}>🛒 Order Items ({manualChosenItemsList.length} unique)</Text>
+                  <Text style={styles.sectionSubtotal}>
+                    Items: ₱{manualSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+
+                {manualChosenItemsList.length === 0 ? (
+                  <View style={styles.emptyOrderBox}>
+                    <Text style={styles.emptyOrderItemsText}>
+                      No items selected yet. Tap &quot;+ Add&quot; on dishes below.
+                    </Text>
+                  </View>
+                ) : (
+                  manualChosenItemsList.map((item) => (
+                    <View key={item.id} style={styles.editRow}>
+                      <View style={{ flex: 1, paddingRight: 6 }}>
+                        <Text style={styles.editItemName}>{item.name}</Text>
+                        <Text style={styles.editItemSubtotal}>
+                          ₱{item.unit_price.toLocaleString()} × {item.quantity} = <Text style={{ color: '#4ade80', fontWeight: '700' }}>₱{(item.unit_price * item.quantity).toLocaleString()}</Text>
+                        </Text>
+                      </View>
+
+                      <View style={styles.qtyContainer}>
+                        <TouchableOpacity
+                          style={styles.qtyBtn}
+                          onPress={() => {
+                            if (!item.id) return
+                            setManualSelectedItems(prev => {
+                              const curr = prev[item.id!] || 0
+                              if (curr <= 1) {
+                                const next = { ...prev }
+                                delete next[item.id!]
+                                return next
+                              }
+                              return { ...prev, [item.id!]: curr - 1 }
+                            })
+                          }}
+                        >
+                          <Text style={styles.qtyBtnText}>−</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.qtyText}>{item.quantity}</Text>
+                        <TouchableOpacity
+                          style={styles.qtyBtn}
+                          onPress={() => {
+                            if (!item.id) return
+                            setManualSelectedItems(prev => ({ ...prev, [item.id!]: (prev[item.id!] || 0) + 1 }))
+                          }}
+                        >
+                          <Text style={styles.qtyBtnText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.removeBtn}
+                        onPress={() => {
+                          if (!item.id) return
+                          setManualSelectedItems(prev => {
+                            const next = { ...prev }
+                            delete next[item.id!]
+                            return next
+                          })
+                        }}
+                      >
+                        <Text style={styles.removeBtnText}>🗑️</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))
+                )}
+              </View>
+
+              {/* SECTION 3: RESTAURANT MENU CATALOG BROWSER */}
+              <View style={styles.sectionContainer}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionHeading}>🍽️ Restaurant Menu ({filteredManualMenu.length} items)</Text>
+                </View>
+
+                {/* Search Bar */}
+                <TextInput
+                  value={manualSearchQuery}
+                  onChangeText={setManualSearchQuery}
+                  placeholder="🔍 Search dishes, drinks, desserts..."
+                  placeholderTextColor="rgba(255,255,255,0.4)"
+                  style={styles.searchBarInput}
+                />
+
+                {/* Category Chips */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 6 }}>
+                  {availableCategories.map(cat => {
+                    const isSelected = manualCategoryFilter === cat
+                    return (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
+                        onPress={() => setManualCategoryFilter(cat)}
+                      >
+                        <Text style={[styles.categoryChipText, isSelected && styles.categoryChipTextSelected]}>
+                          {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </ScrollView>
+
+                {/* Scrollable Menu Items */}
+                <View style={styles.menuScrollWrapper}>
+                  <ScrollView
+                    nestedScrollEnabled={true}
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingBottom: 10 }}
+                    showsVerticalScrollIndicator={true}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {filteredManualMenu.length === 0 ? (
+                      <Text style={styles.emptySearchText}>No food items found matching &quot;{manualSearchQuery}&quot;</Text>
+                    ) : (
+                      filteredManualMenu.map(menuItem => {
+                        const countInCart = manualSelectedItems[menuItem.id] || 0
+                        return (
+                          <View key={menuItem.id} style={styles.menuCard}>
+                            <View style={{ flex: 1, paddingRight: 10 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                <Text style={styles.menuCardTitle}>{menuItem.name}</Text>
+                                <Text style={styles.menuCardCategoryTag}>{menuItem.category || 'Food'}</Text>
+                              </View>
+                              {!!menuItem.description && (
+                                <Text style={styles.menuCardDesc} numberOfLines={2}>{menuItem.description}</Text>
+                              )}
+                              <Text style={styles.menuCardPrice}>₱{menuItem.price.toLocaleString()}</Text>
+                            </View>
+
+                            <TouchableOpacity
+                              style={[styles.addToOrderBtn, countInCart > 0 && styles.addToOrderBtnActive]}
+                              onPress={() => {
+                                setManualSelectedItems(prev => ({
+                                  ...prev,
+                                  [menuItem.id]: (prev[menuItem.id] || 0) + 1,
+                                }))
+                              }}
+                            >
+                              <Text style={[styles.addToOrderBtnText, countInCart > 0 && styles.addToOrderBtnTextActive]}>
+                                {countInCart > 0 ? `+ Add (${countInCart})` : '+ Add'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        )
+                      })
+                    )}
+                  </ScrollView>
+                </View>
+              </View>
+
+              {/* SECTION 4: SPECIAL INSTRUCTIONS */}
+              <View style={styles.sectionContainer}>
+                <Text style={styles.sectionHeading}>📝 Special Instructions / Cooking Notes</Text>
+                <TextInput
+                  value={manualNotes}
+                  onChangeText={setManualNotes}
+                  placeholder="e.g. Extra napkins, no onions, dressing on the side..."
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  style={styles.textInput}
+                  multiline
+                  numberOfLines={2}
+                />
+              </View>
+            </ScrollView>
+
+            {/* Total Price & Footer Action Buttons */}
+            <View style={styles.modalFooter}>
+              <View style={{ gap: 4, marginBottom: 6 }}>
+                <View style={styles.totalRow}>
+                  <Text style={[styles.totalRowLabel, { fontSize: 13, color: 'rgba(255,255,255,0.6)' }]}>Items Subtotal:</Text>
+                  <Text style={[styles.totalRowValue, { fontSize: 14, color: '#fff' }]}>
+                    ₱{manualSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+
+                {hotelServiceChargeEnabled && (
+                  <View style={styles.totalRow}>
+                    <Text style={[styles.totalRowLabel, { fontSize: 13, color: '#fbbf24' }]}>
+                      Service Charge ({hotelServiceChargePct}%):
+                    </Text>
+                    <Text style={[styles.totalRowValue, { fontSize: 14, color: '#fbbf24' }]}>
+                      +₱{manualScAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={[styles.totalRow, { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 6, marginTop: 2 }]}>
+                  <Text style={styles.totalRowLabel}>Grand Total:</Text>
+                  <Text style={styles.totalRowValue}>
+                    ₱{manualGrandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: 'rgba(255,255,255,0.1)' }]}
+                  onPress={() => setIsManualOrderOpen(false)}
+                >
+                  <Text style={styles.actionBtnText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.actionBtn,
+                    { backgroundColor: '#10b981' },
+                    (submittingManualOrder || manualChosenItemsList.length === 0 || !manualRoomNumber.trim()) && styles.btnDisabled,
+                  ]}
+                  disabled={submittingManualOrder || manualChosenItemsList.length === 0 || !manualRoomNumber.trim()}
+                  onPress={handleCreateManualOrder}
+                >
+                  <Text style={styles.actionBtnText}>
+                    {submittingManualOrder ? 'Creating Order…' : '✓ Place Order'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ─── MODAL 1: EDIT DINING ORDER MODAL ─────────────────────────────────────── */}
       <Modal visible={!!editingOrder} transparent animationType="fade">
@@ -1057,7 +1635,10 @@ export default function FoodQueue({ activeStaffId, activeStaffUser, refreshTrigg
 
 const styles = StyleSheet.create({
   container:        { marginTop: 20 },
-  heading:          { color: '#f97316', fontWeight: '800', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 },
+  headingRow:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  heading:          { color: '#f97316', fontWeight: '800', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1 },
+  createOrderHeaderBtn: { backgroundColor: 'rgba(249,115,22,0.18)', borderWidth: 1, borderColor: '#f97316', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  createOrderHeaderBtnText: { color: '#f97316', fontWeight: '800', fontSize: 12 },
   emptyWrap:        { alignItems: 'center', paddingVertical: 32 },
   emptyIcon:        { fontSize: 36, marginBottom: 8 },
   emptyText:        { color: 'rgba(255,255,255,0.3)', fontSize: 14 },
@@ -1081,6 +1662,8 @@ const styles = StyleSheet.create({
   totalText:        { color: '#f97316', fontWeight: '800', fontSize: 18, marginTop: 4 },
   callGuestBtn:     { backgroundColor: 'rgba(59,130,246,0.15)', borderWidth: 1, borderColor: 'rgba(59,130,246,0.3)', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 12, alignItems: 'center' },
   callGuestBtnText: { color: '#60a5fa', fontWeight: '700', fontSize: 13 },
+  callGuestBtnDisabled: { backgroundColor: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)' },
+  callGuestBtnDisabledText: { color: 'rgba(255,255,255,0.3)', fontWeight: '600', fontSize: 12 },
   itemsList:        { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: 12, marginBottom: 12 },
   itemRow:          { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
   itemQty:          { color: '#f97316', fontWeight: '700', fontSize: 14, marginRight: 8, minWidth: 24 },
@@ -1104,6 +1687,18 @@ const styles = StyleSheet.create({
   btnReady:         { backgroundColor: 'rgba(34,197,94,0.85)' },
   btnDisabled:      { opacity: 0.5 },
   actionBtnText:    { color: '#fff', fontWeight: '800', fontSize: 13 },
+
+  // Form Field Styles
+  fieldLabel:       { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '700', marginBottom: 4 },
+  inputField:       { backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: '#fff', fontSize: 13 },
+  quickRoomChip:    { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, marginRight: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  quickRoomChipSelected: { backgroundColor: 'rgba(249,115,22,0.25)', borderColor: '#f97316' },
+  quickRoomChipText:{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '700' },
+  quickRoomChipTextSelected: { color: '#f97316', fontWeight: '800' },
+  toggleBtn:        { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
+  toggleBtnActive:  { backgroundColor: 'rgba(249,115,22,0.2)', borderColor: '#f97316' },
+  toggleBtnText:    { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '700' },
+  toggleBtnTextActive: { color: '#f97316', fontWeight: '800' },
 
   // Modal Styles
   modalBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 12 },

@@ -20,6 +20,7 @@ const LOGO_PRESETS = [
 export default function HotelSettingsPage() {
   const [hotelName, setHotelName] = useState('Grand Hotel & Spa')
   const [phone, setPhone] = useState('+1-800-555-0100')
+  const [fnbPhoneNumber, setFnbPhoneNumber] = useState('+1-800-555-0199')
   const [logoUrl, setLogoUrl] = useState('https://images.unsplash.com/photo-1566073771259-6a8506099945?w=120')
   const [colorScheme, setColorScheme] = useState<GuestColorScheme>('gold')
 
@@ -40,7 +41,7 @@ export default function HotelSettingsPage() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase as any)
           .from('hotels')
-          .select('name, phone, logo_url, color_scheme, service_charge_enabled, service_charge_pct')
+          .select('name, phone, fnb_phone_number, logo_url, color_scheme, service_charge_enabled, service_charge_pct')
           .eq('id', HOTEL_ID)
           .single()
 
@@ -51,6 +52,7 @@ export default function HotelSettingsPage() {
         if (data) {
           if (data.name) setHotelName(data.name)
           if (data.phone) setPhone(data.phone)
+          if (data.fnb_phone_number) setFnbPhoneNumber(data.fnb_phone_number)
           if (data.logo_url) setLogoUrl(data.logo_url)
           if (data.color_scheme) setColorScheme(data.color_scheme as GuestColorScheme)
           setServiceChargeEnabled(data.service_charge_enabled ?? true)
@@ -80,6 +82,7 @@ export default function HotelSettingsPage() {
         .update({
           name: hotelName.trim(),
           phone: phone.trim(),
+          fnb_phone_number: fnbPhoneNumber.trim(),
           logo_url: logoUrl.trim(),
           color_scheme: colorScheme,
           service_charge_enabled: serviceChargeEnabled,
@@ -98,6 +101,7 @@ export default function HotelSettingsPage() {
           details: {
             name: hotelName.trim(),
             phone: phone.trim(),
+            fnb_phone_number: fnbPhoneNumber.trim(),
             logo_url: logoUrl.trim(),
             color_scheme: colorScheme,
           },
@@ -195,9 +199,9 @@ export default function HotelSettingsPage() {
                   </span>
                 </div>
 
-                <div>
+                <div style={{ marginBottom: '1.25rem' }}>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
-                    Front Desk Phone Number (Direct Calling)
+                    Front Desk Phone Number (General Calling)
                   </label>
                   <input
                     type="text"
@@ -217,7 +221,33 @@ export default function HotelSettingsPage() {
                     }}
                   />
                   <span style={{ fontSize: 11, color: '#64748b', marginTop: 4, display: 'block' }}>
-                    Guests tapping &quot;Direct Phone Call&quot; in the web app will directly dial this number.
+                    Used for general front desk inquiries and concierge requests.
+                  </span>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#fbbf24', marginBottom: 6 }}>
+                    🍽️ F&amp;B / Dining Direct Phone Number
+                  </label>
+                  <input
+                    type="text"
+                    value={fnbPhoneNumber}
+                    onChange={(e) => setFnbPhoneNumber(e.target.value)}
+                    placeholder="e.g. +1-800-555-0199"
+                    style={{
+                      width: '100%',
+                      background: 'rgba(15, 23, 42, 0.8)',
+                      border: '1px solid rgba(251,191,36,0.3)',
+                      borderRadius: 12,
+                      padding: '12px 14px',
+                      color: '#fbbf24',
+                      fontWeight: '600',
+                      fontSize: 14,
+                      outline: 'none',
+                    }}
+                  />
+                  <span style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, display: 'block' }}>
+                    Guests tapping the Floating Call button in the Dining section will directly dial this kitchen / room service number.
                   </span>
                 </div>
               </div>
