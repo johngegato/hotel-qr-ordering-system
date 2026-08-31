@@ -33,6 +33,7 @@ Examples:
 | 2026-08-31 | [2026-08-31_foreground-service-type-push-diagnostics.md](./2026-08-31_foreground-service-type-push-diagnostics.md) | FOREGROUND_SERVICE_REMOTE_MESSAGING fix, FCM diagnostics suite (web + app), multi-strategy token resolution |
 | 2026-08-31 | [2026-08-31_eas-build-firebase-setup.md](./2026-08-31_eas-build-firebase-setup.md) | Firebase project setup, google-services.json, EAS credentials, account migration to @johngegato |
 | 2026-08-31 | [2026-08-31_taskqueue-bug-fixes-fab-ui.md](./2026-08-31_taskqueue-bug-fixes-fab-ui.md) | TaskQueue room number bug fix, FCM button moved to floating FAB |
+| 2026-08-31 | [2026-08-31_fnb-access-control-guest-dialing-manual-orders.md](./2026-08-31_fnb-access-control-guest-dialing-manual-orders.md) | F&B access control (KITCHEN RBAC), universal guest dialing, manual food orders, FnBDiningFAB, TaskQueue resolution fix |
 
 ---
 

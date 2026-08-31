@@ -88,10 +88,23 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
 - [x] High-Priority FCM & Expo Push Payload Dispatching (`apps/web`):
   - Updated `webPush.ts` to accept all valid FCM and Expo push tokens.
   - Configured high-priority delivery (`priority: 'high'`, `sound: 'alarm'`, `channelId: 'hotel_staff_alarm'`, `ttl: 86400`) to wake sleeping Google Play Services devices.
-- [x] Database Schema Migration 18 (`push_token` on `staff_users`):
-  - Added `packages/supabase/migrations/18_add_staff_users_push_token.sql` and `apps/web/supabase/migrations/18_add_staff_users_push_token.sql` to store Android mobile FCM device tokens.
-  - Updated TypeScript interfaces in `packages/supabase/types/index.ts` and `apps/staff-app/components/UserManagement.tsx`.
-- [ ] Apply DB migrations `15_spa_time_slots.sql`, `16_cleanup_expired_spa_holds.sql`, and `18_add_staff_users_push_token.sql` in Supabase SQL editor.
+- [x] Database Schema Migration 19 (`fnb_phone_number` on `hotels`):
+  - Added `packages/supabase/migrations/19_fnb_phone_number.sql` and `apps/web/supabase/migrations/19_fnb_phone_number.sql` for F&B dynamic dialing.
+  - Updated `Hotel` interface in `packages/supabase/types/index.ts`.
+- [x] Admin Settings F&B Phone Configuration (`/admin/settings`):
+  - Added F&B Direct Phone Number input, live fetching, persistent save to `hotels` table, and audit trail logging.
+- [x] Guest Dining Direct Call FAB (`apps/web`):
+  - Created `FnBDiningFAB.tsx` and embedded on `/app/stay/dining` with pulsating call button and dynamic dial number.
+- [x] Staff App Kitchen / F&B Role-Based Access Control (`App.tsx`):
+  - Dedicated kitchen view for `KITCHEN` staff user role, hiding non-dining queues and filtering alerts to `FOOD_ORDER`.
+- [x] Staff App Manual & Phone Food Order Entry Modal (`FoodQueue.tsx`):
+  - Added rich creation modal: Room selection, guest name & phone, category-filtered menu items, +/- quantities, custom cooking notes, live service charge calculation, and audit trail.
+- [x] Staff App Universal Guest Quick Call (`FoodQueue.tsx`, `TaskQueue.tsx`, `SpaQueue.tsx`, `EditSpaBookingModal.tsx`, `DedicatedCallModule.tsx`, `RequestHistory.tsx`):
+  - Added 1-tap `📞 Call Guest` button across all queues and modals with clean disabled fallback for missing numbers.
+  - Added robust multi-tier phone number extraction (`guest_phone`, `phone_number`, `phone`, `custom_notes` regex, `special_instructions` regex) in `RequestHistory.tsx` and `TaskQueue.tsx`.
+- [x] Task Resolution Fix (`TaskQueue.tsx`):
+  - Removed `updated_at` from `handleResolve` update payload, resolving PGRST204 errors and ensuring instant task card dismissal.
+- [ ] Apply DB migrations `15_spa_time_slots.sql`, `16_cleanup_expired_spa_holds.sql`, `18_add_staff_users_push_token.sql`, and `19_fnb_phone_number.sql` in Supabase SQL editor.
 - [ ] Test end-to-end guest-to-staff flow on live Vercel deployments and Android APK.
 
 Notes:

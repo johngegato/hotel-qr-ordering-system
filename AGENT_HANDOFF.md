@@ -14,6 +14,15 @@ Key goals
 - Fix actor attribution bug in RequestHistory showing guest names with STAFF role badge.
 
 Recent session additions:
+- Database & Schema (Migration 19): Added `fnb_phone_number` (TEXT) to `hotels` table in both `packages/supabase/migrations/19_fnb_phone_number.sql` and `apps/web/supabase/migrations/19_fnb_phone_number.sql`. Updated `Hotel` interface in `packages/supabase/types/index.ts`.
+- apps/web/app/admin/settings/page.tsx: Added F&B Direct Phone Number field to Admin Settings with live fetching, persistent save to `hotels` table, and audit trail logging.
+- apps/web/app/app/stay/components/FnBDiningFAB.tsx [NEW] & dining/page.tsx: Created persistent floating action button (FAB) for direct calling F&B with dynamic phone loading from hotel record.
+- apps/staff-app/App.tsx: Role-Based Access Control (RBAC) for `KITCHEN` role — dedicated Kitchen / F&B Portal view showing only `FoodQueue` and food metrics, hiding non-dining modules, and filtering background/popup alerts strictly to `FOOD_ORDER`.
+- apps/staff-app/components/FoodQueue.tsx: Implemented rich "+ Phone / Manual Order" creation modal with active room selector, guest name/phone, catalog item picker with category filters/search, +/- quantity counters, cooking instructions, live service charge calculation, and audit trail. Added universal `📞 Call Guest` button to all food cards.
+- apps/staff-app/components/TaskQueue.tsx: Added universal `📞 Call Guest` button on all task cards with disabled fallback. Fixed `handleResolve` crash by removing nonexistent `updated_at` column from update payload (preventing PGRST204 errors).
+- apps/staff-app/components/SpaQueue.tsx & EditSpaBookingModal.tsx: Added standardized `📞 Call Guest` buttons and headers with disabled fallbacks across all spa cards and modal banners.
+- apps/staff-app/components/RequestHistory.tsx: Universal guest quick-call row on ALL request types (TASK, FOOD, SPA, CALL) with multi-tier phone resolution (`guest_phone`, `phone_number`, `phone`, `custom_notes` regex, `special_instructions` regex). Added comprehensive Task Request detail view in modal with dedicated `📞 Dial Now` action.
+- apps/web/app/app/stay/requests/page.tsx: Updated guest task submission payload to explicitly save `guest_phone` as a structured field alongside `custom_notes`.
 - apps/staff-app/lib/notifications.ts: Created web-safe notification engine configuring the `urgent_guest_requests` Android notification channel with `AndroidImportance.MAX`, `AndroidAudioUsage.ALARM`, custom high-intensity vibration pattern, LED light triggers, and push token registration.
 - apps/staff-app/app.json: Added Android permissions (`WAKE_LOCK`, `USE_FULL_SCREEN_INTENT`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE`, `RECEIVE_BOOT_COMPLETED`) to support APK creation and reliable background execution.
 - apps/staff-app/components/PendingRequestsReminderModal.tsx [NEW]: Implemented rich recurring unhandled requests alert popup with department breakdown chips (Calls, Spa, Dining, Tasks), live waiting counters, audio chimes, and haptics.
