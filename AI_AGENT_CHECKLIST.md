@@ -9,6 +9,17 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
 - [x] Run local builds:
   - Staff app type check: `tsc --noEmit` in `apps/staff-app` ✅
   - Web app build: `npm run build` in `apps/web` ✅
+- [x] OTA Auto-Updates in `staff-app` via `expo-updates`:
+  - `app.json` updates configuration (`checkAutomatically: "ON_LOAD"`, `fallbackToCacheTimeout: 0`, `runtimeVersion: { policy: "appVersion" }`).
+  - `apps/staff-app/lib/useAutoUpdate.ts` custom hook monitoring launch & `AppState` foreground events.
+  - Root integration in `apps/staff-app/App.tsx`.
+- [x] Automated FCM Push Notifications & Database Triggers:
+  - Database schema: `20_notification_settings.sql` (unique partial index `idx_staff_users_push_token_unique`, `notification_settings` table).
+  - Automated Database Webhook endpoint at `apps/web/app/api/push/webhook/route.ts` triggered on `requests` INSERT.
+  - Role-targeted push dispatching in `apps/web/lib/webPush.ts` (`FOOD_ORDER` $\rightarrow$ F&B, `CALL_REQUEST`/`TASK` $\rightarrow$ Front Desk, `SPA_BOOKING` $\rightarrow$ Spa).
+  - Push token 1:1 binding (`bindPushTokenToStaffUser`) and logout token nullification (`clearPushTokenFromStaffUser`) in `apps/staff-app/lib/notifications.ts` & `App.tsx`.
+  - Alert deduplication (`alertedRequestIdsRef`) and role-based notification filtering in `apps/staff-app/App.tsx`.
+  - Admin Notification Settings Controls at `/admin/settings` (reminder interval selector, sound toggle, max ring duration slider, role matrix, and live test push trigger).
 - [x] Admin Web User Account Control (UAC): full CRUD at `/admin/users` on `staff_users` table.
 - [x] F&B Menu Admin Enhancements at `/admin/fb`: Category CRUD, food photo uploads & compression to Supabase Storage, 1-click CSV Export, Batch CSV Import with validation & preview, downloadable CSV template.
 - [x] Guest Dining UI/UX overhaul at `/app/stay/dining`: hero section, dietary filter chips, live search, dish detail modal, resolved infinite scroll re-render loop bug.

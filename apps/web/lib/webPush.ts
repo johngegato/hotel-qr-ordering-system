@@ -74,9 +74,22 @@ export async function sendWebPushToHotelStaff(
   // 1. DISPATCH TO EXPO / FCM MOBILE DEVICES (Android Staff App)
   // ─────────────────────────────────────────────────────────────────────────────
   try {
+    // 1a. Load hotel notification settings if available
+    let notifSettings: any = null
+    try {
+      const { data: nData } = await supabase
+        .from('notification_settings')
+        .select('*')
+        .eq('hotel_id', targetHotelId)
+        .maybeSingle()
+      if (nData) notifSettings = nData
+    } catch {
+      // ignore
+    }
+
     let staffQuery = supabase
       .from('staff_users')
-      .select('id, full_name, email, push_token, is_active, hotel_id')
+      .select('id, full_name, email, role, push_token, is_active, hotel_id')
 
     if (options?.staffUserId) {
       staffQuery = staffQuery.eq('id', options.staffUserId)
@@ -87,10 +100,50 @@ export async function sendWebPushToHotelStaff(
       }
     }
 
-    const { data: staffData, error: staffErr } = await staffQuery
+    const { data: rawStaffData, error: staffErr } = await staffQuery
 
     if (staffErr) {
       errors.push(`Staff query error: ${staffErr.message}`)
+    }
+
+    // 1b. Role-Based Staff Filtering
+    let staffData = rawStaffData || []
+    if (staffData.length > 0 && payload.requestType && !payload.isTestPush && !options?.staffUserId) {
+      const rType = String(payload.requestType).toUpperCase()
+      staffData = staffData.filter((u) => {
+        const uRole = String(u.role || '').toUpperCase()
+        // Admins and Managers receive all notifications
+        if (uRole === 'ADMIN' || uRole === 'MANAGER') return true
+
+        // Custom notification settings check
+        if (notifSettings) {
+          if ((uRole === 'KITCHEN' || uRole === 'FNB') && Array.isArray(notifSettings.fnb_allowed_types)) {
+            return notifSettings.fnb_allowed_types.includes(rType)
+          }
+          if ((uRole === 'FRONT_DESK' || uRole === 'HOUSEKEEPING' || uRole === 'MAINTENANCE') && Array.isArray(notifSettings.frontdesk_allowed_types)) {
+            return notifSettings.frontdesk_allowed_types.includes(rType)
+          }
+          if (uRole === 'SPA' && Array.isArray(notifSettings.spa_allowed_types)) {
+            return notifSettings.spa_allowed_types.includes(rType)
+          }
+        }
+
+        // Default routing rules
+        switch (uRole) {
+          case 'KITCHEN':
+          case 'FNB':
+            return rType === 'FOOD_ORDER'
+          case 'SPA':
+            return rType === 'SPA_BOOKING'
+          case 'HOUSEKEEPING':
+          case 'MAINTENANCE':
+            return rType === 'TASK'
+          case 'FRONT_DESK':
+            return rType === 'CALL_REQUEST' || rType === 'TASK'
+          default:
+            return true
+        }
+      })
     }
 
     if (!staffErr && staffData && staffData.length > 0) {
@@ -149,7 +202,7 @@ export async function sendWebPushToHotelStaff(
       expoDevicesReached = expoTokens.length
 
       if (expoTokens.length > 0) {
-        console.log(`[Push] Dispatching Expo/FCM push to ${expoTokens.length} staff device(s)...`)
+        console.log(`[Push] Dispatching Expo/FCM push to ${expoTokens.length} role-targeted staff device(s)...`)
 
         const expoMessages = expoTokens.map((token) => ({
           to: token,

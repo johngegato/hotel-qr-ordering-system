@@ -4,6 +4,40 @@ Summary of recent changes implemented by the agent (staff-app focus)
 
 This document records the edits, fixes, and feature work performed during the current session. It is intended to help a human developer pick up where the agent left off.
 
+---
+
+## ⚠️ Deploy Reminder — OTA Update vs. APK Rebuild
+
+After every change, the agent (or developer) **must** assess whether deploying requires an OTA push or a full Android rebuild.
+
+### ✅ OTA Update Only — `npx eas-cli update --branch preview --message "..."`
+Run from `apps/staff-app/`. No APK reinstall required on staff devices.
+| Change Type | Examples |
+| :--- | :--- |
+| **TypeScript / React Native code** | Bug fixes, UI logic, component state, hooks |
+| **New screens or UI components** | New queues, modals, cards, buttons |
+| **Styling & layout** | Colors, spacing, fonts, animations |
+| **Supabase queries & API calls** | Filters, inserts, realtime subscriptions |
+| **Notification logic** | Routing rules, deduplication, alert timing |
+| **Business logic** | RBAC checks, order calculations, validations |
+
+### 🔴 Full APK Rebuild Required — `eas build -p android --profile preview`
+Native configuration changes that require Gradle compilation and a new `.apk`.
+| Change Type | Examples |
+| :--- | :--- |
+| **New native Android permissions** | Added to `"permissions"` in `app.json` |
+| **New native Expo plugins** | Added to `"plugins"` array in `app.json` (e.g. `expo-av`, `expo-updates`) |
+| **New packages with native code** | Java, Kotlin, C++ bindings (e.g. `react-native-mmkv`, new Firebase SDKs) |
+| **Changes to `google-services.json`** | Firebase config update |
+| **Android `versionCode` / `versionName` bump** | Major release |
+| **`runtimeVersion` policy change** | Alters OTA compatibility window |
+
+> [!IMPORTANT]
+> The current build is on EAS project `johngegato/hotel-staff-app` (ID: `4e2f24d0-60e3-4ce3-891e-1f2a1e591df6`).  
+> Branch in use: **`backup-8-31-26-4pm`** — do **NOT** commit or push to `main` until testing is complete.
+
+---
+
 Key goals
 - Merge backup into repo (prefer repo files on conflicts).
 - Fix spa booking flows: ensure staff manual bookings create `spa_slot_locks` and the master timetable shows guest bookings created on other days.
@@ -14,6 +48,27 @@ Key goals
 - Fix actor attribution bug in RequestHistory showing guest names with STAFF role badge.
 
 Recent session additions:
+- Over-The-Air (OTA) Auto-Updates via `expo-updates` (`apps/staff-app`):
+  - `app.json`: Configured `"runtimeVersion": { "policy": "appVersion" }`, `"updates": { "url": "https://u.expo.dev/4e2f24d0-60e3-4ce3-891e-1f2a1e591df6", "checkAutomatically": "ON_LOAD", "fallbackToCacheTimeout": 0 }`, and added `"expo-updates"` to plugins.
+  - `apps/staff-app/lib/useAutoUpdate.ts` [NEW]: Custom hook checking `Updates.checkForUpdateAsync()` on app launch and foreground resume (`AppState === 'active'`), downloading bundles silently via `Updates.fetchUpdateAsync()`, and prompting staff with a non-cancelable restart dialog that calls `Updates.reloadAsync()`.
+  - `apps/staff-app/App.tsx`: Wired `useAutoUpdate()` directly at the root `MainAppContent` component.
+- Database & Schema (Migration 20): Created `20_notification_settings.sql` in both `packages/supabase/migrations/` and `apps/web/supabase/migrations/`.
+  - Added unique partial index `idx_staff_users_push_token_unique` on `staff_users(push_token) WHERE push_token IS NOT NULL` preventing token duplicates across multiple accounts on shared devices.
+  - Created `notification_settings` table (`hotel_id`, `reminder_interval_minutes`, `enable_sound_alert`, `max_alert_duration_seconds`, `fnb_allowed_types`, `frontdesk_allowed_types`, `spa_allowed_types`) with default seed row for default hotel and RLS policies.
+- Staff App Token Lifecycle Cleansing (`apps/staff-app/lib/notifications.ts` & `App.tsx`):
+  - Added `bindPushTokenToStaffUser`: unlinks device token from any other accounts before assigning to current user.
+  - Added `clearPushTokenFromStaffUser`: nullifies `push_token` on logout to prevent orphaned push delivery to logged-out users.
+  - Wired into `handleLogout` and push registration lifecycle.
+- Role-Based Notification Routing & Deduplication (`apps/staff-app/` & `apps/web/`):
+  - Added `canRoleReceiveNotification` helper in `notifications.ts` and `App.tsx`.
+  - Added `alertedRequestIdsRef` deduplication cache in `App.tsx` suppressing duplicate alarms for the same request ID.
+  - Updated `apps/staff-app/components/IncomingRequestAlert.tsx` with `enableSound` and `maxDurationSeconds` props, auto-stopping loop and dismissing according to configured duration.
+  - Updated `apps/web/lib/webPush.ts`: Added role-targeted staff filtering based on request type (`FOOD_ORDER` $\rightarrow$ F&B, `CALL_REQUEST`/`TASK` $\rightarrow$ Front Desk/Housekeeping, `SPA_BOOKING` $\rightarrow$ Spa, `ADMIN`/`MANAGER` $\rightarrow$ All).
+- Automated Database Webhook Endpoint (`apps/web/app/api/push/webhook/route.ts` [NEW]):
+  - Webhook route for Supabase Database Webhooks / database triggers on `requests` INSERT, resolving room number and dispatching high-priority push notifications to role-targeted staff devices.
+- Admin Notification Settings Controls (`apps/web/app/admin/settings/page.tsx`):
+  - Added "Staff Push & Alarm Controls" panel: reminder interval dropdown (1m, 2m, 5m, 10m, 15m, disabled), audio alarm toggle, max alarm ring duration slider (10s-120s), role routing matrix with department checkboxes, and instant test push dispatcher (`🔔 Send Test Notification`).
+  - Saves to `notification_settings` and logs to `audit_logs`.
 - Database & Schema (Migration 19): Added `fnb_phone_number` (TEXT) to `hotels` table in both `packages/supabase/migrations/19_fnb_phone_number.sql` and `apps/web/supabase/migrations/19_fnb_phone_number.sql`. Updated `Hotel` interface in `packages/supabase/types/index.ts`.
 - apps/web/app/admin/settings/page.tsx: Added F&B Direct Phone Number field to Admin Settings with live fetching, persistent save to `hotels` table, and audit trail logging.
 - apps/web/app/app/stay/components/FnBDiningFAB.tsx [NEW] & dining/page.tsx: Created persistent floating action button (FAB) for direct calling F&B with dynamic phone loading from hotel record.

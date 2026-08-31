@@ -82,7 +82,7 @@ export interface CatalogItem {
   created_at: string
 }
 
-export type StaffRole = 'FRONT_DESK' | 'KITCHEN' | 'HOUSEKEEPING' | 'SPA' | 'MANAGER'
+export type StaffRole = 'FRONT_DESK' | 'KITCHEN' | 'HOUSEKEEPING' | 'SPA' | 'MANAGER' | 'FNB' | 'ADMIN'
 
 export interface StaffUser {
   id: string
@@ -194,6 +194,18 @@ export interface SpaSlotLock {
   status: 'HELD' | 'BOOKED' | 'EXPIRED' | 'CANCELLED'
   expires_at: string
   created_at: string
+}
+
+export interface NotificationSettings {
+  id: string
+  hotel_id: string
+  reminder_interval_minutes: number
+  enable_sound_alert: boolean
+  max_alert_duration_seconds: number
+  fnb_allowed_types: string[]
+  frontdesk_allowed_types: string[]
+  spa_allowed_types: string[]
+  updated_at: string
 }
 
 // ============================================================
@@ -333,6 +345,11 @@ export interface Database {
         Row: AuditLog
         Insert: Omit<AuditLog, 'id' | 'created_at'> & { id?: string; created_at?: string }
         Update: Partial<Omit<AuditLog, 'id'>>
+      }
+      notification_settings: {
+        Row: NotificationSettings
+        Insert: Omit<NotificationSettings, 'id' | 'updated_at'> & { id?: string; updated_at?: string }
+        Update: Partial<Omit<NotificationSettings, 'id'>>
       }
     }
     Views: Record<string, never>

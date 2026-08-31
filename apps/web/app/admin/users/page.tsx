@@ -51,11 +51,27 @@ const ROLE_CONFIGS: Record<StaffRole, RoleMeta> = {
     description: 'Oversees spa appointments, therapist rosters & timetables',
   },
   MANAGER: {
-    label: 'Manager / Admin',
+    label: 'Manager',
     color: '#34d399',
     bg: 'rgba(52, 211, 153, 0.12)',
     border: 'rgba(52, 211, 153, 0.3)',
     icon: '👔',
+    description: 'Operational manager with multi-department oversight',
+  },
+  FNB: {
+    label: 'F&B Service',
+    color: '#fb923c',
+    bg: 'rgba(251, 146, 60, 0.12)',
+    border: 'rgba(251, 146, 60, 0.3)',
+    icon: '🍷',
+    description: 'Receives dining requests, kitchen coordination & bar orders',
+  },
+  ADMIN: {
+    label: 'Administrator',
+    color: '#f59e0b',
+    bg: 'rgba(245, 158, 11, 0.12)',
+    border: 'rgba(245, 158, 11, 0.3)',
+    icon: '👑',
     description: 'Full administrative access across all operational modules',
   },
 }

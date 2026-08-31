@@ -28,28 +28,48 @@ export default function HotelSettingsPage() {
   const [serviceChargeEnabled, setServiceChargeEnabled] = useState(true)
   const [serviceChargePct, setServiceChargePct]         = useState<number>(10)
 
+  // Notification & Alarm Settings
+  const [reminderInterval, setReminderInterval]         = useState<number>(5)
+  const [enableSoundAlert, setEnableSoundAlert]         = useState<boolean>(true)
+  const [maxAlertDuration, setMaxAlertDuration]         = useState<number>(30)
+  const [fnbAllowedTypes, setFnbAllowedTypes]           = useState<string[]>(['FOOD_ORDER'])
+  const [frontdeskAllowedTypes, setFrontdeskAllowedTypes] = useState<string[]>(['CALL_REQUEST', 'TASK'])
+  const [spaAllowedTypes, setSpaAllowedTypes]           = useState<string[]>(['SPA_BOOKING'])
+
+  // Test Push State
+  const [testPushLoading, setTestPushLoading] = useState(false)
+  const [testPushResult, setTestPushResult] = useState<{ success?: boolean; message?: string } | null>(null)
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  // Fetch current hotel settings from Supabase
+  // Fetch current hotel settings & notification settings from Supabase
   useEffect(() => {
     async function loadHotelSettings() {
       setLoading(true)
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (supabase as any)
-          .from('hotels')
-          .select('name, phone, fnb_phone_number, logo_url, color_scheme, service_charge_enabled, service_charge_pct')
-          .eq('id', HOTEL_ID)
-          .single()
+        const [hotelRes, notifRes] = await Promise.all([
+          (supabase as any)
+            .from('hotels')
+            .select('name, phone, fnb_phone_number, logo_url, color_scheme, service_charge_enabled, service_charge_pct')
+            .eq('id', HOTEL_ID)
+            .single(),
+          (supabase as any)
+            .from('notification_settings')
+            .select('*')
+            .eq('hotel_id', HOTEL_ID)
+            .maybeSingle(),
+        ])
 
-        if (error && error.code !== 'PGRST116') {
-          console.error('Failed to load hotel settings:', error)
+        if (hotelRes.error && hotelRes.error.code !== 'PGRST116') {
+          console.error('Failed to load hotel settings:', hotelRes.error)
         }
 
-        if (data) {
+        if (hotelRes.data) {
+          const data = hotelRes.data
           if (data.name) setHotelName(data.name)
           if (data.phone) setPhone(data.phone)
           if (data.fnb_phone_number) setFnbPhoneNumber(data.fnb_phone_number)
@@ -57,6 +77,16 @@ export default function HotelSettingsPage() {
           if (data.color_scheme) setColorScheme(data.color_scheme as GuestColorScheme)
           setServiceChargeEnabled(data.service_charge_enabled ?? true)
           setServiceChargePct(Number(data.service_charge_pct ?? 10))
+        }
+
+        if (notifRes.data) {
+          const nData = notifRes.data
+          if (typeof nData.reminder_interval_minutes === 'number') setReminderInterval(nData.reminder_interval_minutes)
+          if (typeof nData.enable_sound_alert === 'boolean') setEnableSoundAlert(nData.enable_sound_alert)
+          if (typeof nData.max_alert_duration_seconds === 'number') setMaxAlertDuration(nData.max_alert_duration_seconds)
+          if (Array.isArray(nData.fnb_allowed_types)) setFnbAllowedTypes(nData.fnb_allowed_types)
+          if (Array.isArray(nData.frontdesk_allowed_types)) setFrontdeskAllowedTypes(nData.frontdesk_allowed_types)
+          if (Array.isArray(nData.spa_allowed_types)) setSpaAllowedTypes(nData.spa_allowed_types)
         }
       } catch (err) {
         console.error('Error loading hotel data:', err)
@@ -77,7 +107,7 @@ export default function HotelSettingsPage() {
     try {
       // 1. Update hotels table
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any)
+      const { error: hotelErr } = await (supabase as any)
         .from('hotels')
         .update({
           name: hotelName.trim(),
@@ -90,9 +120,28 @@ export default function HotelSettingsPage() {
         })
         .eq('id', HOTEL_ID)
 
-      if (error) throw error
+      if (hotelErr) throw hotelErr
 
-      // 2. Insert audit log record
+      // 2. Upsert notification_settings table
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: notifErr } = await (supabase as any)
+        .from('notification_settings')
+        .upsert({
+          hotel_id: HOTEL_ID,
+          reminder_interval_minutes: reminderInterval,
+          enable_sound_alert: enableSoundAlert,
+          max_alert_duration_seconds: maxAlertDuration,
+          fnb_allowed_types: fnbAllowedTypes,
+          frontdesk_allowed_types: frontdeskAllowedTypes,
+          spa_allowed_types: spaAllowedTypes,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'hotel_id' })
+
+      if (notifErr) {
+        console.warn('Could not save notification_settings:', notifErr)
+      }
+
+      // 3. Insert audit log record
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any).from('audit_logs').insert([
         {
@@ -104,17 +153,58 @@ export default function HotelSettingsPage() {
             fnb_phone_number: fnbPhoneNumber.trim(),
             logo_url: logoUrl.trim(),
             color_scheme: colorScheme,
+            reminder_interval_minutes: reminderInterval,
+            enable_sound_alert: enableSoundAlert,
+            max_alert_duration_seconds: maxAlertDuration,
           },
         },
       ])
 
-      setToastMessage('Hotel settings saved successfully!')
+      setToastMessage('Hotel & Notification settings saved successfully!')
       setTimeout(() => setToastMessage(null), 4000)
     } catch (err: unknown) {
       console.error('Error saving hotel settings:', err)
       setErrorMessage((err as Error).message || 'Failed to save settings. Please try again.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleTriggerTestPush = async () => {
+    setTestPushLoading(true)
+    setTestPushResult(null)
+    try {
+      const res = await fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hotelId: HOTEL_ID,
+          title: '🔔 Test Staff Notification',
+          body: 'This is a test notification from the Admin Notification Settings panel.',
+          requestType: 'TASK',
+          roomNumber: 'Admin Panel',
+          isTestPush: true,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setTestPushResult({
+          success: true,
+          message: `Dispatched to ${data.expoDevicesReached ?? 0} mobile device(s) and ${data.webSubscriptionsReached ?? 0} browser(s).`,
+        })
+      } else {
+        setTestPushResult({
+          success: false,
+          message: data.error || data.message || 'Failed to send test push.',
+        })
+      }
+    } catch (err: any) {
+      setTestPushResult({
+        success: false,
+        message: err.message || 'Network error while triggering test push.',
+      })
+    } finally {
+      setTestPushLoading(false)
     }
   }
 
@@ -488,6 +578,267 @@ export default function HotelSettingsPage() {
                       <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>Service charge disabled — guests pay subtotal only</span>
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Push & Sound Notification Controls */}
+              <div style={{ background: 'rgba(30, 41, 59, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 20, padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>🔔</span> Staff Push & Alarm Controls
+                  </h3>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.3)', padding: '2px 8px', borderRadius: 10 }}>
+                    Automated & Role-Based
+                  </span>
+                </div>
+                <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>
+                  Configure dynamic reminder intervals, loud sound alerts, ring durations, and role-based notification routing for staff tablets & mobile devices.
+                </p>
+
+                {/* 1. Reminder Interval & Sound Toggle in a 2-col grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+                  {/* Reminder Interval */}
+                  <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: 14, padding: '14px' }}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      ⏰ Unhandled Reminder Interval
+                    </label>
+                    <select
+                      id="select-reminder-interval"
+                      value={reminderInterval}
+                      onChange={(e) => setReminderInterval(Number(e.target.value))}
+                      style={{
+                        width: '100%',
+                        background: 'rgba(2, 6, 23, 0.8)',
+                        border: '1px solid rgba(255,255,255,0.14)',
+                        borderRadius: 10,
+                        padding: '10px 12px',
+                        color: '#fff',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        outline: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value={1}>Every 1 Minute (Urgent / Active)</option>
+                      <option value={2}>Every 2 Minutes</option>
+                      <option value={5}>Every 5 Minutes (Standard Default)</option>
+                      <option value={10}>Every 10 Minutes</option>
+                      <option value={15}>Every 15 Minutes</option>
+                      <option value={0}>Disabled (One-Time Alert Only)</option>
+                    </select>
+                    <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: 11 }}>
+                      {reminderInterval === 0 ? 'Popup displays once upon request arrival.' : `Re-prompts staff every ${reminderInterval} min until claimed.`}
+                    </p>
+                  </div>
+
+                  {/* Sound Alarm Toggle */}
+                  <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: 14, padding: '14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        🔊 Loud Audio Alarm
+                      </div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>Play looping sound when request arrives</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: enableSoundAlert ? '#4ade80' : '#94a3b8' }}>
+                        {enableSoundAlert ? 'Sound Enabled' : 'Silenced (Vibrate Only)'}
+                      </span>
+                      <button
+                        type="button"
+                        id="toggle-sound-alert"
+                        onClick={() => setEnableSoundAlert(v => !v)}
+                        style={{
+                          position: 'relative',
+                          width: 48,
+                          height: 26,
+                          borderRadius: 13,
+                          border: 'none',
+                          background: enableSoundAlert ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'rgba(255,255,255,0.1)',
+                          cursor: 'pointer',
+                          transition: 'background 0.25s',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span style={{
+                          position: 'absolute',
+                          top: 3,
+                          left: enableSoundAlert ? 25 : 3,
+                          width: 20,
+                          height: 20,
+                          borderRadius: '50%',
+                          background: '#fff',
+                          transition: 'left 0.25s',
+                          boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                        }} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Max Alarm Duration Slider */}
+                <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: 14, padding: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <label style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      ⏱️ Max Alarm Ring Duration
+                    </label>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: '#fbbf24' }}>
+                      {maxAlertDuration} seconds
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={10}
+                    max={120}
+                    step={5}
+                    value={maxAlertDuration}
+                    onChange={(e) => setMaxAlertDuration(Number(e.target.value))}
+                    style={{ width: '100%', accentColor: '#fbbf24', cursor: 'pointer' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 10, marginTop: 4 }}>
+                    <span>10s (Short)</span>
+                    <span>30s (Default)</span>
+                    <span>60s</span>
+                    <span>120s (Extended)</span>
+                  </div>
+                </div>
+
+                {/* 3. Role Notification Matrix */}
+                <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: 14, padding: '14px' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    🛡️ Role Notification Routing Matrix
+                  </div>
+                  <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: 11 }}>
+                    Specify which request categories trigger push alerts for each staff role. (Admins & Managers always receive all alerts).
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* F&B Roles */}
+                    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#34d399', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>🍽️</span> F&B / Kitchen Staff
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        {[
+                          { id: 'FOOD_ORDER', label: 'Food Orders' },
+                          { id: 'CALL_REQUEST', label: 'Calls' },
+                          { id: 'TASK', label: 'Tasks' },
+                        ].map((t) => {
+                          const checked = fnbAllowedTypes.includes(t.id)
+                          return (
+                            <label key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: checked ? '#fff' : '#64748b', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  if (e.target.checked) setFnbAllowedTypes([...fnbAllowedTypes, t.id])
+                                  else setFnbAllowedTypes(fnbAllowedTypes.filter((x) => x !== t.id))
+                                }}
+                                style={{ accentColor: '#34d399' }}
+                              />
+                              {t.label}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Front Desk & Housekeeping */}
+                    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>🛎️</span> Front Desk & Housekeeping
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        {[
+                          { id: 'CALL_REQUEST', label: 'Calls' },
+                          { id: 'TASK', label: 'Tasks' },
+                          { id: 'FOOD_ORDER', label: 'Food' },
+                          { id: 'SPA_BOOKING', label: 'Spa' },
+                        ].map((t) => {
+                          const checked = frontdeskAllowedTypes.includes(t.id)
+                          return (
+                            <label key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: checked ? '#fff' : '#64748b', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  if (e.target.checked) setFrontdeskAllowedTypes([...frontdeskAllowedTypes, t.id])
+                                  else setFrontdeskAllowedTypes(frontdeskAllowedTypes.filter((x) => x !== t.id))
+                                }}
+                                style={{ accentColor: '#60a5fa' }}
+                              />
+                              {t.label}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Spa Staff */}
+                    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#a78bfa', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>💆</span> Spa Staff
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        {[
+                          { id: 'SPA_BOOKING', label: 'Spa Bookings' },
+                          { id: 'CALL_REQUEST', label: 'Calls' },
+                          { id: 'TASK', label: 'Tasks' },
+                        ].map((t) => {
+                          const checked = spaAllowedTypes.includes(t.id)
+                          return (
+                            <label key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: checked ? '#fff' : '#64748b', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  if (e.target.checked) setSpaAllowedTypes([...spaAllowedTypes, t.id])
+                                  else setSpaAllowedTypes(spaAllowedTypes.filter((x) => x !== t.id))
+                                }}
+                                style={{ accentColor: '#a78bfa' }}
+                              />
+                              {t.label}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Instant Test Push Dispatcher */}
+                <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)', borderRadius: 14, padding: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#a5b4fc', marginBottom: 2 }}>
+                      📡 Instant FCM Push Test
+                    </div>
+                    <div style={{ fontSize: 11, color: '#818cf8' }}>
+                      Dispatch a high-priority test alert to all active staff devices right now.
+                    </div>
+                    {testPushResult && (
+                      <div style={{ fontSize: 12, fontWeight: 600, color: testPushResult.success ? '#4ade80' : '#f87171', marginTop: 6 }}>
+                        {testPushResult.success ? '✓ ' : '✕ '} {testPushResult.message}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleTriggerTestPush}
+                    disabled={testPushLoading}
+                    style={{
+                      background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 10,
+                      padding: '10px 18px',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      opacity: testPushLoading ? 0.6 : 1,
+                      boxShadow: '0 2px 10px rgba(99, 102, 241, 0.35)',
+                    }}
+                  >
+                    {testPushLoading ? 'Sending Test Push...' : '🔔 Send Test Notification'}
+                  </button>
                 </div>
               </div>
 
