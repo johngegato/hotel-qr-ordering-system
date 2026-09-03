@@ -24,6 +24,9 @@ import { StaffUser } from './components/UserManagement'
 import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
 import IncomingRequestAlert, { type IncomingRequest } from './components/IncomingRequestAlert'
+import IncomingLiveCallAlert from './components/IncomingLiveCallAlert'
+import ActiveCallBar from './components/ActiveCallBar'
+import { useStaffVoiceCall } from './lib/useStaffVoiceCall'
 import PendingRequestsReminderModal, { type PendingRequestItem } from './components/PendingRequestsReminderModal'
 import PushDiagnosticsModal, { type PushLogItem } from './components/PushDiagnosticsModal'
 import {
@@ -311,8 +314,6 @@ function MainAppContent() {
   }, [activeStaffUser])
   const [isRestoringSession, setIsRestoringSession] = useState(true)
   const [incomingAlert, setIncomingAlert] = useState<IncomingRequest | null>(null)
-<<<<<<< HEAD
-=======
   const [incomingLiveCall, setIncomingLiveCall] = useState<{
     requestId: string
     roomNumber: string
@@ -327,7 +328,6 @@ function MainAppContent() {
   const AGORA_APP_ID =
     process.env.EXPO_PUBLIC_AGORA_APP_ID ||
     'c2e5d50d9273492d874b2a898f458334'
-
 
   const staffVoiceCall = useStaffVoiceCall({
     onCallEnded: () => {
@@ -394,7 +394,6 @@ function MainAppContent() {
     }
   }, [activeCallRequestId, staffVoiceCall])
 
->>>>>>> dfef49c (fix(staff-app): fetch Agora token before staff web join)
   const [unhandledPendingList, setUnhandledPendingList] = useState<PendingRequestItem[] | null>(null)
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
