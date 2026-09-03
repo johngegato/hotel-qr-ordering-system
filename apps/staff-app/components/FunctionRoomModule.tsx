@@ -514,12 +514,23 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
     }
   }
 
-  const updateBookingStatus = async (bookingId: string, status: RoomStatus) => {
+  const updateBookingStatus = async (bookingId: string, status: RoomStatus, cancellationReason?: string) => {
     const booking = bookings.find((item) => item.id === bookingId)
+    const roomSummary = booking ? (booking.room_names || roomNameSummary(booking.function_room_ids && booking.function_room_ids.length ? booking.function_room_ids : [booking.function_room_id])) : 'Function room'
+    const normalizedCancellationReason = (cancellationReason || '').trim()
+    const nextNotes = status === 'CANCELLED'
+      ? (booking?.notes && booking.notes.trim()
+        ? `${booking.notes.trim()} | Cancelled: ${normalizedCancellationReason || 'No reason provided'}`
+        : normalizedCancellationReason ? `Cancelled: ${normalizedCancellationReason}` : booking?.notes || 'Cancelled')
+      : booking?.notes || null
+
     try {
       const { error } = await supabase
         .from('function_room_bookings')
-        .update({ status })
+        .update({
+          status,
+          notes: nextNotes,
+        })
         .eq('id', bookingId)
 
       if (error) throw error
@@ -533,9 +544,18 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
       const targetRequests = (relatedRequests || []).filter((request: any) => request.payload?.function_room_booking_id === bookingId)
 
       for (const request of targetRequests) {
+        const nextPayload = {
+          ...(request.payload || {}),
+          status,
+          notes: nextNotes,
+          cancellation_reason: status === 'CANCELLED' ? (normalizedCancellationReason || 'No reason provided') : null,
+          room_name: roomSummary,
+          room_names: roomSummary,
+        }
+
         const { error: requestUpdateError } = await supabase
           .from('requests')
-          .update({ status })
+          .update({ status, payload: nextPayload })
           .eq('id', request.id)
 
         if (requestUpdateError) {
@@ -548,17 +568,19 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
           {
             hotel_id: HOTEL_ID,
             request_id: targetRequests[0]?.id || null,
-            action: 'FUNCTION_ROOM_BOOKING_STATUS_CHANGED',
+            action: status === 'CANCELLED' ? 'FUNCTION_ROOM_BOOKING_CANCELLED' : 'FUNCTION_ROOM_BOOKING_STATUS_CHANGED',
             actor_id: activeStaffUser?.id || null,
             details: {
               actor_name: activeStaffUser?.full_name || 'Staff Member',
               actor_role: activeStaffUser?.role || 'STAFF',
               booking_id: bookingId,
-              room_name: booking ? (booking.room_names || roomNameSummary(booking.function_room_ids && booking.function_room_ids.length ? booking.function_room_ids : [booking.function_room_id])) : 'Function room',
-              room_names: booking ? (booking.room_names || roomNameSummary(booking.function_room_ids && booking.function_room_ids.length ? booking.function_room_ids : [booking.function_room_id])) : 'Function room',
+              room_name: roomSummary,
+              room_names: roomSummary,
               booker_name: booking?.booker_name || 'Guest',
               old_status: booking?.status || 'PENDING',
               new_status: status,
+              cancellation_reason: status === 'CANCELLED' ? (normalizedCancellationReason || 'No reason provided') : null,
+              notes: nextNotes,
               timestamp: new Date().toISOString(),
             },
           },
@@ -568,7 +590,7 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
       }
 
       await loadData()
-      Alert.alert('Booking updated', `Booking marked as ${status}.`)
+      Alert.alert('Booking updated', status === 'CANCELLED' ? `Booking cancelled${normalizedCancellationReason ? `: ${normalizedCancellationReason}` : ''}.` : `Booking marked as ${status}.`)
     } catch (err: any) {
       Alert.alert('Update failed', err?.message || 'Unable to update the booking status.')
     }
