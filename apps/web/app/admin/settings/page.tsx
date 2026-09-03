@@ -18,7 +18,7 @@ const LOGO_PRESETS = [
 ]
 
 export default function HotelSettingsPage() {
-  const [hotelName, setHotelName] = useState('Grand Hotel & Spa')
+  const [hotelName, setHotelName] = useState('Hotel')
   const [phone, setPhone] = useState('+1-800-555-0100')
   const [fnbPhoneNumber, setFnbPhoneNumber] = useState('+1-800-555-0199')
   const [logoUrl, setLogoUrl] = useState('https://images.unsplash.com/photo-1566073771259-6a8506099945?w=120')
@@ -233,7 +233,7 @@ export default function HotelSettingsPage() {
               <span style={{ fontSize: 13, color: '#475569' }}>/</span>
               <span style={{ fontSize: 13, color: '#fbbf24', fontWeight: 700 }}>⚙️ Hotel Settings</span>
             </div>
-            <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800 }}>Hotel Settings & Branding</h1>
+            <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800 }}>{hotelName} Settings</h1>
             <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>
               Configure property details, direct call contact info, logo image, and guest web app color scheme.
             </p>
@@ -280,7 +280,7 @@ export default function HotelSettingsPage() {
                     value={hotelName}
                     onChange={(e) => setHotelName(e.target.value)}
                     required
-                    placeholder="e.g. Grand Hotel & Spa"
+                    placeholder="e.g. Your Hotel Name"
                     style={{
                       width: '100%',
                       background: 'rgba(15, 23, 42, 0.8)',
@@ -1081,7 +1081,7 @@ export default function HotelSettingsPage() {
 
                     {/* Hotel Name */}
                     <p style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 }}>
-                      {hotelName || 'Grand Hotel'}
+                      {hotelName || 'Hotel'}
                     </p>
 
                     {/* Welcome Title with Dynamic Theme Gradient */}

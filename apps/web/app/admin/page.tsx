@@ -90,6 +90,7 @@ const MODULES = [
 ]
 
 export default function AdminDashboardPage() {
+  const [hotelName, setHotelName] = useState('Hotel')
   const [stats, setStats] = useState<AdminStats>({
     activeSessions: 1,
     totalRevenue: 0,
@@ -102,6 +103,16 @@ export default function AdminDashboardPage() {
 
   const fetchDashboardData = async () => {
     setLoading(true)
+
+    const { data: hotelData } = await (supabase as any)
+      .from('hotels')
+      .select('name')
+      .eq('id', HOTEL_ID)
+      .maybeSingle()
+
+    if (hotelData?.name) {
+      setHotelName(hotelData.name)
+    }
 
     // Fetch rooms / sessions count
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -174,13 +185,13 @@ export default function AdminDashboardPage() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#fbbf24', background: 'rgba(251,191,36,0.12)', padding: '2px 10px', borderRadius: 12, border: '1px solid rgba(251,191,36,0.3)' }}>
-                🏨 Grand Hotel & Spa
+                🏨 {hotelName}
               </span>
               <span style={{ fontSize: 13, color: '#4ade80', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#4ade80' }} /> System Active
               </span>
             </div>
-            <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800 }}>Admin Web Portal</h1>
+            <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800 }}>{hotelName} Admin Portal</h1>
             <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>Central management hub for operations, catalog controls, SLA metrics & audit trails.</p>
           </div>
 
