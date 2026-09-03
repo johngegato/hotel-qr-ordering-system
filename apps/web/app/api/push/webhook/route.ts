@@ -48,9 +48,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const formattedType = requestType.replace(/_/g, ' ')
-    const title = `🚨 New ${formattedType}`
-    const body = roomNumber
+    const isLiveCall = requestType === 'LIVE_CALL'
+    const formattedType = isLiveCall ? 'Live Voice Call' : requestType.replace(/_/g, ' ')
+    const title = isLiveCall
+      ? `📞 Live Voice Call — Room ${roomNumber || '—'}`
+      : `🚨 New ${formattedType}`
+    const body = isLiveCall
+      ? 'Guest is calling via live voice. Tap to answer.'
+      : roomNumber
       ? `Room ${roomNumber} submitted a new ${formattedType.toLowerCase()}.`
       : `A new ${formattedType.toLowerCase()} requires immediate staff attention.`
 
@@ -60,6 +65,7 @@ export async function POST(req: NextRequest) {
       requestId: record.id,
       roomNumber: roomNumber ? String(roomNumber) : undefined,
       requestType,
+      agoraChannel: record.agora_channel || record.payload?.channel,
       url: '/',
     }
 

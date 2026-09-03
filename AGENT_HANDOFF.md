@@ -48,6 +48,20 @@ Key goals
 - Fix actor attribution bug in RequestHistory showing guest names with STAFF role badge.
 
 Recent session additions:
+- 2-Way Live Voice Calling between Guest Web and Staff App (Agora RTC):
+  - Database (Migration 21): Added `agora_channel` column to `requests` table in `packages/supabase/migrations/21_live_call_channel.sql` & `apps/web/supabase/migrations/21_live_call_channel.sql`.
+  - Server Token API (`apps/web/app/api/agora/token/route.ts` [NEW]): Generates 24-hour signed RTC tokens using `agora-access-token` server-side with `AGORA_APP_CERTIFICATE`.
+  - Guest Web Client (`apps/web/app/app/stay/components/`):
+    - `GuestVoiceCallEngine.tsx` [NEW]: Dynamic browser Agora client handling mic stream publication (UID=1) and staff audio subscription.
+    - `CallFrontDeskModal.tsx`: Added "Live Voice Call" CTA with connecting, in-call (mute toggle + end call), and ended states.
+  - Staff App (`apps/staff-app/`):
+    - `app.json`: Added `react-native-agora` plugin and Bluetooth permissions (`RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH`, `BLUETOOTH_CONNECT`).
+    - `lib/useStaffVoiceCall.ts` [NEW]: React Native Agora RTC engine hook (UID=2) integrating `react-native-incall-manager` for speaker and proximity routing.
+    - `components/IncomingLiveCallAlert.tsx` [NEW]: Full-screen animated answer/decline overlay with pulsing phone and 45s auto-dismiss timer.
+    - `components/ActiveCallBar.tsx` [NEW]: Floating live call bar with timer, mute/speaker toggles, and end call button.
+    - `App.tsx`: Realtime `LIVE_CALL` event routing, notification handlers, and full call lifecycle integration.
+  - Webhook & Push Routing (`apps/web/app/api/push/webhook/route.ts` & `apps/web/lib/webPush.ts`):
+    - Added `LIVE_CALL` high-priority notification routing with `agoraChannel` data forwarding for backgrounded staff wake-ups.
 - Over-The-Air (OTA) Auto-Updates via `expo-updates` (`apps/staff-app`):
   - `app.json`: Configured `"runtimeVersion": { "policy": "appVersion" }`, `"updates": { "url": "https://u.expo.dev/4e2f24d0-60e3-4ce3-891e-1f2a1e591df6", "checkAutomatically": "ON_LOAD", "fallbackToCacheTimeout": 0 }`, and added `"expo-updates"` to plugins.
   - `apps/staff-app/lib/useAutoUpdate.ts` [NEW]: Custom hook checking `Updates.checkForUpdateAsync()` on app launch and foreground resume (`AppState === 'active'`), downloading bundles silently via `Updates.fetchUpdateAsync()`, and prompting staff with a non-cancelable restart dialog that calls `Updates.reloadAsync()`.

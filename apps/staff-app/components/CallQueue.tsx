@@ -20,19 +20,23 @@ interface RequestItem {
   request_type: string
   status: string
   created_at: string
+  agora_channel?: string | null
   payload?: {
     room_number?: string
     note?: string
     guest_phone?: string
+    channel?: string
   } | null
 }
 
 export default function CallQueue({
   activeStaffId,
   refreshTrigger,
+  onAnswerLiveCall,
 }: {
   activeStaffId?: string
   refreshTrigger?: number
+  onAnswerLiveCall?: (channel: string, requestId: string) => void
 }) {
   const [requests, setRequests] = useState<RequestItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,7 +58,7 @@ export default function CallQueue({
       const { data, error } = await supabase
         .from('requests')
         .select('*')
-        .eq('request_type', 'CALL_REQUEST')
+        .in('request_type', ['CALL_REQUEST', 'LIVE_CALL'])
         .eq('status', 'PENDING')
         .order('created_at', { ascending: true })
 
@@ -187,17 +191,27 @@ export default function CallQueue({
               )
             }
 
+            const isLiveCall = item.request_type === 'LIVE_CALL'
+            const agoraChannel = item.agora_channel || item.payload?.channel || `room-${item.room_id}`
+
             return (
-              <View style={styles.card}>
+              <View style={[styles.card, isLiveCall && styles.liveCallCard]}>
                 <View style={styles.cardHeader}>
-                  <View style={styles.roomBadge}>
-                    <Text style={styles.roomText}>Room {roomNumber}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={styles.roomBadge}>
+                      <Text style={styles.roomText}>Room {roomNumber}</Text>
+                    </View>
+                    {isLiveCall && (
+                      <View style={styles.liveBadge}>
+                        <Text style={styles.liveBadgeText}>🔴 LIVE CALL</Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={styles.elapsedText}>⏱️ {formatElapsed(item.created_at)}</Text>
                 </View>
 
                 <Text style={styles.noteText}>
-                  {item.payload?.note || 'Guest requested a call from the front desk'}
+                  {item.payload?.note || (isLiveCall ? 'Guest is calling via live voice…' : 'Guest requested a call from the front desk')}
                 </Text>
 
                 {!!guestPhone && (
@@ -205,14 +219,23 @@ export default function CallQueue({
                 )}
 
                 <View style={styles.actionRow}>
-                  {/* Call Guest button */}
-                  <TouchableOpacity
-                    style={[styles.callGuestButton, !guestPhone && styles.callGuestButtonDisabled]}
-                    onPress={handleCallGuest}
-                    disabled={!guestPhone}
-                  >
-                    <Text style={styles.callGuestButtonText}>📞 Call Guest</Text>
-                  </TouchableOpacity>
+                  {isLiveCall ? (
+                    <TouchableOpacity
+                      style={styles.answerLiveCallButton}
+                      onPress={() => onAnswerLiveCall?.(agoraChannel, item.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.answerLiveCallButtonText}>📞 Answer Live Call</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.callGuestButton, !guestPhone && styles.callGuestButtonDisabled]}
+                      onPress={handleCallGuest}
+                      disabled={!guestPhone}
+                    >
+                      <Text style={styles.callGuestButtonText}>📞 Call Guest</Text>
+                    </TouchableOpacity>
+                  )}
 
                   {/* Claim button */}
                   <TouchableOpacity
@@ -371,11 +394,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   claimButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   claimButtonText: {
     color: '#0f172a',
     fontWeight: 'bold',
+    fontSize: 14,
+  },
+  liveCallCard: {
+    borderColor: '#22c55e',
+    backgroundColor: 'rgba(34, 197, 94, 0.06)',
+  },
+  liveBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.5)',
+  },
+  liveBadgeText: {
+    color: '#ef4444',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  answerLiveCallButton: {
+    flex: 1,
+    backgroundColor: '#22c55e',
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#22c55e',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  answerLiveCallButtonText: {
+    color: '#ffffff',
+    fontWeight: '800',
     fontSize: 14,
   },
 })

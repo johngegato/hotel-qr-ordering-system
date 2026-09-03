@@ -428,6 +428,43 @@ function MainAppContent() {
     }
   }, [HOTEL_ID])
 
+  // ─── Web-Only: Supabase Realtime Listener for LIVE_CALL ───────
+  // On web, FCM push doesn't deliver. Use Realtime to detect new LIVE_CALL requests.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return
+
+    const realtimeChannel = supabase
+      .channel('web-live-call-listener')
+      .on(
+        'postgres_changes' as any,
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'requests',
+        },
+        async (payload: any) => {
+          const req = payload.new
+          if (!req?.id || req.request_type !== 'LIVE_CALL') return
+          if (alertedRequestIdsRef.current.has(req.id)) return
+          alertedRequestIdsRef.current.add(req.id)
+
+          const ch = req.agora_channel || req.payload?.channel || `room-${req.room_id}`
+          const rN = req.payload?.room_number || 'Guest'
+          setIncomingLiveCall({
+            requestId: req.id,
+            roomNumber: String(rN),
+            channel: ch,
+          })
+          setRefreshKey((k) => k + 1)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(realtimeChannel)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Auto-Login / Restore Saved Session on App Startup ──────
   useEffect(() => {
     let isMounted = true
@@ -808,6 +845,16 @@ function MainAppContent() {
             .eq('id', data.requestId)
             .maybeSingle()
           if (req) {
+            if (req.request_type === 'LIVE_CALL') {
+              const ch = data?.agoraChannel || req.agora_channel || (req.payload as any)?.channel || `room-${req.room_id}`
+              const rN = (req.rooms as any)?.room_number || (req.payload as any)?.room_number || 'Room'
+              setIncomingLiveCall({
+                requestId: req.id,
+                roomNumber: String(rN),
+                channel: ch,
+              })
+              return
+            }
             const nextReq = await hydrateIncomingAlert(req)
             if (nextReq) {
               setIncomingAlert(nextReq)
@@ -853,6 +900,16 @@ function MainAppContent() {
             .eq('id', data.requestId)
             .maybeSingle()
           if (req) {
+            if (req.request_type === 'LIVE_CALL') {
+              const ch = data?.agoraChannel || req.agora_channel || (req.payload as any)?.channel || `room-${req.room_id}`
+              const rN = (req.rooms as any)?.room_number || (req.payload as any)?.room_number || 'Room'
+              setIncomingLiveCall({
+                requestId: req.id,
+                roomNumber: String(rN),
+                channel: ch,
+              })
+              return
+            }
             const nextReq = await hydrateIncomingAlert(req)
             if (nextReq) {
               setIncomingAlert(nextReq)
@@ -995,6 +1052,27 @@ function MainAppContent() {
             alertedRequestIdsRef.current = new Set(arr.slice(-100))
           }
 
+          if (reqType === 'LIVE_CALL') {
+            const ch = (payload.new as any)?.agora_channel || (payload.new as any)?.payload?.channel || `room-${(payload.new as any)?.room_id}`
+            const rNum = (payload.new as any)?.payload?.room_number || 'Room'
+            setIncomingLiveCall({
+              requestId: reqId,
+              roomNumber: String(rNum),
+              channel: ch,
+            })
+            if (notificationSettingsRef.current?.enable_sound_alert !== false) {
+              triggerAlarmNotification({
+                title: '📞 Incoming Live Voice Call',
+                body: `Room ${rNum} is calling live! Tap to answer.`,
+                requestId: reqId,
+                roomNumber: String(rNum),
+                requestType: 'LIVE_CALL',
+                payloadData: (payload.new as any)?.payload,
+              })
+            }
+            return
+          }
+
           hydrateIncomingAlert(payload.new as any)
             .then((nextRequest) => {
               if (nextRequest) {
@@ -1110,24 +1188,29 @@ function MainAppContent() {
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
 
-      {/* ⚠️ Aggressive incoming request alert */}
-      <IncomingRequestAlert
-        request={incomingAlert}
-        onDismiss={() => {
-          setIncomingAlert(null)
-          setRefreshKey(k => k + 1)
-        }}
-      />
+      {/* 📞 Incoming Live Call Overlay */}
+      {incomingLiveCall && (
+        <IncomingLiveCallAlert
+          roomNumber={incomingLiveCall.roomNumber}
+          channel={incomingLiveCall.channel}
+          requestId={incomingLiveCall.requestId}
+          onAnswer={handleAnswerLiveCall}
+          onDecline={handleDeclineLiveCall}
+        />
+      )}
 
-      {/* 🔔 5-Minute Recurring Reminder for Unhandled Pending Requests */}
-      <PendingRequestsReminderModal
-        pendingRequests={unhandledPendingList}
-        onDismiss={() => {
-          lastDismissedReminderAtRef.current = Date.now()
-          setUnhandledPendingList(null)
-          setRefreshKey(k => k + 1)
-        }}
-      />
+      {/* 🎤 Active Agora Voice Call Floating Bar */}
+      {staffVoiceCall.isConnected && (
+        <ActiveCallBar
+          roomNumber={activeCallRoom || 'Guest'}
+          callDurationSeconds={staffVoiceCall.callDurationSeconds}
+          isMuted={staffVoiceCall.isMuted}
+          isSpeakerOn={staffVoiceCall.isSpeakerOn}
+          onToggleMute={staffVoiceCall.toggleMute}
+          onToggleSpeaker={staffVoiceCall.toggleSpeaker}
+          onEndCall={handleEndStaffCall}
+        />
+      )}
 
       {/* 📡 FCM Push & Background Diagnostics Modal */}
       <PushDiagnosticsModal
@@ -1262,8 +1345,16 @@ function MainAppContent() {
             {activeStaffUser?.role !== 'KITCHEN' && (
               <>
                 {/* 1. Dedicated Call Requests Module & Real-time Call Queue */}
-                <DedicatedCallModule activeStaffId={activeStaffUser?.id || undefined} refreshTrigger={refreshKey} />
-                <CallQueue activeStaffId={activeStaffUser?.id} refreshTrigger={refreshKey} />
+                <DedicatedCallModule
+                  activeStaffId={activeStaffUser?.id || undefined}
+                  refreshTrigger={refreshKey}
+                  onAnswerLiveCall={handleAnswerLiveCall}
+                />
+                <CallQueue
+                  activeStaffId={activeStaffUser?.id}
+                  refreshTrigger={refreshKey}
+                  onAnswerLiveCall={handleAnswerLiveCall}
+                />
 
                 {/* 2. Spa Timetable & Appointments Queue */}
                 <SpaTimetable activeStaffUser={activeStaffUser} activeStaffId={activeStaffUser?.id} />
@@ -1309,6 +1400,17 @@ function MainAppContent() {
           {pushToken && !pushToken.startsWith('web_pwa_') && !pushToken.startsWith('expo_local_') ? 'FCM ✓' : 'FCM'}
         </Text>
       </TouchableOpacity>
+
+      {/* 📞 Incoming Live Voice Call Overlay Alert */}
+      {incomingLiveCall && (
+        <IncomingLiveCallAlert
+          roomNumber={incomingLiveCall.roomNumber}
+          channel={incomingLiveCall.channel}
+          requestId={incomingLiveCall.requestId}
+          onAnswer={handleAnswerLiveCall}
+          onDecline={handleDeclineLiveCall}
+        />
+      )}
 
       {/* 🚨 Incoming Request Aggressive Alert Modal */}
       <IncomingRequestAlert

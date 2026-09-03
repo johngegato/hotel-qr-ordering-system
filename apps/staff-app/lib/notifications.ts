@@ -316,7 +316,7 @@ export function canRoleReceiveNotification(
       return settings.fnb_allowed_types.includes(rType)
     }
     if ((role === 'FRONT_DESK' || role === 'HOUSEKEEPING' || role === 'MAINTENANCE') && Array.isArray(settings.frontdesk_allowed_types) && settings.frontdesk_allowed_types.length > 0) {
-      return settings.frontdesk_allowed_types.includes(rType)
+      return settings.frontdesk_allowed_types.includes(rType) || (rType === 'LIVE_CALL' && settings.frontdesk_allowed_types.includes('CALL_REQUEST'))
     }
     if (role === 'SPA' && Array.isArray(settings.spa_allowed_types) && settings.spa_allowed_types.length > 0) {
       return settings.spa_allowed_types.includes(rType)
@@ -334,7 +334,7 @@ export function canRoleReceiveNotification(
     case 'MAINTENANCE':
       return rType === 'TASK'
     case 'FRONT_DESK':
-      return rType === 'CALL_REQUEST' || rType === 'TASK'
+      return rType === 'CALL_REQUEST' || rType === 'LIVE_CALL' || rType === 'TASK'
     default:
       return true
   }

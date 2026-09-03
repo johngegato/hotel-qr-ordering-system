@@ -121,7 +121,7 @@ export async function sendWebPushToHotelStaff(
             return notifSettings.fnb_allowed_types.includes(rType)
           }
           if ((uRole === 'FRONT_DESK' || uRole === 'HOUSEKEEPING' || uRole === 'MAINTENANCE') && Array.isArray(notifSettings.frontdesk_allowed_types)) {
-            return notifSettings.frontdesk_allowed_types.includes(rType)
+            return notifSettings.frontdesk_allowed_types.includes(rType) || (rType === 'LIVE_CALL' && notifSettings.frontdesk_allowed_types.includes('CALL_REQUEST'))
           }
           if (uRole === 'SPA' && Array.isArray(notifSettings.spa_allowed_types)) {
             return notifSettings.spa_allowed_types.includes(rType)
@@ -139,7 +139,7 @@ export async function sendWebPushToHotelStaff(
           case 'MAINTENANCE':
             return rType === 'TASK'
           case 'FRONT_DESK':
-            return rType === 'CALL_REQUEST' || rType === 'TASK'
+            return rType === 'CALL_REQUEST' || rType === 'LIVE_CALL' || rType === 'TASK'
           default:
             return true
         }
@@ -213,6 +213,7 @@ export async function sendWebPushToHotelStaff(
             requestId: payload.requestId,
             roomNumber: payload.roomNumber,
             requestType: payload.requestType,
+            agoraChannel: payload.agoraChannel || (payload as any)?.channel,
             url: payload.url || '/',
             isTestPush: payload.isTestPush || false,
             dispatchedAt: new Date().toISOString(),

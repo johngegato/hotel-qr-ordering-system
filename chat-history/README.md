@@ -36,6 +36,7 @@ Examples:
 | 2026-08-31 | [2026-08-31_fnb-access-control-guest-dialing-manual-orders.md](./2026-08-31_fnb-access-control-guest-dialing-manual-orders.md) | F&B access control (KITCHEN RBAC), universal guest dialing, manual food orders, FnBDiningFAB, TaskQueue resolution fix |
 | 2026-08-31 | [2026-08-31_automated-fcm-push-token-lifecycle-admin-settings.md](./2026-08-31_automated-fcm-push-token-lifecycle-admin-settings.md) | Automated DB-triggered FCM push, token lifecycle 1:1 binding & logout cleansing, role-based routing, alert deduplication, admin notification controls |
 | 2026-08-31 | [2026-08-31_expo-updates-ota-configuration.md](./2026-08-31_expo-updates-ota-configuration.md) | EAS OTA auto-updates via `expo-updates`, launch & foreground auto-check hook, silent download & auto-restart |
+| 2026-09-01 | [2026-09-01_agora-rtc-2way-voice-calling.md](./2026-09-01_agora-rtc-2way-voice-calling.md) | 2-Way Live Voice Calling between guest web and staff app via Agora RTC, Realtime signaling, and FCM push |
 
 ---
 
