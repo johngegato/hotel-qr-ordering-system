@@ -232,6 +232,8 @@ export interface FunctionRoomBooking {
   id: string
   hotel_id: string
   function_room_id: string
+  function_room_ids?: string[]
+  room_names?: string | null
   booker_name: string
   phone_number: string | null
   booking_date: string

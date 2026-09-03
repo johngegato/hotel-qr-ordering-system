@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS function_room_bookings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   hotel_id UUID NOT NULL REFERENCES hotels(id) ON DELETE CASCADE,
   function_room_id UUID NOT NULL REFERENCES function_rooms(id) ON DELETE CASCADE,
+  function_room_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  room_names TEXT NOT NULL DEFAULT '',
   booker_name TEXT NOT NULL,
   phone_number TEXT,
   booking_date DATE NOT NULL,
@@ -50,6 +52,25 @@ CREATE TABLE IF NOT EXISTS function_room_bookings (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK (end_time > start_time)
 );
+
+ALTER TABLE function_room_bookings
+  ADD COLUMN IF NOT EXISTS function_room_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS room_names TEXT NOT NULL DEFAULT '';
+
+UPDATE function_room_bookings
+SET function_room_ids = CASE
+  WHEN function_room_ids IS NULL OR function_room_ids = '[]'::jsonb THEN jsonb_build_array(function_room_id::text)
+  ELSE function_room_ids
+END,
+    room_names = CASE
+      WHEN room_names IS NULL OR room_names = '' THEN (
+        SELECT string_agg(fr.name, ', ' ORDER BY fr.name)
+        FROM function_rooms fr
+        WHERE fr.id = function_room_bookings.function_room_id
+      )
+      ELSE room_names
+    END
+WHERE function_room_ids IS NULL OR function_room_ids = '[]'::jsonb OR room_names IS NULL OR room_names = '';
 
 CREATE INDEX IF NOT EXISTS idx_function_room_bookings_hotel_id ON function_room_bookings(hotel_id);
 CREATE INDEX IF NOT EXISTS idx_function_room_bookings_room_id ON function_room_bookings(function_room_id);
@@ -85,19 +106,27 @@ ON CONFLICT (id) DO NOTHING;
 -- 6. Prevent double-booking same room at overlapping times
 CREATE OR REPLACE FUNCTION prevent_function_room_booking_overlap()
 RETURNS TRIGGER AS $$
+DECLARE
+  room_ids_to_check JSONB;
 BEGIN
+  room_ids_to_check := COALESCE(NEW.function_room_ids, jsonb_build_array(NEW.function_room_id::text));
+
   IF EXISTS (
     SELECT 1
     FROM function_room_bookings b
-    WHERE b.function_room_id = NEW.function_room_id
-      AND b.booking_date = NEW.booking_date
+    WHERE b.booking_date = NEW.booking_date
       AND b.id <> COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid)
       AND b.status IN ('CONFIRMED', 'PENDING')
       AND NEW.status IN ('CONFIRMED', 'PENDING')
       AND NEW.start_time < b.end_time
       AND NEW.end_time > b.start_time
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements_text(room_ids_to_check) AS new_room_id
+        WHERE new_room_id.value::uuid = b.function_room_id
+      )
   ) THEN
-    RAISE EXCEPTION 'This function room already has a booking scheduled during the selected time slot.';
+    RAISE EXCEPTION 'One or more selected function rooms already have a booking scheduled during the selected time slot.';
   END IF;
 
   RETURN NEW;
@@ -116,35 +145,86 @@ ALTER TABLE function_rooms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE function_room_equipments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE function_room_bookings ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Allow read function_rooms"
-ON function_rooms
-FOR SELECT
-USING (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'function_rooms'
+      AND policyname = 'Allow read function_rooms'
+  ) THEN
+    CREATE POLICY "Allow read function_rooms"
+    ON function_rooms
+    FOR SELECT
+    USING (true);
+  END IF;
 
-CREATE POLICY IF NOT EXISTS "Allow write function_rooms"
-ON function_rooms
-FOR ALL
-USING (true)
-WITH CHECK (true);
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'function_rooms'
+      AND policyname = 'Allow write function_rooms'
+  ) THEN
+    CREATE POLICY "Allow write function_rooms"
+    ON function_rooms
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+  END IF;
 
-CREATE POLICY IF NOT EXISTS "Allow read function_room_equipments"
-ON function_room_equipments
-FOR SELECT
-USING (true);
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'function_room_equipments'
+      AND policyname = 'Allow read function_room_equipments'
+  ) THEN
+    CREATE POLICY "Allow read function_room_equipments"
+    ON function_room_equipments
+    FOR SELECT
+    USING (true);
+  END IF;
 
-CREATE POLICY IF NOT EXISTS "Allow write function_room_equipments"
-ON function_room_equipments
-FOR ALL
-USING (true)
-WITH CHECK (true);
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'function_room_equipments'
+      AND policyname = 'Allow write function_room_equipments'
+  ) THEN
+    CREATE POLICY "Allow write function_room_equipments"
+    ON function_room_equipments
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+  END IF;
 
-CREATE POLICY IF NOT EXISTS "Allow read function_room_bookings"
-ON function_room_bookings
-FOR SELECT
-USING (true);
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'function_room_bookings'
+      AND policyname = 'Allow read function_room_bookings'
+  ) THEN
+    CREATE POLICY "Allow read function_room_bookings"
+    ON function_room_bookings
+    FOR SELECT
+    USING (true);
+  END IF;
 
-CREATE POLICY IF NOT EXISTS "Allow write function_room_bookings"
-ON function_room_bookings
-FOR ALL
-USING (true)
-WITH CHECK (true);
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'function_room_bookings'
+      AND policyname = 'Allow write function_room_bookings'
+  ) THEN
+    CREATE POLICY "Allow write function_room_bookings"
+    ON function_room_bookings
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+  END IF;
+END $$;

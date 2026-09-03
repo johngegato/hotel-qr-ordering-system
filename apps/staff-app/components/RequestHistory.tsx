@@ -38,7 +38,7 @@ const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
 type RoomSortOrder = 'asc' | 'desc'
 type DateSortOrder = 'desc' | 'asc'
-type FilterType = 'ALL' | 'FOOD_ORDER' | 'SPA_BOOKING' | 'CALL_REQUEST' | 'TASK'
+type FilterType = 'ALL' | 'FOOD_ORDER' | 'SPA_BOOKING' | 'CALL_REQUEST' | 'TASK' | 'FUNCTION_ROOM_BOOKING'
 
 function formatRelativeTime(isoString?: string): string {
   if (!isoString) return ''
@@ -208,6 +208,7 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
       case 'CALL_REQUEST': return '📞'
       case 'SPA_BOOKING':  return '💆'
       case 'FOOD_ORDER':   return '🍽️'
+      case 'FUNCTION_ROOM_BOOKING': return '🏛️'
       default:             return '🧹'
     }
   }
@@ -219,6 +220,10 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
       case 'SPA_BOOKING':  return `Spa: ${p?.service_name || 'Treatment'}`
       case 'CALL_REQUEST': return 'Callback Alert'
       case 'TASK':         return p?.task_name || 'Room Request'
+      case 'FUNCTION_ROOM_BOOKING': {
+        const roomNames = p?.room_names || p?.room_name || 'Function room'
+        return `Function Room Booking · ${roomNames}`
+      }
       default:             return item.request_type
     }
   }
@@ -299,7 +304,9 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
     const p = req.payload as any
     const st = getStatusStyle(req.status)
     const icon = getTypeIcon(req.request_type)
-    const roomNo = req.rooms?.room_number || p?.room_number || 'N/A'
+    const roomNames = req.request_type === 'FUNCTION_ROOM_BOOKING'
+      ? (p?.room_names || p?.room_name || (Array.isArray(p?.function_room_ids) ? p.function_room_ids.map((id: string) => id).join(', ') : 'Function room'))
+      : (req.rooms?.room_number || p?.room_number || 'N/A')
     const { name: actorName, role: actorRole } = resolveActorFromRequest(req)
 
     return (
@@ -318,7 +325,7 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
                 <Text style={styles.detailTitle}>
                   {icon} {getTypeSummary(req)}
                 </Text>
-                <Text style={styles.detailSub}>Room {roomNo} · {formatRelativeTime(req.created_at)}</Text>
+                <Text style={styles.detailSub}>{req.request_type === 'FUNCTION_ROOM_BOOKING' ? roomNames : `Room ${roomNames}`} · {formatRelativeTime(req.created_at)}</Text>
               </View>
               <TouchableOpacity onPress={() => setSelectedRequest(null)} style={styles.closeBtn}>
                 <Text style={styles.closeBtnText}>✕</Text>
@@ -334,7 +341,22 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
 
               {/* Core fields */}
               <View style={styles.detailSection}>
-                <DetailRow label="Room" value={`Room ${roomNo}`} />
+                {req.request_type === 'FUNCTION_ROOM_BOOKING' ? (
+                  <>
+                    <DetailRow label="Function Rooms" value={roomNames} />
+                    <DetailRow label="Booker" value={p?.booker_name || '—'} />
+                    <DetailRow label="Phone" value={p?.phone_number || 'Not provided'} />
+                    <DetailRow label="Date" value={p?.booking_date ? new Date(`${p.booking_date}T12:00:00`).toLocaleDateString() : '—'} />
+                    <DetailRow label="Time" value={`${p?.start_time || '—'} - ${p?.end_time || '—'}`} />
+                    <DetailRow label="Food Budget" value={p?.food_budget ? `₱${Number(p.food_budget).toLocaleString()}` : '₱0'} />
+                    <DetailRow label="Banquet Notes" value={p?.banquet_food_notes || 'None'} />
+                    <DetailRow label="Equipment Rental" value={Array.isArray(p?.rented_equipments) && p.rented_equipments.length ? p.rented_equipments.map((item: any) => `${item.name} (${item.quantity ? `x${item.quantity}` : ''} ₱${Number(item.rental_price || 0).toLocaleString()})`).join(', ') : 'None'} />
+                    <DetailRow label="Notes" value={p?.notes || 'None'} />
+                    <DetailRow label="Total Amount" value={p?.total_amount ? `₱${Number(p.total_amount).toLocaleString()}` : '₱0'} />
+                  </>
+                ) : (
+                  <DetailRow label="Room" value={`Room ${roomNames}`} />
+                )}
                 <DetailRow label="Request Type" value={req.request_type.replace(/_/g, ' ')} />
                 <DetailRow label="Submitted" value={new Date(req.created_at).toLocaleString()} />
 
@@ -543,6 +565,7 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
     { key: 'SPA_BOOKING', label: '💆 Spa' },
     { key: 'CALL_REQUEST', label: '📞 Calls' },
     { key: 'TASK', label: '🧹 Tasks' },
+    { key: 'FUNCTION_ROOM_BOOKING' as FilterType, label: '🏛️ Function Rooms' },
   ]
 
   return (
@@ -651,7 +674,9 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
               renderItem={({ item }) => {
                 const st = getStatusStyle(item.status)
                 const icon = getTypeIcon(item.request_type)
-                const roomNo = item.rooms?.room_number || (item.payload as any)?.room_number || 'N/A'
+                const roomDisplay = item.request_type === 'FUNCTION_ROOM_BOOKING'
+                  ? ((item.payload as any)?.room_names || (item.payload as any)?.room_name || 'Function room')
+                  : (item.rooms?.room_number || (item.payload as any)?.room_number || 'N/A')
                 const dateStr = formatRelativeTime(item.created_at)
                 const { name: actorName, role: actorRole } = resolveActorFromRequest(item)
 
@@ -664,7 +689,7 @@ export default function RequestHistory({ refreshTrigger }: { refreshTrigger?: nu
                     <View style={styles.cardHeader}>
                       <View style={styles.roomTag}>
                         <Text style={styles.iconText}>{icon}</Text>
-                        <Text style={styles.roomNo}>Room {roomNo}</Text>
+                        <Text style={styles.roomNo}>{item.request_type === 'FUNCTION_ROOM_BOOKING' ? roomDisplay : `Room ${roomDisplay}`}</Text>
                       </View>
                       <View style={[styles.statusBadge, { backgroundColor: st.bg }]}>
                         <Text style={[styles.statusText, { color: st.color }]}>{st.label}</Text>

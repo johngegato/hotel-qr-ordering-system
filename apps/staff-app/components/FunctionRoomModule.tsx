@@ -44,6 +44,8 @@ type BookingEquipmentEntry = {
 type FunctionRoomBooking = {
   id: string
   function_room_id: string
+  function_room_ids?: string[]
+  room_names?: string | null
   booker_name: string
   phone_number: string | null
   booking_date: string
@@ -195,11 +197,20 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
 
   const hasBookingOverlap = (roomId: string, date: string, start: string, end: string, ignoreId?: string) => {
     return bookings.some((booking) => {
-      if (booking.function_room_id !== roomId || booking.booking_date !== date) return false
+      const roomIds = booking.function_room_ids && booking.function_room_ids.length > 0 ? booking.function_room_ids : [booking.function_room_id]
+      if (!roomIds.includes(roomId) || booking.booking_date !== date) return false
       if (ignoreId && booking.id === ignoreId) return false
       if (!['PENDING', 'CONFIRMED'].includes(booking.status)) return false
       return start < booking.end_time && end > booking.start_time
     })
+  }
+
+  const roomNameSummary = (roomIds: string[]) => {
+    const names = roomIds
+      .map((roomId) => roomNameMap.get(roomId))
+      .filter(Boolean) as string[]
+
+    return names.join(', ') || 'Function room'
   }
 
   const handleSubmit = async () => {
@@ -228,6 +239,9 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
 
     const bookingPayload = {
       hotel_id: HOTEL_ID,
+      function_room_id: selectedRoomIds[0],
+      function_room_ids: selectedRoomIds,
+      room_names: roomNameSummary(selectedRoomIds),
       booker_name: form.booker_name.trim(),
       phone_number: form.phone_number.trim() || null,
       booking_date: form.booking_date,
@@ -259,7 +273,9 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
           .from('function_room_bookings')
           .update({
             ...bookingPayload,
-            function_room_id: form.function_room_id,
+            function_room_id: selectedRoomIds[0],
+            function_room_ids: selectedRoomIds,
+            room_names: roomNameSummary(selectedRoomIds),
           })
           .eq('id', editingBookingId)
 
@@ -281,9 +297,12 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
             booking_date: form.booking_date,
             start_time: form.start_time,
             end_time: form.end_time,
-            room_name: roomNameMap.get(form.function_room_id) || 'Function room',
-            function_room_id: form.function_room_id,
+            room_name: roomNameSummary(selectedRoomIds),
+            room_names: roomNameSummary(selectedRoomIds),
+            function_room_id: selectedRoomIds[0],
+            function_room_ids: selectedRoomIds,
             food_budget: parseNumber(form.food_budget),
+            banquet_food_notes: form.banquet_food_notes.trim() || null,
             total_amount: parseNumber(form.food_budget) + equipmentTotal,
             notes: form.notes.trim() || null,
             rented_equipments: selectedEquipment,
@@ -312,11 +331,16 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
             actor_name: activeStaffUser?.full_name || 'Staff Member',
             actor_role: activeStaffUser?.role || 'STAFF',
             booking_id: editingBookingId,
-            room_name: roomNameMap.get(form.function_room_id) || 'Function room',
+            room_names: roomNameSummary(selectedRoomIds),
+            room_name: roomNameSummary(selectedRoomIds),
             booker_name: form.booker_name.trim(),
             booking_date: form.booking_date,
             start_time: form.start_time,
             end_time: form.end_time,
+            food_budget: parseNumber(form.food_budget),
+            banquet_food_notes: form.banquet_food_notes.trim() || null,
+            rented_equipments: selectedEquipment,
+            notes: form.notes.trim() || null,
             updated_fields: ['booker_name', 'schedule', 'equipment', 'notes'],
             timestamp: new Date().toISOString(),
           },
@@ -331,15 +355,15 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
           }
         }
 
-        const bookingRows = selectedRoomIds.map((roomId) => ({
-          ...bookingPayload,
-          hotel_id: HOTEL_ID,
-          function_room_id: roomId,
-        }))
-
         const { data: insertedBookings, error: insertError } = await supabase
           .from('function_room_bookings')
-          .insert(bookingRows)
+          .insert([{
+            ...bookingPayload,
+            hotel_id: HOTEL_ID,
+            function_room_id: selectedRoomIds[0],
+            function_room_ids: selectedRoomIds,
+            room_names: roomNameSummary(selectedRoomIds),
+          }])
           .select()
 
         if (insertError) {
@@ -358,9 +382,12 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
             booking_date: row.booking_date,
             start_time: row.start_time,
             end_time: row.end_time,
-            room_name: roomNameMap.get(row.function_room_id) || 'Function room',
+            room_name: row.room_names || roomNameSummary(row.function_room_ids || [row.function_room_id]),
+            room_names: row.room_names || roomNameSummary(row.function_room_ids || [row.function_room_id]),
             function_room_id: row.function_room_id,
+            function_room_ids: row.function_room_ids || [row.function_room_id],
             food_budget: row.food_budget,
+            banquet_food_notes: row.banquet_food_notes,
             total_amount: row.total_amount,
             notes: row.notes,
             rented_equipments: row.rented_equipments || [],
@@ -396,10 +423,15 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
                 actor_name: activeStaffUser?.full_name || 'Staff Member',
                 actor_role: activeStaffUser?.role || 'STAFF',
                 booker_name: row.booker_name,
-                room_name: roomNameMap.get(row.function_room_id) || 'Function room',
+                room_name: row.room_names || roomNameSummary(row.function_room_ids || [row.function_room_id]),
+                room_names: row.room_names || roomNameSummary(row.function_room_ids || [row.function_room_id]),
                 booking_date: row.booking_date,
                 start_time: row.start_time,
                 end_time: row.end_time,
+                food_budget: row.food_budget,
+                banquet_food_notes: row.banquet_food_notes,
+                rented_equipments: row.rented_equipments || [],
+                notes: row.notes,
                 new_status: row.status,
                 timestamp: new Date().toISOString(),
               },
@@ -442,7 +474,7 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
     setVisible(true)
     setForm({
       function_room_id: booking.function_room_id,
-      selectedRoomIds: [booking.function_room_id],
+      selectedRoomIds: booking.function_room_ids && booking.function_room_ids.length > 0 ? booking.function_room_ids : [booking.function_room_id],
       booker_name: booking.booker_name,
       phone_number: booking.phone_number || '',
       booking_date: booking.booking_date,
@@ -522,7 +554,8 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
               actor_name: activeStaffUser?.full_name || 'Staff Member',
               actor_role: activeStaffUser?.role || 'STAFF',
               booking_id: bookingId,
-              room_name: booking ? roomNameMap.get(booking.function_room_id) || 'Function room' : 'Function room',
+              room_name: booking ? (booking.room_names || roomNameSummary(booking.function_room_ids && booking.function_room_ids.length ? booking.function_room_ids : [booking.function_room_id])) : 'Function room',
+              room_names: booking ? (booking.room_names || roomNameSummary(booking.function_room_ids && booking.function_room_ids.length ? booking.function_room_ids : [booking.function_room_id])) : 'Function room',
               booker_name: booking?.booker_name || 'Guest',
               old_status: booking?.status || 'PENDING',
               new_status: status,
@@ -543,6 +576,29 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
 
   const roomNameMap = useMemo(() => new Map(rooms.map((room) => [room.id, room.name])), [rooms])
   const nextBooking = upcomingBookings[0] || null
+
+  const renderFunctionBookingDetail = (payload: any) => {
+    const roomNames = payload?.room_names || payload?.room_name || (Array.isArray(payload?.function_room_ids) && payload.function_room_ids.length ? payload.function_room_ids.map((id: string) => roomNameMap.get(id)).filter(Boolean).join(', ') : roomNameMap.get(payload?.function_room_id) || 'Function room')
+    const equipList = Array.isArray(payload?.rented_equipments) && payload.rented_equipments.length
+      ? payload.rented_equipments.map((item: any) => `${item.name}${item.quantity ? ` x${item.quantity}` : ''} — ${formatCurrency(Number(item.rental_price || 0))}`).join(', ')
+      : 'None'
+
+    return (
+      <View style={styles.detailSection}>
+        <Text style={styles.detailTitleText}>Function Room Booking</Text>
+        <Text style={styles.detailRowText}>Booker: {payload?.booker_name || '—'}</Text>
+        <Text style={styles.detailRowText}>Phone: {payload?.phone_number || 'Not provided'}</Text>
+        <Text style={styles.detailRowText}>Rooms: {roomNames}</Text>
+        <Text style={styles.detailRowText}>Date: {formatDateLabel(payload?.booking_date || '')}</Text>
+        <Text style={styles.detailRowText}>Time: {payload?.start_time || '—'} - {payload?.end_time || '—'}</Text>
+        <Text style={styles.detailRowText}>Food budget: {formatCurrency(Number(payload?.food_budget || 0))}</Text>
+        <Text style={styles.detailRowText}>Banquet notes: {payload?.banquet_food_notes || 'None'}</Text>
+        <Text style={styles.detailRowText}>Equipment rental: {equipList}</Text>
+        <Text style={styles.detailRowText}>Notes: {payload?.notes || 'None'}</Text>
+        <Text style={styles.detailRowText}>Total: {formatCurrency(Number(payload?.total_amount || 0))}</Text>
+      </View>
+    )
+  }
 
   return (
     <View style={styles.container}>
@@ -593,7 +649,10 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
             <>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roomChipsWrap}>
                 {rooms.map((room) => {
-                  const roomCount = upcomingBookings.filter((b) => b.function_room_id === room.id).length
+                  const roomCount = upcomingBookings.filter((b) => {
+                    const roomIds = b.function_room_ids && b.function_room_ids.length > 0 ? b.function_room_ids : [b.function_room_id]
+                    return roomIds.includes(room.id)
+                  }).length
                   return (
                     <TouchableOpacity
                       key={room.id}
@@ -634,7 +693,7 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
                           <View style={styles.bookingTopRow}>
                             <View style={styles.bookingTitleWrap}>
                               <Text style={styles.bookingName}>{booking.booker_name}</Text>
-                              <Text style={styles.bookingMeta}>{roomNameMap.get(booking.function_room_id) || 'Function room'}</Text>
+                              <Text style={styles.bookingMeta}>{booking.room_names || roomNameSummary(booking.function_room_ids && booking.function_room_ids.length > 0 ? booking.function_room_ids : [booking.function_room_id])}</Text>
                             </View>
                             <View style={[styles.statusPill, booking.status === 'CANCELLED' ? styles.statusCancelled : styles.statusDefault]}>
                               <Text style={styles.statusText}>{booking.status}</Text>
@@ -888,6 +947,27 @@ const styles = StyleSheet.create({
     color: '#cbd5e1',
     fontSize: 11,
     marginTop: 2,
+  },
+  detailSection: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 10,
+  },
+  detailTitleText: {
+    color: '#fbbf24',
+    fontWeight: '800',
+    fontSize: 12,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  detailRowText: {
+    color: '#e2e8f0',
+    fontSize: 11,
+    marginTop: 4,
   },
   toolbar: {
     marginBottom: 12,
