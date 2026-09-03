@@ -74,6 +74,7 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
           engine.registerEventHandler({
             onUserJoined: (_connection: any, uid: number) => {
               console.log('[StaffVoiceCall:Native] Remote user joined:', uid)
+              setIsConnected(true)
             },
             onUserOffline: (_connection: any, uid: number) => {
               console.log('[StaffVoiceCall:Native] Remote user left:', uid)
@@ -84,6 +85,7 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
         } else if (typeof engine.addListener === 'function') {
           engine.addListener('UserJoined', (uid: number) => {
             console.log('[StaffVoiceCall:Native] Remote user joined:', uid)
+            setIsConnected(true)
           })
           engine.addListener('UserOffline', (uid: number) => {
             console.log('[StaffVoiceCall:Native] Remote user left:', uid)
@@ -92,11 +94,23 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
           })
         }
 
-        // Staff always joins as UID=2
+        if (typeof engine.setChannelProfile === 'function') {
+          engine.setChannelProfile((agoraMod as any).ChannelProfileType?.ChannelProfileCommunication ?? 0)
+        }
+        if (typeof engine.setClientRole === 'function') {
+          engine.setClientRole((agoraMod as any).ClientRoleType?.ClientRoleBroadcaster ?? 1)
+        }
+
+        // Staff always joins as UID=2. Use the correct native SDK signature
+        // joinChannel(token, channelId, info, uid, options)
         if (typeof engine.joinChannel === 'function') {
-          engine.joinChannel(token ?? '', channel, 2, {
+          engine.joinChannel(token ?? '', channel, '', 2, {
             clientRoleType: (agoraMod as any).ClientRoleType?.ClientRoleBroadcaster ?? 1,
             channelProfile: (agoraMod as any).ChannelProfileType?.ChannelProfileCommunication ?? 0,
+            publishMicrophoneTrack: true,
+            publishCameraTrack: false,
+            autoSubscribeAudio: true,
+            autoSubscribeVideo: false,
           })
         }
 
