@@ -356,8 +356,15 @@ function MainAppContent() {
           'Guest'
         setActiveCallRoom(String(roomNum))
 
+        const tokenRes = await fetch(`/api/agora/token?channel=${encodeURIComponent(channel)}&uid=2`)
+        const tokenData = await tokenRes.json()
+
+        if (!tokenRes.ok || !tokenData?.token) {
+          throw new Error(tokenData?.error || 'Missing Agora token')
+        }
+
         // Join Agora voice channel as staff (UID 2)
-        await staffVoiceCall.joinChannel(channel, null, AGORA_APP_ID)
+        await staffVoiceCall.joinChannel(channel, tokenData.token, AGORA_APP_ID)
 
         // Mark request status as LIVE
         await supabase.from('requests').update({ status: 'LIVE' }).eq('id', reqId)
