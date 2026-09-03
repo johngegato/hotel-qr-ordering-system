@@ -16,6 +16,7 @@ const ROOM_TYPE_BADGES: Record<string, { color: string; label: string }> = {
 }
 
 export default function AdminRoomsPage() {
+  const [hotelName, setHotelName] = useState('Hotel')
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -40,6 +41,19 @@ export default function AdminRoomsPage() {
   }
 
   useEffect(() => {
+    const loadHotelName = async () => {
+      const { data } = await (supabase as any)
+        .from('hotels')
+        .select('name')
+        .eq('id', HOTEL_ID)
+        .maybeSingle()
+
+      if (data?.name) {
+        setHotelName(data.name)
+      }
+    }
+
+    loadHotelName()
     fetchRooms()
   }, [])
 
@@ -258,7 +272,7 @@ export default function AdminRoomsPage() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
           <div style={{ background: '#ffffff', color: '#0f172a', borderRadius: 28, padding: '2.5rem', width: '100%', maxWidth: 420, textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
             <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 2, color: '#64748b', marginBottom: 4 }}>
-              Grand Hotel &amp; Spa
+              {hotelName}
             </div>
             <h2 style={{ fontSize: 32, fontWeight: 900, margin: '0 0 16px', color: '#0f172a' }}>
               Room {selectedQrRoom.room_number}
