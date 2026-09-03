@@ -1415,11 +1415,11 @@ function MainAppContent() {
               </>
             )}
 
-            {/* 4. Food Orders Queue (Always visible to Kitchen, Admin, Front Desk) */}
-            <FoodQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} refreshTrigger={refreshKey} />
-
-            {/* 5. Function Room Booking & Schedule Module */}
+            {/* 4. Function Room Booking & Schedule Module */}
             <FunctionRoomModule activeStaffUser={activeStaffUser} />
+
+            {/* 5. Food Orders Queue (Always visible to Kitchen, Admin, Front Desk) */}
+            <FoodQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} refreshTrigger={refreshKey} />
 
             {/* 6. All Request History Logs */}
             <RequestHistory refreshTrigger={refreshKey} />

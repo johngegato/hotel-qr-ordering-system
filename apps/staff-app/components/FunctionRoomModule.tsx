@@ -62,6 +62,7 @@ type FunctionRoomBooking = {
 
 type BookingFormState = {
   function_room_id: string
+  selectedRoomIds: string[]
   booker_name: string
   phone_number: string
   booking_date: string
@@ -77,6 +78,7 @@ type BookingFormState = {
 
 const DEFAULT_FORM: BookingFormState = {
   function_room_id: '',
+  selectedRoomIds: [],
   booker_name: '',
   phone_number: '',
   booking_date: new Date().toISOString().slice(0, 10),
@@ -105,14 +107,16 @@ function formatDateLabel(date: string) {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUser?: { id?: string; role?: string } | null }) {
+export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUser?: { id?: string; role?: string; full_name?: string } | null }) {
   const [rooms, setRooms] = useState<FunctionRoom[]>([])
   const [equipment, setEquipment] = useState<FunctionRoomEquipment[]>([])
   const [bookings, setBookings] = useState<FunctionRoomBooking[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [visible, setVisible] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+  const [editingBookingId, setEditingBookingId] = useState<string | null>(null)
   const [form, setForm] = useState<BookingFormState>(DEFAULT_FORM)
   const [error, setError] = useState('')
 
@@ -136,9 +140,15 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
     return parseNumber(form.food_budget) + equipmentTotal
   }, [equipmentTotal, form.food_budget])
 
-  const roomBookings = useMemo(() => {
-    return bookings.filter((booking) => booking.booking_date === selectedDate)
-  }, [bookings, selectedDate])
+  const upcomingBookings = useMemo(() => {
+    return [...bookings]
+      .filter((booking) => !['CANCELLED'].includes(booking.status))
+      .sort((a, b) => {
+        const aDate = new Date(`${a.booking_date}T${a.start_time}`).getTime()
+        const bDate = new Date(`${b.booking_date}T${b.start_time}`).getTime()
+        return aDate - bDate
+      })
+  }, [bookings])
 
   const loadData = async () => {
     setLoading(true)
@@ -153,8 +163,13 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
       if (equipmentRes.data) setEquipment((equipmentRes.data as FunctionRoomEquipment[]) || [])
       if (bookingRes.data) setBookings((bookingRes.data as FunctionRoomBooking[]) || [])
 
-      if (!form.function_room_id && roomsRes.data && roomsRes.data.length > 0) {
-        setForm((prev) => ({ ...prev, function_room_id: roomsRes.data[0].id }))
+      if ((!form.function_room_id || form.selectedRoomIds.length === 0) && roomsRes.data && roomsRes.data.length > 0) {
+        const firstRoomId = roomsRes.data[0].id
+        setForm((prev) => ({
+          ...prev,
+          function_room_id: firstRoomId,
+          selectedRoomIds: prev.selectedRoomIds.length ? prev.selectedRoomIds : [firstRoomId],
+        }))
       }
     } catch (err) {
       console.warn('[FunctionRoomModule] loadData error:', err)
@@ -190,18 +205,15 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
   const handleSubmit = async () => {
     setError('')
 
-    if (!form.function_room_id || !form.booker_name.trim() || !form.booking_date || !form.start_time || !form.end_time) {
+    const selectedRoomIds = form.selectedRoomIds.length > 0 ? form.selectedRoomIds : [form.function_room_id]
+
+    if (!selectedRoomIds.length || !form.booker_name.trim() || !form.booking_date || !form.start_time || !form.end_time) {
       setError('Please complete all required booking fields.')
       return
     }
 
     if (form.start_time >= form.end_time) {
       setError('End time must be later than the start time.')
-      return
-    }
-
-    if (hasBookingOverlap(form.function_room_id, form.booking_date, form.start_time, form.end_time)) {
-      setError('This room is already booked for the selected time slot.')
       return
     }
 
@@ -214,9 +226,8 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
         rental_price: Number(item!.rental_price),
       }))
 
-    const payload = {
+    const bookingPayload = {
       hotel_id: HOTEL_ID,
-      function_room_id: form.function_room_id,
       booker_name: form.booker_name.trim(),
       phone_number: form.phone_number.trim() || null,
       booking_date: form.booking_date,
@@ -232,21 +243,229 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
       created_by_staff_id: activeStaffUser?.id || null,
     }
 
+    const guestRoomLookup = await supabase
+      .from('rooms')
+      .select('id')
+      .eq('hotel_id', HOTEL_ID)
+      .limit(1)
+      .maybeSingle()
+
+    const fallbackRoomId = guestRoomLookup.data?.id || '00000000-0000-0000-0000-000000000101'
+
     setSaving(true)
     try {
-      const { error: insertError } = await supabase.from('function_room_bookings').insert(payload)
-      if (insertError) {
-        throw insertError
+      if (editingBookingId) {
+        const { error: updateError } = await supabase
+          .from('function_room_bookings')
+          .update({
+            ...bookingPayload,
+            function_room_id: form.function_room_id,
+          })
+          .eq('id', editingBookingId)
+
+        if (updateError) throw updateError
+
+        const { data: relatedRequests } = await supabase
+          .from('requests')
+          .select('*')
+          .eq('hotel_id', HOTEL_ID)
+          .eq('request_type', 'FUNCTION_ROOM_BOOKING')
+
+        const matchingRequests = (relatedRequests || []).filter((request: any) => request.payload?.function_room_booking_id === editingBookingId)
+        for (const request of matchingRequests) {
+          const nextPayload = {
+            ...(request.payload || {}),
+            function_room_booking_id: editingBookingId,
+            booker_name: form.booker_name.trim(),
+            phone_number: form.phone_number.trim() || null,
+            booking_date: form.booking_date,
+            start_time: form.start_time,
+            end_time: form.end_time,
+            room_name: roomNameMap.get(form.function_room_id) || 'Function room',
+            function_room_id: form.function_room_id,
+            food_budget: parseNumber(form.food_budget),
+            total_amount: parseNumber(form.food_budget) + equipmentTotal,
+            notes: form.notes.trim() || null,
+            rented_equipments: selectedEquipment,
+            status: form.status,
+          }
+
+          const { error: requestUpdateError } = await supabase
+            .from('requests')
+            .update({
+              status: form.status,
+              payload: nextPayload,
+            })
+            .eq('id', request.id)
+
+          if (requestUpdateError) {
+            console.warn('[FunctionRoomModule] request update warning:', requestUpdateError)
+          }
+        }
+
+        await (supabase.from('audit_logs') as any).insert([{
+          hotel_id: HOTEL_ID,
+          request_id: matchingRequests[0]?.id || null,
+          action: 'FUNCTION_ROOM_BOOKING_UPDATED',
+          actor_id: activeStaffUser?.id || null,
+          details: {
+            actor_name: activeStaffUser?.full_name || 'Staff Member',
+            actor_role: activeStaffUser?.role || 'STAFF',
+            booking_id: editingBookingId,
+            room_name: roomNameMap.get(form.function_room_id) || 'Function room',
+            booker_name: form.booker_name.trim(),
+            booking_date: form.booking_date,
+            start_time: form.start_time,
+            end_time: form.end_time,
+            updated_fields: ['booker_name', 'schedule', 'equipment', 'notes'],
+            timestamp: new Date().toISOString(),
+          },
+        }])
+
+        Alert.alert('Booking updated', 'The function room booking was updated successfully.')
+      } else {
+        for (const roomId of selectedRoomIds) {
+          if (hasBookingOverlap(roomId, form.booking_date, form.start_time, form.end_time)) {
+            setError('One or more selected rooms already have a booking in the chosen time slot.')
+            return
+          }
+        }
+
+        const bookingRows = selectedRoomIds.map((roomId) => ({
+          ...bookingPayload,
+          hotel_id: HOTEL_ID,
+          function_room_id: roomId,
+        }))
+
+        const { data: insertedBookings, error: insertError } = await supabase
+          .from('function_room_bookings')
+          .insert(bookingRows)
+          .select()
+
+        if (insertError) {
+          throw insertError
+        }
+
+        const requestRows = (insertedBookings || []).map((row: any) => ({
+          hotel_id: HOTEL_ID,
+          room_id: fallbackRoomId,
+          request_type: 'FUNCTION_ROOM_BOOKING',
+          status: row.status,
+          payload: {
+            function_room_booking_id: row.id,
+            booker_name: row.booker_name,
+            phone_number: row.phone_number,
+            booking_date: row.booking_date,
+            start_time: row.start_time,
+            end_time: row.end_time,
+            room_name: roomNameMap.get(row.function_room_id) || 'Function room',
+            function_room_id: row.function_room_id,
+            food_budget: row.food_budget,
+            total_amount: row.total_amount,
+            notes: row.notes,
+            rented_equipments: row.rented_equipments || [],
+            status: row.status,
+            created_by_staff_id: row.created_by_staff_id,
+          },
+          claimed_by: activeStaffUser?.id || null,
+          claimed_at: row.status === 'CONFIRMED' ? new Date().toISOString() : null,
+        }))
+
+        if (requestRows.length > 0) {
+          const { error: requestInsertError } = await supabase.from('requests').insert(requestRows)
+          if (requestInsertError) {
+            console.warn('[FunctionRoomModule] request audit row insert warning:', requestInsertError)
+          }
+        }
+
+        try {
+          const { data: historyRequests } = await supabase
+            .from('requests')
+            .select('*')
+            .eq('hotel_id', HOTEL_ID)
+            .eq('request_type', 'FUNCTION_ROOM_BOOKING')
+
+          const logRows = (insertedBookings || []).flatMap((row: any) => {
+            const matchedRequest = (historyRequests || []).find((req: any) => req.payload?.function_room_booking_id === row.id)
+            return matchedRequest ? [{
+              hotel_id: HOTEL_ID,
+              request_id: matchedRequest.id,
+              action: 'FUNCTION_ROOM_BOOKING_CREATED',
+              actor_id: activeStaffUser?.id || null,
+              details: {
+                actor_name: activeStaffUser?.full_name || 'Staff Member',
+                actor_role: activeStaffUser?.role || 'STAFF',
+                booker_name: row.booker_name,
+                room_name: roomNameMap.get(row.function_room_id) || 'Function room',
+                booking_date: row.booking_date,
+                start_time: row.start_time,
+                end_time: row.end_time,
+                new_status: row.status,
+                timestamp: new Date().toISOString(),
+              },
+            }] : []
+          })
+
+          if (logRows.length > 0) {
+            await (supabase.from('audit_logs') as any).insert(logRows)
+          }
+        } catch (auditErr) {
+          console.warn('[FunctionRoomModule] Non-fatal booking audit log error:', auditErr)
+        }
+
+        Alert.alert('Function room booking saved', selectedRoomIds.length > 1 ? 'All selected rooms were booked successfully.' : 'The booking has been created successfully.')
       }
-      setVisible(false)
-      setForm({ ...DEFAULT_FORM, function_room_id: rooms[0]?.id || '' })
-      Alert.alert('Function room booking saved', 'The booking has been created successfully.')
+
+      closeModal()
       await loadData()
     } catch (err: any) {
       setError(err?.message || 'Unable to save booking.')
     } finally {
       setSaving(false)
     }
+  }
+
+  const openCreateModal = () => {
+    setEditingBookingId(null)
+    setError('')
+    setVisible(true)
+    setForm({
+      ...DEFAULT_FORM,
+      function_room_id: rooms[0]?.id || '',
+      selectedRoomIds: rooms[0] ? [rooms[0].id] : [],
+    })
+  }
+
+  const openEditModal = (booking: FunctionRoomBooking) => {
+    setEditingBookingId(booking.id)
+    setError('')
+    setVisible(true)
+    setForm({
+      function_room_id: booking.function_room_id,
+      selectedRoomIds: [booking.function_room_id],
+      booker_name: booking.booker_name,
+      phone_number: booking.phone_number || '',
+      booking_date: booking.booking_date,
+      start_time: booking.start_time,
+      end_time: booking.end_time,
+      food_budget: String(booking.food_budget ?? 0),
+      banquet_food_notes: booking.banquet_food_notes || '',
+      notes: booking.notes || '',
+      selectedEquipmentIds: booking.rented_equipments?.map((item) => item.id) || [],
+      downpayment_amount: String(booking.downpayment_amount ?? 0),
+      status: booking.status,
+    })
+  }
+
+  const closeModal = () => {
+    setVisible(false)
+    setEditingBookingId(null)
+    setError('')
+    setForm({
+      ...DEFAULT_FORM,
+      function_room_id: rooms[0]?.id || '',
+      selectedRoomIds: rooms[0] ? [rooms[0].id] : [],
+    })
   }
 
   const callBooker = async (phone: string | null) => {
@@ -264,6 +483,7 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
   }
 
   const updateBookingStatus = async (bookingId: string, status: RoomStatus) => {
+    const booking = bookings.find((item) => item.id === bookingId)
     try {
       const { error } = await supabase
         .from('function_room_bookings')
@@ -271,6 +491,49 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
         .eq('id', bookingId)
 
       if (error) throw error
+
+      const { data: relatedRequests } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('hotel_id', HOTEL_ID)
+        .eq('request_type', 'FUNCTION_ROOM_BOOKING')
+
+      const targetRequests = (relatedRequests || []).filter((request: any) => request.payload?.function_room_booking_id === bookingId)
+
+      for (const request of targetRequests) {
+        const { error: requestUpdateError } = await supabase
+          .from('requests')
+          .update({ status })
+          .eq('id', request.id)
+
+        if (requestUpdateError) {
+          console.warn('[FunctionRoomModule] request status sync warning:', requestUpdateError)
+        }
+      }
+
+      try {
+        await (supabase.from('audit_logs') as any).insert([
+          {
+            hotel_id: HOTEL_ID,
+            request_id: targetRequests[0]?.id || null,
+            action: 'FUNCTION_ROOM_BOOKING_STATUS_CHANGED',
+            actor_id: activeStaffUser?.id || null,
+            details: {
+              actor_name: activeStaffUser?.full_name || 'Staff Member',
+              actor_role: activeStaffUser?.role || 'STAFF',
+              booking_id: bookingId,
+              room_name: booking ? roomNameMap.get(booking.function_room_id) || 'Function room' : 'Function room',
+              booker_name: booking?.booker_name || 'Guest',
+              old_status: booking?.status || 'PENDING',
+              new_status: status,
+              timestamp: new Date().toISOString(),
+            },
+          },
+        ])
+      } catch (auditErr) {
+        console.warn('[FunctionRoomModule] Non-fatal booking status audit log error:', auditErr)
+      }
+
       await loadData()
       Alert.alert('Booking updated', `Booking marked as ${status}.`)
     } catch (err: any) {
@@ -279,104 +542,139 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
   }
 
   const roomNameMap = useMemo(() => new Map(rooms.map((room) => [room.id, room.name])), [rooms])
+  const nextBooking = upcomingBookings[0] || null
 
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <View>
+        <TouchableOpacity activeOpacity={0.8} onPress={() => setExpanded((prev) => !prev)} style={styles.headerTitleWrap}>
           <Text style={styles.title}>🏛️ Function Rooms</Text>
-          <Text style={styles.subtitle}>Event bookings, schedule checks, and rental add-ons</Text>
-        </View>
-        <TouchableOpacity style={styles.primaryButton} onPress={() => setVisible(true)}>
-          <Text style={styles.primaryButtonText}>+ New Booking</Text>
+          <Text style={styles.subtitle}>
+            {expanded ? 'Tap to minimize' : nextBooking ? `Next: ${nextBooking.booker_name} • ${formatDateLabel(nextBooking.booking_date)}` : 'No upcoming bookings'}
+          </Text>
         </TouchableOpacity>
+
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.toggleButton} onPress={() => setExpanded((prev) => !prev)}>
+            <Text style={styles.toggleButtonText}>{expanded ? 'Hide' : 'View'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.primaryButton} onPress={openCreateModal}>
+            <Text style={styles.primaryButtonText}>+ New</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View style={styles.toolbar}>
-        <Text style={styles.label}>Selected date</Text>
-        <TextInput
-          value={selectedDate}
-          onChangeText={setSelectedDate}
-          placeholder="YYYY-MM-DD"
-          style={styles.dateInput}
-          keyboardType="default"
-        />
-      </View>
-
-      {loading ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#fbbf24" />
-          <Text style={styles.loadingText}>Loading function room schedule...</Text>
+      {!expanded ? (
+        <View style={styles.summaryBox}>
+          <Text style={styles.summaryLabel}>{upcomingBookings.length} upcoming bookings</Text>
+          {nextBooking ? (
+            <>
+              <Text style={styles.summaryTitle}>{nextBooking.booker_name}</Text>
+              <Text style={styles.summaryMeta}>{roomNameMap.get(nextBooking.function_room_id) || 'Function room'} • {formatDateLabel(nextBooking.booking_date)}</Text>
+              <Text style={styles.summaryMeta}>{nextBooking.start_time} - {nextBooking.end_time}</Text>
+            </>
+          ) : (
+            <Text style={styles.summaryMeta}>No function room bookings currently scheduled.</Text>
+          )}
         </View>
       ) : (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roomChipsWrap}>
-            {rooms.map((room) => {
-              const roomCount = roomBookings.filter((b) => b.function_room_id === room.id).length
-              return (
-                <TouchableOpacity
-                  key={room.id}
-                  style={[styles.roomChip, room.id === selectedRoom?.id && styles.roomChipActive]}
-                  onPress={() => setForm((prev) => ({ ...prev, function_room_id: room.id }))}
-                >
-                  <Text style={[styles.roomChipText, room.id === selectedRoom?.id && styles.roomChipTextActive]}>{room.name}</Text>
-                  <Text style={styles.roomChipMeta}>{roomCount} booked</Text>
-                </TouchableOpacity>
-              )
-            })}
-          </ScrollView>
-
-          <View style={styles.bookingList}>
-            {roomBookings.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyIcon}>🗓️</Text>
-                <Text style={styles.emptyTitle}>No bookings for this date</Text>
-                <Text style={styles.emptyBody}>Create a new function room booking to schedule an event.</Text>
-              </View>
-            ) : (
-              roomBookings.map((booking) => {
-                const selectedEquipmentTotal = booking.rented_equipments.reduce((sum, item) => sum + Number(item.rental_price || 0), 0)
-                return (
-                  <View key={booking.id} style={styles.bookingCard}>
-                    <View style={styles.bookingTopRow}>
-                      <View>
-                        <Text style={styles.bookingName}>{booking.booker_name}</Text>
-                        <Text style={styles.bookingMeta}>{roomNameMap.get(booking.function_room_id) || 'Function room'}</Text>
-                      </View>
-                      <View style={[styles.statusPill, booking.status === 'CANCELLED' ? styles.statusCancelled : styles.statusDefault]}>
-                        <Text style={styles.statusText}>{booking.status}</Text>
-                      </View>
-                    </View>
-
-                    <Text style={styles.bookingTime}>{booking.start_time} - {booking.end_time}</Text>
-                    <Text style={styles.bookingMeta}>Phone: {booking.phone_number || 'Not provided'}</Text>
-                    <Text style={styles.bookingMeta}>Food budget: {formatCurrency(Number(booking.food_budget || 0))}</Text>
-                    <Text style={styles.bookingMeta}>Rental add-ons: {formatCurrency(selectedEquipmentTotal)}</Text>
-                    <Text style={styles.bookingMeta}>Total: {formatCurrency(Number(booking.total_amount || 0))}</Text>
-
-                    {booking.banquet_food_notes ? (
-                      <Text style={styles.bookingMeta}>Menu notes: {booking.banquet_food_notes}</Text>
-                    ) : null}
-
-                    <View style={styles.bookingActions}>
-                      <TouchableOpacity style={styles.callButton} onPress={() => callBooker(booking.phone_number)}>
-                        <Text style={styles.callButtonText}>📞 Call Booker</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.smallActionButton} onPress={() => updateBookingStatus(booking.id, 'CONFIRMED')}>
-                        <Text style={styles.smallActionText}>Confirm</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.smallActionButtonSecondary} onPress={() => updateBookingStatus(booking.id, 'COMPLETED')}>
-                        <Text style={styles.smallActionTextSecondary}>Complete</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.smallActionButtonDanger} onPress={() => updateBookingStatus(booking.id, 'CANCELLED')}>
-                        <Text style={styles.smallActionTextDanger}>Cancel</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )
-              })
-            )}
+          <View style={styles.toolbar}>
+            <Text style={styles.label}>Upcoming bookings</Text>
+            <Text style={styles.toolbarValue}>{upcomingBookings.length} active</Text>
           </View>
+
+          {loading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator color="#fbbf24" />
+              <Text style={styles.loadingText}>Loading function room schedule...</Text>
+            </View>
+          ) : (
+            <>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roomChipsWrap}>
+                {rooms.map((room) => {
+                  const roomCount = upcomingBookings.filter((b) => b.function_room_id === room.id).length
+                  return (
+                    <TouchableOpacity
+                      key={room.id}
+                      style={[styles.roomChip, form.selectedRoomIds.includes(room.id) && styles.roomChipActive]}
+                      onPress={() => setForm((prev) => {
+                        const alreadySelected = prev.selectedRoomIds.includes(room.id)
+                        const nextSelected = alreadySelected
+                          ? prev.selectedRoomIds.filter((id) => id !== room.id)
+                          : [...prev.selectedRoomIds, room.id]
+                        const primaryRoomId = nextSelected[0] || room.id
+                        return {
+                          ...prev,
+                          function_room_id: primaryRoomId,
+                          selectedRoomIds: nextSelected.length ? nextSelected : [room.id],
+                        }
+                      })}
+                    >
+                      <Text style={[styles.roomChipText, form.selectedRoomIds.includes(room.id) && styles.roomChipTextActive]}>{room.name}</Text>
+                      <Text style={styles.roomChipMeta}>{roomCount} booked</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </ScrollView>
+
+              <View style={styles.bookingList}>
+                {upcomingBookings.length === 0 ? (
+                  <View style={styles.emptyCard}>
+                    <Text style={styles.emptyIcon}>🗓️</Text>
+                    <Text style={styles.emptyTitle}>No upcoming bookings</Text>
+                    <Text style={styles.emptyBody}>Create a new function room booking to schedule an event.</Text>
+                  </View>
+                ) : (
+                  upcomingBookings.map((booking) => {
+                    const selectedEquipmentTotal = booking.rented_equipments.reduce((sum, item) => sum + Number(item.rental_price || 0), 0)
+                    return (
+                      <TouchableOpacity key={booking.id} onPress={() => openEditModal(booking)} activeOpacity={0.8}>
+                        <View style={styles.bookingCard}>
+                          <View style={styles.bookingTopRow}>
+                            <View style={styles.bookingTitleWrap}>
+                              <Text style={styles.bookingName}>{booking.booker_name}</Text>
+                              <Text style={styles.bookingMeta}>{roomNameMap.get(booking.function_room_id) || 'Function room'}</Text>
+                            </View>
+                            <View style={[styles.statusPill, booking.status === 'CANCELLED' ? styles.statusCancelled : styles.statusDefault]}>
+                              <Text style={styles.statusText}>{booking.status}</Text>
+                            </View>
+                          </View>
+
+                          <Text style={styles.bookingMeta}>Date: {formatDateLabel(booking.booking_date)}</Text>
+                          <Text style={styles.bookingTime}>{booking.start_time} - {booking.end_time}</Text>
+                          <Text style={styles.bookingMeta}>Phone: {booking.phone_number || 'Not provided'}</Text>
+                          <Text style={styles.bookingMeta}>Food budget: {formatCurrency(Number(booking.food_budget || 0))}</Text>
+                          <Text style={styles.bookingMeta}>Rental add-ons: {formatCurrency(selectedEquipmentTotal)}</Text>
+                          <Text style={styles.bookingMeta}>Total: {formatCurrency(Number(booking.total_amount || 0))}</Text>
+
+                          {booking.banquet_food_notes ? (
+                            <Text style={styles.bookingMeta}>Menu notes: {booking.banquet_food_notes}</Text>
+                          ) : null}
+
+                          <View style={styles.bookingActions}>
+                            <TouchableOpacity style={styles.callButton} onPress={() => callBooker(booking.phone_number)}>
+                              <Text style={styles.callButtonText}>📞 Call</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.smallActionButton} onPress={() => updateBookingStatus(booking.id, 'CONFIRMED')}>
+                              <Text style={styles.smallActionText}>Confirm</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.smallActionButtonSecondary} onPress={() => updateBookingStatus(booking.id, 'COMPLETED')}>
+                              <Text style={styles.smallActionTextSecondary}>Complete</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.smallActionButtonDanger} onPress={() => updateBookingStatus(booking.id, 'CANCELLED')}>
+                              <Text style={styles.smallActionTextDanger}>Cancel</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <Text style={styles.editHint}>Tap to edit details</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )
+                  })
+                )}
+              </View>
+            </>
+          )}
         </>
       )}
 
@@ -384,8 +682,8 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
         <View style={styles.modalBacking}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Function Room Booking</Text>
-              <TouchableOpacity onPress={() => { setVisible(false); setError('') }}>
+              <Text style={styles.modalTitle}>{editingBookingId ? 'Edit Function Room Booking' : 'New Function Room Booking'}</Text>
+              <TouchableOpacity onPress={closeModal}>
                 <Text style={styles.closeText}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -393,17 +691,32 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
             <ScrollView showsVerticalScrollIndicator={false}>
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-              <Text style={styles.fieldTitle}>Room</Text>
+              <Text style={styles.fieldTitle}>Rooms</Text>
+              <Text style={styles.helperText}>Select one or more rooms for this booking.</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roomSelectRow}>
-                {rooms.map((room) => (
-                  <TouchableOpacity
-                    key={room.id}
-                    style={[styles.selectPill, form.function_room_id === room.id && styles.selectPillActive]}
-                    onPress={() => setForm((prev) => ({ ...prev, function_room_id: room.id }))}
-                  >
-                    <Text style={[styles.selectPillText, form.function_room_id === room.id && styles.selectPillTextActive]}>{room.name}</Text>
-                  </TouchableOpacity>
-                ))}
+                {rooms.map((room) => {
+                  const selected = form.selectedRoomIds.includes(room.id)
+                  return (
+                    <TouchableOpacity
+                      key={room.id}
+                      style={[styles.selectPill, selected && styles.selectPillActive]}
+                      onPress={() => setForm((prev) => {
+                        const alreadySelected = prev.selectedRoomIds.includes(room.id)
+                        const nextSelected = alreadySelected
+                          ? prev.selectedRoomIds.filter((id) => id !== room.id)
+                          : [...prev.selectedRoomIds, room.id]
+                        const primaryRoomId = nextSelected[0] || room.id
+                        return {
+                          ...prev,
+                          function_room_id: primaryRoomId,
+                          selectedRoomIds: nextSelected.length ? nextSelected : [room.id],
+                        }
+                      })}
+                    >
+                      <Text style={[styles.selectPillText, selected && styles.selectPillTextActive]}>{room.name}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
               </ScrollView>
 
               <Text style={styles.fieldTitle}>Booker details</Text>
@@ -476,11 +789,11 @@ export default function FunctionRoomModule({ activeStaffUser }: { activeStaffUse
               />
 
               <View style={styles.modalActions}>
-                <TouchableOpacity style={styles.secondaryButton} onPress={() => { setVisible(false); setError('') }}>
+                <TouchableOpacity style={styles.secondaryButton} onPress={closeModal}>
                   <Text style={styles.secondaryButtonText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={saving}>
-                  <Text style={styles.primaryButtonText}>{saving ? 'Saving...' : 'Save Booking'}</Text>
+                  <Text style={styles.primaryButtonText}>{saving ? 'Saving...' : editingBookingId ? 'Update Booking' : 'Save Booking'}</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -506,6 +819,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+    gap: 8,
+  },
+  headerTitleWrap: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   title: {
     color: '#f8fafc',
@@ -517,10 +840,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  toggleButton: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 9,
+  },
+  toggleButtonText: {
+    color: '#f8fafc',
+    fontWeight: '700',
+    fontSize: 11,
+  },
   primaryButton: {
     backgroundColor: '#fbbf24',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
     borderRadius: 10,
   },
   primaryButtonText: {
@@ -528,16 +864,50 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 12,
   },
+  summaryBox: {
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: 12,
+  },
+  summaryLabel: {
+    color: '#fbbf24',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  summaryTitle: {
+    color: '#f8fafc',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  summaryMeta: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    marginTop: 2,
+  },
   toolbar: {
     marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
   },
   label: {
     color: '#cbd5e1',
     fontSize: 11,
     fontWeight: '700',
-    marginBottom: 6,
+    marginBottom: 0,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  toolbarValue: {
+    color: '#fbbf24',
+    fontSize: 11,
+    fontWeight: '800',
   },
   dateInput: {
     borderWidth: 1,
@@ -627,6 +997,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 8,
   },
+  bookingTitleWrap: {
+    flex: 1,
+    paddingRight: 8,
+  },
   bookingName: {
     color: '#f8fafc',
     fontWeight: '800',
@@ -669,6 +1043,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     alignItems: 'center',
+  },
+  editHint: {
+    marginTop: 8,
+    color: '#fbbf24',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   callButton: {
     backgroundColor: 'rgba(34,197,94,0.12)',
@@ -763,6 +1145,11 @@ const styles = StyleSheet.create({
   },
   roomSelectRow: {
     marginBottom: 8,
+  },
+  helperText: {
+    color: '#94a3b8',
+    fontSize: 11,
+    marginBottom: 10,
   },
   selectPill: {
     paddingVertical: 8,
