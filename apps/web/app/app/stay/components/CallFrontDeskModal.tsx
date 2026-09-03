@@ -39,6 +39,32 @@ export default function CallFrontDeskModal({
   const [agoraChannel, setAgoraChannel] = useState<string>('')
   const [agoraToken, setAgoraToken] = useState<string | null>(null)
 
+  // Admin-controlled Live Voice Call visibility (notification_settings.enable_guest_live_call)
+  const [liveCallEnabled, setLiveCallEnabled] = useState<boolean>(true)
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const fetchLiveCallSetting = async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data } = await (supabase as any)
+          .from('notification_settings')
+          .select('enable_guest_live_call')
+          .eq('hotel_id', hotelId)
+          .maybeSingle()
+
+        if (data && typeof data.enable_guest_live_call === 'boolean') {
+          setLiveCallEnabled(data.enable_guest_live_call)
+        }
+      } catch (err) {
+        console.error('Failed to fetch guest live call setting:', err)
+      }
+    }
+
+    fetchLiveCallSetting()
+  }, [isOpen, hotelId])
+
   const isVoiceActive = status === 'VOICE_LIVE'
   const voiceCall = useGuestVoiceCall(
     isVoiceActive
@@ -150,6 +176,7 @@ export default function CallFrontDeskModal({
 
   // ── Live Voice Call flow ────────────────────────────────────────────────
   const handleLiveVoiceCall = useCallback(async () => {
+    if (!liveCallEnabled) return
     setStatus('VOICE_JOINING')
     try {
       // 1. Get Agora token from server
@@ -198,7 +225,7 @@ export default function CallFrontDeskModal({
       console.error('[LiveVoiceCall] Setup error:', err)
       setStatus('IDLE')
     }
-  }, [hotelId, roomId, roomNumber])
+  }, [hotelId, roomId, roomNumber, liveCallEnabled])
 
   const handleEndLiveCall = useCallback(async () => {
     await voiceCall.endCall()
@@ -264,21 +291,23 @@ export default function CallFrontDeskModal({
                 <span className="text-[11px] opacity-70 font-medium">{hotelPhone}</span>
               </a>
 
-              {/* Live Voice Call CTA */}
-              <button
-                onClick={handleLiveVoiceCall}
-                disabled={isSubmitting}
-                className="w-full flex flex-col items-center justify-center gap-1 py-5 px-5 rounded-2xl font-bold text-base transition-all duration-200 active:scale-95 disabled:opacity-50 min-h-[72px]"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.15) 100%)',
-                  border: '1px solid rgba(99,102,241,0.4)',
-                  color: '#a5b4fc',
-                }}
-              >
-                <span className="text-2xl">🎤</span>
-                <span>Live Voice Call</span>
-                <span className="text-[11px] opacity-60 font-medium">Talk directly with staff</span>
-              </button>
+              {/* Live Voice Call CTA (hidden when admin disables enable_guest_live_call) */}
+              {liveCallEnabled && (
+                <button
+                  onClick={handleLiveVoiceCall}
+                  disabled={isSubmitting}
+                  className="w-full flex flex-col items-center justify-center gap-1 py-5 px-5 rounded-2xl font-bold text-base transition-all duration-200 active:scale-95 disabled:opacity-50 min-h-[72px]"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.15) 100%)',
+                    border: '1px solid rgba(99,102,241,0.4)',
+                    color: '#a5b4fc',
+                  }}
+                >
+                  <span className="text-2xl">🎤</span>
+                  <span>Live Voice Call</span>
+                  <span className="text-[11px] opacity-60 font-medium">Talk directly with staff</span>
+                </button>
+              )}
 
               {/* Secondary CTA — Staff callback request */}
               <button

@@ -37,6 +37,7 @@ export default function HotelSettingsPage() {
   const [spaAllowedTypes, setSpaAllowedTypes]           = useState<string[]>(['SPA_BOOKING'])
   const [functionRoomNotificationEnabled, setFunctionRoomNotificationEnabled] = useState<boolean>(true)
   const [functionRoomLeadDays, setFunctionRoomLeadDays] = useState<number>(1)
+  const [guestLiveCallEnabled, setGuestLiveCallEnabled] = useState<boolean>(true)
 
   // Test Push State
   const [testPushLoading, setTestPushLoading] = useState(false)
@@ -91,6 +92,7 @@ export default function HotelSettingsPage() {
           if (Array.isArray(nData.spa_allowed_types)) setSpaAllowedTypes(nData.spa_allowed_types)
           if (typeof nData.notify_same_day === 'boolean') setFunctionRoomNotificationEnabled(nData.notify_same_day)
           if (typeof nData.notify_days_before === 'number') setFunctionRoomLeadDays(nData.notify_days_before)
+          if (typeof nData.enable_guest_live_call === 'boolean') setGuestLiveCallEnabled(nData.enable_guest_live_call)
         }
       } catch (err) {
         console.error('Error loading hotel data:', err)
@@ -140,6 +142,7 @@ export default function HotelSettingsPage() {
           spa_allowed_types: spaAllowedTypes,
           notify_same_day: functionRoomNotificationEnabled,
           notify_days_before: functionRoomLeadDays,
+          enable_guest_live_call: guestLiveCallEnabled,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'hotel_id' })
 
@@ -164,6 +167,7 @@ export default function HotelSettingsPage() {
             max_alert_duration_seconds: maxAlertDuration,
             function_room_notifications_enabled: functionRoomNotificationEnabled,
             function_room_lead_days: functionRoomLeadDays,
+            guest_live_call_enabled: guestLiveCallEnabled,
           },
         },
       ])
@@ -728,6 +732,51 @@ export default function HotelSettingsPage() {
                         textAlign: 'center',
                       }}
                     />
+                  </div>
+                </div>
+
+                {/* 0. Guest Live Voice Call Visibility Toggle */}
+                <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: 14, padding: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 2 }}>🎤 Guest Live Voice Call Button</div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>
+                      {guestLiveCallEnabled
+                        ? 'Visible — guests can start a live in-browser voice call with staff'
+                        : 'Hidden — guests only see direct dial & staff callback options'}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: guestLiveCallEnabled ? '#4ade80' : '#94a3b8' }}>
+                      {guestLiveCallEnabled ? 'Shown' : 'Hidden'}
+                    </span>
+                    <button
+                      type="button"
+                      id="toggle-guest-live-call"
+                      onClick={() => setGuestLiveCallEnabled(v => !v)}
+                      style={{
+                        position: 'relative',
+                        width: 48,
+                        height: 26,
+                        borderRadius: 13,
+                        border: 'none',
+                        background: guestLiveCallEnabled ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'rgba(255,255,255,0.1)',
+                        cursor: 'pointer',
+                        transition: 'background 0.25s',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute',
+                        top: 3,
+                        left: guestLiveCallEnabled ? 25 : 3,
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        background: '#fff',
+                        transition: 'left 0.25s',
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                      }} />
+                    </button>
                   </div>
                 </div>
 

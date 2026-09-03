@@ -286,6 +286,7 @@ export interface NotificationSettings {
   fnb_allowed_types: string[]
   frontdesk_allowed_types: string[]
   spa_allowed_types: string[]
+  enable_guest_live_call?: boolean
   created_at?: string
   updated_at?: string
 }

@@ -38,6 +38,7 @@ Examples:
 | 2026-08-31 | [2026-08-31_expo-updates-ota-configuration.md](./2026-08-31_expo-updates-ota-configuration.md) | EAS OTA auto-updates via `expo-updates`, launch & foreground auto-check hook, silent download & auto-restart |
 | 2026-09-01 | [2026-09-01_agora-rtc-2way-voice-calling.md](./2026-09-01_agora-rtc-2way-voice-calling.md) | 2-Way Live Voice Calling between guest web and staff app via Agora RTC, Realtime signaling, and FCM push |
 | 2026-09-04 | [2026-09-04_admin-branding-function-room-finalization.md](./2026-09-04_admin-branding-function-room-finalization.md) | Dynamic hotel branding from admin settings, compact mobile admin header, and final function room multi-room booking + audit trail work |
+| 2026-09-04 | [2026-09-04_admin-toggle-guest-live-call-button.md](./2026-09-04_admin-toggle-guest-live-call-button.md) | Admin toggle to hide/show guest Live Voice Call button (migration 23 `enable_guest_live_call`, admin settings switch, guest modal gating) |
 
 ---
 

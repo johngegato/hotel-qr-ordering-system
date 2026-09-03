@@ -46,6 +46,7 @@ Key goals
 - Fix Expo/TS/web build issues (typed catches, haptics on web, undefined imports).
 - Fix food order realtime queue sync in staff-app on alert acknowledgment and DB changes.
 - Fix actor attribution bug in RequestHistory showing guest names with STAFF role badge.
+- Add admin toggle to hide/show the guest web Live Voice Call button (`notification_settings.enable_guest_live_call`, migration 23; admin settings switch; `CallFrontDeskModal.tsx` gating). ⚠️ Migration 23 must be applied manually on hosted Supabase.
 
 Recent session additions:
 - 2-Way Live Voice Calling between Guest Web and Staff App (Agora RTC):

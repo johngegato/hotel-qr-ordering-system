@@ -26,6 +26,7 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Push token 1:1 binding (`bindPushTokenToStaffUser`) and logout token nullification (`clearPushTokenFromStaffUser`) in `apps/staff-app/lib/notifications.ts` & `App.tsx`.
   - Alert deduplication (`alertedRequestIdsRef`) and role-based notification filtering in `apps/staff-app/App.tsx`.
   - Admin Notification Settings Controls at `/admin/settings` (reminder interval selector, sound toggle, max ring duration slider, role matrix, and live test push trigger).
+  - Admin Toggle for Guest Live Voice Call Button: migration `23_guest_live_call_toggle.sql` (`notification_settings.enable_guest_live_call`, default TRUE), toggle switch in `/admin/settings` alarm controls, and conditional rendering of the Live Voice Call CTA in `CallFrontDeskModal.tsx`.
 - [x] Admin Web User Account Control (UAC): full CRUD at `/admin/users` on `staff_users` table.
 - [x] F&B Menu Admin Enhancements at `/admin/fb`: Category CRUD, food photo uploads & compression to Supabase Storage, 1-click CSV Export, Batch CSV Import with validation & preview, downloadable CSV template.
 - [x] Guest Dining UI/UX overhaul at `/app/stay/dining`: hero section, dietary filter chips, live search, dish detail modal, resolved infinite scroll re-render loop bug.

@@ -207,6 +207,7 @@ export interface NotificationSettings {
   spa_allowed_types: string[]
   notify_same_day?: boolean
   notify_days_before?: number
+  enable_guest_live_call?: boolean
   updated_at: string
 }
 
