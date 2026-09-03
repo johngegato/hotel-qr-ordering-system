@@ -69,6 +69,15 @@ Purpose: Quick actionable checklist for future AI agents or developers to pick u
   - Automatically restores session on app launch and smoothly bypasses the login screen.
   - Performs background account verification with Supabase to handle admin deactivations.
   - Completely clears local session upon clicking "Log Out".
+- [x] Admin Web Hotel Branding is Controlled by Settings (`/admin/settings` and `/admin/layout.tsx`):
+  - Hotel name is now stored in the hotel record and loaded dynamically for the admin shell, dashboard, and room QR/print surfaces.
+  - Hardcoded brand text like `Grand Hotel` is removed from the live admin UI to keep the property identity centrally managed.
+  - Header and navigation wrappers were flattened for mobile readability without losing desktop navigation density.
+- [x] Function Room Booking Finalization (`apps/staff-app/components/FunctionRoomModule.tsx` + `RequestHistory.tsx` + `packages/supabase/migrations/22_function_room_booking.sql`):
+  - Single booking with multiple rooms is supported, with a combined `room_names` summary and single logical request history item.
+  - Edit and cancel actions create audit trail entries with reason tracking and itinerary details.
+  - Request history shows the full event detail including catering notes, equipment rental, payment data, and room names.
+  - Booking cards remain compact and expandable to reduce dashboard crowding on mobile staff devices.
 - [x] Staff App Automated Persistent Real-Time Reactivity & Auto-Sync Engine (`useAutoSync.ts`, `App.tsx`, and all queue components):
   - Created `apps/staff-app/lib/useAutoSync.ts` providing active background polling intervals (6-8s) and instant window/tab focus & visibility re-sync triggers.
   - Hardened Realtime WebSockets: removed broken column filters (`filter: 'request_type=eq.CALL_REQUEST'`) in `DedicatedCallModule.tsx`, and added `SUBSCRIBED` channel recovery listeners across all modules.

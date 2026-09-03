@@ -332,6 +332,30 @@ If you want, I can:
 - commit this handoff file to the repo and push it, and
 - create small follow-up tasks (tests or CI adjustments).
 
+## Latest Update — 2026-09-04
+
+### Admin branding is now managed from hotel settings
+- The admin shell now reads the live hotel display name from the `hotels` table instead of hardcoded text like `Grand Hotel` / `Grand Hotel & Spa`.
+- The hotel name is used for the admin top bar, dashboard header, and room QR print badges.
+- This keeps the property title centralized in the admin settings page, which is the source of truth for the hotel identity.
+
+### Mobile-friendly admin layout cleanup
+- The admin header was compacted and reflowed to work better on phones and small tablets.
+- Navigation chips now wrap cleanly instead of crowding the header.
+- Sign-out and user display elements were tuned for mobile width without losing the desktop layout quality.
+
+### Function room booking finalization completed
+- The function room module accepts multi-room bookings as a single logical booking with a combined room name summary.
+- Room history displays comma-separated room names and preserves booking details such as catering notes, equipment rentals, and notes for audit review.
+- Edit operations record a structured audit log update and preserve relevant room summary metadata.
+- Cancel actions now support a cancellation reason and record it in the booking notes and audit history.
+- The compact summary UI remains collapsed by default to avoid crowding the staff dashboard while still allowing expansion when needed.
+
+### Verification notes
+- Web admin TypeScript validation passed using:
+  - `cd "c:/AMD/New folder/hotel-qr-ordering-system"; pnpm --dir "apps/web" exec tsc --noEmit`
+- This was used to validate the admin branding and mobile layout changes before documentation handoff.
+
 ## SPA Module Architecture and Data Flow Review
 
 ### End-to-end booking flow
