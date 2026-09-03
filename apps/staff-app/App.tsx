@@ -311,6 +311,90 @@ function MainAppContent() {
   }, [activeStaffUser])
   const [isRestoringSession, setIsRestoringSession] = useState(true)
   const [incomingAlert, setIncomingAlert] = useState<IncomingRequest | null>(null)
+<<<<<<< HEAD
+=======
+  const [incomingLiveCall, setIncomingLiveCall] = useState<{
+    requestId: string
+    roomNumber: string
+    channel: string
+  } | null>(null)
+  const [activeCallRoom, setActiveCallRoom] = useState<string | null>(null)
+  const [activeCallRequestId, setActiveCallRequestId] = useState<string | null>(null)
+
+  // EXPO_PUBLIC_ vars are inlined at Metro/webpack build time.
+  // On Vercel, set EXPO_PUBLIC_AGORA_APP_ID in the project env settings.
+  // The hardcoded value here is the fallback so the web build never gets an empty string.
+  const AGORA_APP_ID =
+    process.env.EXPO_PUBLIC_AGORA_APP_ID ||
+    'c2e5d50d9273492d874b2a898f458334'
+
+
+  const staffVoiceCall = useStaffVoiceCall({
+    onCallEnded: () => {
+      setActiveCallRoom(null)
+      setActiveCallRequestId(null)
+    },
+  })
+
+  const handleAnswerLiveCall = useCallback(
+    async (channel: string, reqId: string) => {
+      try {
+        setIncomingLiveCall(null)
+        setActiveCallRequestId(reqId)
+
+        // Lookup room number for display
+        const { data: req } = await supabase
+          .from('requests')
+          .select('*, rooms(room_number)')
+          .eq('id', reqId)
+          .maybeSingle()
+
+        const roomNum =
+          (req?.rooms as any)?.room_number ||
+          (req?.payload as any)?.room_number ||
+          'Guest'
+        setActiveCallRoom(String(roomNum))
+
+        const tokenRes = await fetch(`/api/agora/token?channel=${encodeURIComponent(channel)}&uid=2`)
+        const tokenData = await tokenRes.json()
+
+        if (!tokenRes.ok || !tokenData?.token) {
+          throw new Error(tokenData?.error || 'Missing Agora token')
+        }
+
+        // Join Agora voice channel as staff (UID 2)
+        await staffVoiceCall.joinChannel(channel, tokenData.token, AGORA_APP_ID)
+
+        // Mark request status as LIVE
+        await supabase.from('requests').update({ status: 'LIVE' }).eq('id', reqId)
+      } catch (err) {
+        console.error('[App] Answer live call error:', err)
+        Alert.alert('Call Failed', 'Could not connect to live voice call.')
+      }
+    },
+    [AGORA_APP_ID, staffVoiceCall]
+  )
+
+  const handleDeclineLiveCall = useCallback(async (reqId: string) => {
+    setIncomingLiveCall(null)
+    try {
+      await supabase.from('requests').update({ status: 'DECLINED' }).eq('id', reqId)
+    } catch (err) {
+      console.warn('[App] Decline live call error:', err)
+    }
+  }, [])
+
+  const handleEndStaffCall = useCallback(async () => {
+    const reqId = activeCallRequestId
+    await staffVoiceCall.leaveChannel()
+    setActiveCallRoom(null)
+    setActiveCallRequestId(null)
+    if (reqId) {
+      await supabase.from('requests').update({ status: 'RESOLVED' }).eq('id', reqId)
+    }
+  }, [activeCallRequestId, staffVoiceCall])
+
+>>>>>>> dfef49c (fix(staff-app): fetch Agora token before staff web join)
   const [unhandledPendingList, setUnhandledPendingList] = useState<PendingRequestItem[] | null>(null)
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
