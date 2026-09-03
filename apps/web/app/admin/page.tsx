@@ -67,6 +67,20 @@ const MODULES = [
     badge: 'QR Generator',
   },
   {
+    title: '🏛️ Function Room Booking',
+    route: '/admin/function-rooms',
+    description: 'Manage banquet rooms, event schedules, and booking calendars for private functions and events.',
+    color: '#fbbf24',
+    badge: 'Events & Schedules',
+  },
+  {
+    title: '🎤 Rental Equipment',
+    route: '/admin/equipments',
+    description: 'Manage rentable equipment, pricing, availability, and add-on packages for each event booking.',
+    color: '#34d399',
+    badge: 'AV & Setup',
+  },
+  {
     title: '👥 User Account Control',
     route: '/admin/users',
     description: 'Full CRUD management of staff accounts, departmental role assignments, passwords, and access status.',

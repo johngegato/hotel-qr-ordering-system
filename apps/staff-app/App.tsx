@@ -13,6 +13,7 @@ import {
   ScrollView,
   TextInput,
   Platform,
+  Linking,
 } from 'react-native'
 import { supabase } from './lib/supabase'
 import CallQueue from './components/CallQueue'
@@ -20,6 +21,7 @@ import SpaQueue from './components/SpaQueue'
 import SpaTimetable from './components/SpaTimetable'
 import FoodQueue from './components/FoodQueue'
 import TaskQueue from './components/TaskQueue'
+import FunctionRoomModule from './components/FunctionRoomModule'
 import { StaffUser } from './components/UserManagement'
 import DedicatedCallModule from './components/DedicatedCallModule'
 import RequestHistory from './components/RequestHistory'
@@ -404,6 +406,7 @@ function MainAppContent() {
   const lastDismissedReminderAtRef = React.useRef<number>(0)
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null)
   const notificationSettingsRef = useRef<NotificationSettings | null>(null)
+  const [fnbPhoneNumber, setFnbPhoneNumber] = useState<string | null>(null)
   useEffect(() => {
     notificationSettingsRef.current = notificationSettings
   }, [notificationSettings])
@@ -411,6 +414,25 @@ function MainAppContent() {
   const alertedRequestIdsRef = useRef<Set<string>>(new Set())
 
   const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
+
+  const fetchFnbPhoneNumber = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('hotels')
+        .select('fnb_phone_number')
+        .eq('id', HOTEL_ID)
+        .maybeSingle()
+
+      if (!error && data?.fnb_phone_number) {
+        setFnbPhoneNumber(String(data.fnb_phone_number))
+      } else {
+        setFnbPhoneNumber(null)
+      }
+    } catch (err) {
+      console.warn('[App] fetchFnbPhoneNumber error:', err)
+      setFnbPhoneNumber(null)
+    }
+  }, [HOTEL_ID])
 
   // ─── Fetch Hotel Notification Settings ───────────────────────
   const fetchNotificationSettings = useCallback(async () => {
@@ -631,6 +653,8 @@ function MainAppContent() {
         .select('id, name')
         .limit(1)
         .single()
+
+      await fetchFnbPhoneNumber()
 
       if (hotelError) throw hotelError
 
@@ -1001,6 +1025,20 @@ function MainAppContent() {
     }
   }, [])
 
+  const handleCallFnb = useCallback(async () => {
+    if (!fnbPhoneNumber) {
+      Alert.alert('F&B Number Missing', 'No direct F&B phone number is configured for this hotel yet.')
+      return
+    }
+
+    try {
+      await Linking.openURL(`tel:${fnbPhoneNumber}`)
+    } catch (err) {
+      console.warn('[App] open F&B dialer error:', err)
+      Alert.alert('Dialer Error', 'Unable to open the phone dialer for the F&B number.')
+    }
+  }, [fnbPhoneNumber])
+
   useEffect(() => {
     fetchData()
 
@@ -1242,6 +1280,18 @@ function MainAppContent() {
               </Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {activeStaffUser?.role === 'KITCHEN' && (
+                <TouchableOpacity
+                  onPress={handleCallFnb}
+                  style={[styles.syncButton, !fnbPhoneNumber && styles.syncButtonDisabled]}
+                  activeOpacity={0.8}
+                  disabled={!fnbPhoneNumber}
+                >
+                  <Text style={styles.syncButtonText}>
+                    {fnbPhoneNumber ? '📞 Call F&B' : '📞 No F&B Number'}
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 onPress={handleManualSync}
                 style={[styles.syncButton, isManualSyncing && styles.syncButtonActive]}
@@ -1368,7 +1418,10 @@ function MainAppContent() {
             {/* 4. Food Orders Queue (Always visible to Kitchen, Admin, Front Desk) */}
             <FoodQueue activeStaffId={activeStaffUser?.id} activeStaffUser={activeStaffUser} refreshTrigger={refreshKey} />
 
-            {/* 5. All Request History Logs */}
+            {/* 5. Function Room Booking & Schedule Module */}
+            <FunctionRoomModule activeStaffUser={activeStaffUser} />
+
+            {/* 6. All Request History Logs */}
             <RequestHistory refreshTrigger={refreshKey} />
 
           </Animated.View>
@@ -1646,6 +1699,11 @@ const styles = StyleSheet.create({
   syncButtonActive: {
     backgroundColor: 'rgba(251,191,36,0.28)',
     borderColor: COLORS.gold,
+  },
+  syncButtonDisabled: {
+    opacity: 0.45,
+    borderColor: 'rgba(148, 163, 184, 0.4)',
+    backgroundColor: 'rgba(148, 163, 184, 0.12)',
   },
   syncButtonText: {
     color: COLORS.gold,

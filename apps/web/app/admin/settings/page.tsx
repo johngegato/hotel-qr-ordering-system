@@ -35,6 +35,8 @@ export default function HotelSettingsPage() {
   const [fnbAllowedTypes, setFnbAllowedTypes]           = useState<string[]>(['FOOD_ORDER'])
   const [frontdeskAllowedTypes, setFrontdeskAllowedTypes] = useState<string[]>(['CALL_REQUEST', 'TASK'])
   const [spaAllowedTypes, setSpaAllowedTypes]           = useState<string[]>(['SPA_BOOKING'])
+  const [functionRoomNotificationEnabled, setFunctionRoomNotificationEnabled] = useState<boolean>(true)
+  const [functionRoomLeadDays, setFunctionRoomLeadDays] = useState<number>(1)
 
   // Test Push State
   const [testPushLoading, setTestPushLoading] = useState(false)
@@ -87,6 +89,8 @@ export default function HotelSettingsPage() {
           if (Array.isArray(nData.fnb_allowed_types)) setFnbAllowedTypes(nData.fnb_allowed_types)
           if (Array.isArray(nData.frontdesk_allowed_types)) setFrontdeskAllowedTypes(nData.frontdesk_allowed_types)
           if (Array.isArray(nData.spa_allowed_types)) setSpaAllowedTypes(nData.spa_allowed_types)
+          if (typeof nData.notify_same_day === 'boolean') setFunctionRoomNotificationEnabled(nData.notify_same_day)
+          if (typeof nData.notify_days_before === 'number') setFunctionRoomLeadDays(nData.notify_days_before)
         }
       } catch (err) {
         console.error('Error loading hotel data:', err)
@@ -134,6 +138,8 @@ export default function HotelSettingsPage() {
           fnb_allowed_types: fnbAllowedTypes,
           frontdesk_allowed_types: frontdeskAllowedTypes,
           spa_allowed_types: spaAllowedTypes,
+          notify_same_day: functionRoomNotificationEnabled,
+          notify_days_before: functionRoomLeadDays,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'hotel_id' })
 
@@ -156,6 +162,8 @@ export default function HotelSettingsPage() {
             reminder_interval_minutes: reminderInterval,
             enable_sound_alert: enableSoundAlert,
             max_alert_duration_seconds: maxAlertDuration,
+            function_room_notifications_enabled: functionRoomNotificationEnabled,
+            function_room_lead_days: functionRoomLeadDays,
           },
         },
       ])
@@ -581,6 +589,74 @@ export default function HotelSettingsPage() {
                 </div>
               </div>
 
+              <div style={{ background: 'rgba(30, 41, 59, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 20, padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>🏛️</span> Function Room Reminder Rules
+                  </h3>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#fbbf24', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.3)', padding: '2px 8px', borderRadius: 10 }}>
+                    Event Alerts
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 2 }}>Send same-day reminder</div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>Trigger a reminder on the booking day</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFunctionRoomNotificationEnabled(value => !value)}
+                    style={{
+                      position: 'relative',
+                      width: 52,
+                      height: 28,
+                      borderRadius: 14,
+                      border: 'none',
+                      background: functionRoomNotificationEnabled ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : 'rgba(255,255,255,0.1)',
+                      cursor: 'pointer',
+                      transition: 'background 0.25s',
+                    }}
+                  >
+                    <span style={{
+                      position: 'absolute',
+                      top: 3,
+                      left: functionRoomNotificationEnabled ? 27 : 3,
+                      width: 22,
+                      height: 22,
+                      borderRadius: '50%',
+                      background: '#fff',
+                      transition: 'left 0.25s',
+                    }} />
+                  </button>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
+                    Reminder lead time (days before event)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={14}
+                    value={functionRoomLeadDays}
+                    onChange={(e) => setFunctionRoomLeadDays(Math.min(14, Math.max(0, Number(e.target.value))))}
+                    style={{
+                      width: 120,
+                      background: 'rgba(15, 23, 42, 0.8)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: 12,
+                      padding: '10px 14px',
+                      color: '#fff',
+                      fontSize: 16,
+                      fontWeight: 700,
+                      outline: 'none',
+                      textAlign: 'center',
+                    }}
+                  />
+                </div>
+              </div>
+
               {/* Push & Sound Notification Controls */}
               <div style={{ background: 'rgba(30, 41, 59, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 20, padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -594,6 +670,66 @@ export default function HotelSettingsPage() {
                 <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>
                   Configure dynamic reminder intervals, loud sound alerts, ring durations, and role-based notification routing for staff tablets & mobile devices.
                 </p>
+
+                <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: 14, padding: '14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 2 }}>🏛️ Function Room Reminders</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>Configure pre-event reminders for banquets and private events</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFunctionRoomNotificationEnabled(value => !value)}
+                      style={{
+                        position: 'relative',
+                        width: 52,
+                        height: 28,
+                        borderRadius: 14,
+                        border: 'none',
+                        background: functionRoomNotificationEnabled ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : 'rgba(255,255,255,0.1)',
+                        cursor: 'pointer',
+                        transition: 'background 0.25s',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute',
+                        top: 3,
+                        left: functionRoomNotificationEnabled ? 27 : 3,
+                        width: 22,
+                        height: 22,
+                        borderRadius: '50%',
+                        background: '#fff',
+                        transition: 'left 0.25s',
+                      }} />
+                    </button>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#cbd5e1', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Reminder lead time (days before event)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={14}
+                      value={functionRoomLeadDays}
+                      onChange={(e) => setFunctionRoomLeadDays(Math.min(14, Math.max(0, Number(e.target.value))))}
+                      style={{
+                        width: 120,
+                        background: 'rgba(15, 23, 42, 0.8)',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        borderRadius: 12,
+                        padding: '10px 14px',
+                        color: '#fff',
+                        fontSize: 16,
+                        fontWeight: 700,
+                        outline: 'none',
+                        textAlign: 'center',
+                      }}
+                    />
+                  </div>
+                </div>
 
                 {/* 1. Reminder Interval & Sound Toggle in a 2-col grid */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>

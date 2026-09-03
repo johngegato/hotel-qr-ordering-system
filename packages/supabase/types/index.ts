@@ -205,7 +205,67 @@ export interface NotificationSettings {
   fnb_allowed_types: string[]
   frontdesk_allowed_types: string[]
   spa_allowed_types: string[]
+  notify_same_day?: boolean
+  notify_days_before?: number
   updated_at: string
+}
+
+export interface FunctionRoom {
+  id: string
+  hotel_id: string
+  name: string
+  capacity: number
+  is_active: boolean
+  created_at: string
+}
+
+export interface FunctionRoomEquipment {
+  id: string
+  hotel_id: string
+  name: string
+  rental_price: number
+  is_active: boolean
+  created_at: string
+}
+
+export interface FunctionRoomBooking {
+  id: string
+  hotel_id: string
+  function_room_id: string
+  booker_name: string
+  phone_number: string | null
+  booking_date: string
+  start_time: string
+  end_time: string
+  food_budget: number
+  banquet_food_notes: string | null
+  rented_equipments: Array<{
+    id: string
+    name: string
+    rental_price: number
+    quantity?: number
+  }>
+  downpayment_amount: number
+  total_amount: number
+  notes: string | null
+  status: 'CONFIRMED' | 'PENDING' | 'CANCELLED' | 'COMPLETED'
+  created_by_staff_id: string | null
+  created_at: string
+}
+
+export interface BookingFormInputs {
+  function_room_id: string
+  booker_name: string
+  phone_number: string
+  booking_date: string
+  start_time: string
+  end_time: string
+  food_budget: string
+  banquet_food_notes: string
+  selectedEquipmentIds: string[]
+  notes: string
+  downpayment_amount: string
+  status: FunctionRoomBooking['status']
 }
 
 // ============================================================
@@ -350,6 +410,21 @@ export interface Database {
         Row: NotificationSettings
         Insert: Omit<NotificationSettings, 'id' | 'updated_at'> & { id?: string; updated_at?: string }
         Update: Partial<Omit<NotificationSettings, 'id'>>
+      }
+      function_rooms: {
+        Row: FunctionRoom
+        Insert: Omit<FunctionRoom, 'id' | 'created_at'> & { id?: string; created_at?: string }
+        Update: Partial<Omit<FunctionRoom, 'id'>>
+      }
+      function_room_equipments: {
+        Row: FunctionRoomEquipment
+        Insert: Omit<FunctionRoomEquipment, 'id' | 'created_at'> & { id?: string; created_at?: string }
+        Update: Partial<Omit<FunctionRoomEquipment, 'id'>>
+      }
+      function_room_bookings: {
+        Row: FunctionRoomBooking
+        Insert: Omit<FunctionRoomBooking, 'id' | 'created_at'> & { id?: string; created_at?: string }
+        Update: Partial<Omit<FunctionRoomBooking, 'id'>>
       }
     }
     Views: Record<string, never>
