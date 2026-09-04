@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import type { Database } from '@hotel-qr/supabase/types'
 import CallFrontDeskModal from './CallFrontDeskModal'
+import { useGuestTheme } from './GuestThemeProvider'
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -22,6 +23,7 @@ export default function FrontDeskFAB({
 }: FrontDeskFABProps) {
   const [phone, setPhone] = useState<string>(initialPhone || '+1-800-555-0100')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const theme = useGuestTheme()
 
   useEffect(() => {
     if (initialPhone) {
@@ -67,20 +69,27 @@ export default function FrontDeskFAB({
           href={`tel:${phone}`}
           onClick={handleClick}
           aria-label={`Call Front Desk at ${phone}`}
-          className="group relative flex items-center justify-center gap-3 px-6 py-4.5 min-h-[64px] min-w-[64px] rounded-full text-slate-950 font-extrabold text-base shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 border-2 border-amber-300/60"
+          className="group relative flex items-center justify-center gap-3 px-6 py-4.5 min-h-[64px] min-w-[64px] rounded-full text-slate-950 font-extrabold text-base shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 border-2"
           style={{
-            background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 50%, #d97706 100%)',
-            boxShadow: '0 10px 30px -4px rgba(245, 158, 11, 0.55), 0 0 20px rgba(251, 191, 36, 0.4)',
+            background: `linear-gradient(135deg, ${theme.primaryHex} 0%, ${theme.secondaryHex} 100%)`,
+            borderColor: theme.primaryHex,
+            boxShadow: `0 10px 30px -4px ${theme.glowRgba}, 0 0 20px ${theme.glowRgba}`,
           }}
         >
           {/* Subtle pulse ring around button */}
-          <span className="absolute -inset-1 rounded-full bg-amber-400/40 animate-ping opacity-60 pointer-events-none" />
+          <span
+            className="absolute -inset-1 rounded-full animate-ping opacity-60 pointer-events-none"
+            style={{ background: theme.glowRgba }}
+          />
 
           <span className="text-3xl leading-none transform group-hover:scale-110 transition-transform">📞</span>
           <span className="hidden sm:inline font-extrabold tracking-wider uppercase text-sm text-slate-950">
             Call Front Desk
           </span>
-          <span className="text-xs font-mono font-bold opacity-90 hidden md:inline text-slate-900 bg-amber-200/50 px-2 py-0.5 rounded-md">
+          <span
+            className="text-xs font-mono font-bold opacity-90 hidden md:inline text-slate-900 px-2 py-0.5 rounded-md"
+            style={{ background: theme.badgeBg }}
+          >
             {phone}
           </span>
         </a>

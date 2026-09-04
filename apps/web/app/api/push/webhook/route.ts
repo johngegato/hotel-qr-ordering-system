@@ -20,8 +20,8 @@ export async function POST(req: NextRequest) {
     const eventType = (rawBody.type || rawBody.eventType || 'INSERT').toUpperCase()
     const status = String(record.status || '').toUpperCase()
 
-    // Only dispatch push for new PENDING or PENDING_ON_CALL requests
-    if (eventType !== 'INSERT' && status !== 'PENDING' && status !== 'PENDING_ON_CALL') {
+    // Only dispatch push for INSERT events with PENDING or PENDING_ON_CALL status
+    if (eventType !== 'INSERT' || (status !== 'PENDING' && status !== 'PENDING_ON_CALL')) {
       return NextResponse.json({ message: 'Ignored non-pending or non-insert event', status }, { status: 200 })
     }
 

@@ -1,16 +1,22 @@
+'use client'
+
 import Link from 'next/link'
 import { GuestSettingsProvider } from './app/stay/components/GuestSettingsProvider'
-import type { Metadata } from 'next'
-
-export const metadata: Metadata = {
-  title: 'Welcome — Kekehyu Hotel',
-  description: 'Scan your in-room QR code to access your personal concierge experience.',
-}
+import { useGuestTheme } from './app/stay/components/GuestThemeProvider'
 
 export default function HomePage() {
   return (
     <GuestSettingsProvider>
-      <main className="relative min-h-screen flex items-center justify-center overflow-hidden">
+      <DemoContent />
+    </GuestSettingsProvider>
+  )
+}
+
+function DemoContent() {
+  const theme = useGuestTheme()
+
+  return (
+    <main className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Animated background orbs */}
       <div className="bg-orb bg-orb-1" />
       <div className="bg-orb bg-orb-2" />
@@ -32,15 +38,29 @@ export default function HomePage() {
         {/* Logo / Icon */}
         <div className="animate-fade-up animate-fade-up-delay-1 mb-8 flex justify-center">
           <div className="relative">
-            <div className="w-24 h-24 rounded-3xl glass-strong flex items-center justify-center text-5xl pulse-gold">
+            <div
+              className="w-24 h-24 rounded-3xl glass-strong flex items-center justify-center text-5xl"
+              style={{
+                border: `2px solid ${theme.primaryHex}`,
+                boxShadow: `0 0 25px ${theme.glowRgba}`,
+              }}
+            >
               🏨
             </div>
           </div>
         </div>
 
         {/* Heading */}
-        <h1 className="animate-fade-up animate-fade-up-delay-2 text-5xl font-bold mb-4 leading-tight">
-          <span className="text-gold-gradient">Kekehyu Hotel</span>
+        <h1
+          className="animate-fade-up animate-fade-up-delay-2 text-5xl font-bold mb-4 leading-tight"
+          style={{
+            background: `linear-gradient(135deg, ${theme.primaryHex} 0%, ${theme.secondaryHex} 100%)`,
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}
+        >
+          Kekehyu Hotel
         </h1>
 
         <p className="animate-fade-up animate-fade-up-delay-3 text-slate-400 text-lg mb-10 leading-relaxed">
@@ -57,17 +77,16 @@ export default function HomePage() {
           </p>
           <Link
             href="/app/stay?room=00000000-0000-0000-0000-000000000101&hash=secret-hash-302"
-            className="block w-full text-center py-3 px-6 rounded-xl font-semibold text-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-amber-500/20"
+            className="block w-full text-center py-3 px-6 rounded-xl font-semibold text-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
             style={{
-              background: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)',
-              color: '#0f172a',
+              background: `linear-gradient(135deg, ${theme.primaryHex} 0%, ${theme.secondaryHex} 100%)`,
+              color: 'var(--gw-bg)',
             }}
           >
             Enter Room 302 →
           </Link>
         </div>
       </div>
-      </main>
-    </GuestSettingsProvider>
+    </main>
   )
 }

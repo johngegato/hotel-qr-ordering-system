@@ -110,7 +110,7 @@ export function useStaffVoiceCall({ onCallEnded, channel, token, appId }: UseSta
             onError: (err: any, _msg: any) => {
               console.error('[StaffVoiceCall:Native] Engine error:', err, _msg)
               setIsConnected(false)
-              onCallEnded?.()
+              if (!isReconnecting) onCallEnded?.()
             },
             onUserJoined: (_connection: any, uid: number) => {
               console.log('[StaffVoiceCall:Native] Remote user joined:', uid)

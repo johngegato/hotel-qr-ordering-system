@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import PhoneCaptureModal, { getStoredGuestPhone } from '../components/PhoneCaptureModal'
 import FrontDeskFAB from '../components/FrontDeskFAB'
 import { GuestSettingsProvider, useGuestContent } from '../components/GuestSettingsProvider'
+import { useGuestTheme } from '../components/GuestThemeProvider'
 import { useSearchParams } from 'next/navigation'
 
 interface SpaService {
@@ -53,6 +54,7 @@ const FALLBACK_TIME_SLOTS = [
 
 function GuestSpaContent() {
   const content = useGuestContent()
+  const theme = useGuestTheme()
   const searchParams = useSearchParams()
   const roomId = searchParams.get('room') || '00000000-0000-0000-0000-000000000101'
   const hashParam = searchParams.get('hash') || 'secret-hash-302'
@@ -827,8 +829,11 @@ function GuestSpaContent() {
                 setSelectedSlotTime(null)
                 setHoldLockId(null)
               }}
-              className="w-full py-4 rounded-2xl font-black text-sm text-white shadow-xl shadow-purple-600/30"
-              style={{ background: 'linear-gradient(135deg, #7c3aed, #9333ea)' }}
+              className="w-full py-4 rounded-2xl font-black text-sm text-white shadow-xl"
+              style={{
+                background: `linear-gradient(135deg, ${theme.primaryHex}, ${theme.secondaryHex})`,
+                boxShadow: `0 20px 25px -5px ${theme.glowRgba}, 0 8px 10px -6px ${theme.glowRgba}`,
+              }}
             >
               Book Another Treatment
             </button>
