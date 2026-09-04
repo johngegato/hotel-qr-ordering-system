@@ -1,6 +1,6 @@
 # Voice Call Fixes — Technical Blueprint
 
-> This document captures the bugs uncovered during review and the engineering plan to resolve them.
+> This document captures the bugs uncovered during voice call review and the engineering plan to resolve them.
 
 ---
 
@@ -77,11 +77,11 @@ if (payload.new?.status === 'CLAIMED') { setStatus('CLAIMED') }
 if (payload.new?.status === 'LIVE')     { setStatus('VOICE_LIVE') }
 if (payload.new?.status === 'RESOLVED') { setStatus('VOICE_ENDED') }
 ```
-`DECLINED` or timeout is NOT handled. After 45s staff auto-decline, the guest remains in `VOICE_LIVE` with live mic.
+`DECLINED` or timeout is NOT handled. After 45s staff auto-decline, the guest remains in `VOICE_LIVE` with live mic, Agora minutes accumulating.
 
 **Fix:** Add timeout + DECLINED handling in `apps/web/app/app/stay/components/CallFrontDeskModal.tsx`:
 
-1. Add new status:
+1. Add new status type:
 ```ts
 type Status = 'IDLE' | 'PENDING' | 'CLAIMED' | 'FAILED' | 'DECLINED' | 'VOICE_JOINING' | 'VOICE_LIVE' | 'VOICE_ENDED'
 ```
@@ -100,7 +100,7 @@ useEffect(() => {
 }, [status, requestId])
 ```
 
-3. Handle DECLINED in realtime subscription (around line 100-110):
+3. Handle DECLINED in realtime subscription:
 ```ts
 if (payload.new?.status === 'RESOLVED' || payload.new?.status === 'DECLINED') {
   setStatus('VOICE_ENDED')
@@ -128,15 +128,11 @@ if (payload.new?.status === 'RESOLVED' || payload.new?.status === 'DECLINED') {
 **Current (buggy):**
 ```ts
 if (eventType !== 'INSERT' && status !== 'PENDING' && status !== 'PENDING_ON_CALL') {
-  return NextResponse.json({ message: 'Ignored non-pending or non-insert event', status }, { status: 200 })
-}
 ```
 
 **Fix:** Change to use OR:
 ```ts
 if (eventType !== 'INSERT' || (status !== 'PENDING' && status !== 'PENDING_ON_CALL')) {
-  return NextResponse.json({ message: 'Ignored non-pending or non-insert event', status }, { status: 200 })
-}
 ```
 
 ---
@@ -145,9 +141,9 @@ if (eventType !== 'INSERT' || (status !== 'PENDING' && status !== 'PENDING_ON_CA
 
 **Location:** `apps/staff-app/lib/useStaffVoiceCall.native.ts:110-114`
 
-**Problem:** `onError` triggers `onCallEnded?.()` for any error, even transient ones, cutting the call before reconnect can happen.
+**Problem:** `onError` triggers `onCallEnded?.()` for any error, even recoverable warnings, cutting the call before reconnect can happen.
 
-**Fix:** Gate with `isReconnecting`:
+**Fix:** Gate `onError` with `isReconnecting`:
 ```ts
 onError: (err: any, _msg: any) => {
   console.error('[StaffVoiceCall:Native] Engine error:', err, _msg)
@@ -155,16 +151,6 @@ onError: (err: any, _msg: any) => {
   if (!isReconnecting) onCallEnded?.()
 },
 ```
-
----
-
-## 🟠 Additional Observations (Medium)
-
-| Issue | Location | Recommendation |
-|-------|----------|----------------|
-| Token endpoint unauthenticated | `/api/agora/token` | Add optional request-id check, add rate limiting |
-| Duration race in audit log | `App.tsx:479` | Capture `callDurationSeconds` BEFORE `leaveChannel()` |
-| Modal close during call | `CallFrontDeskModal.tsx` | Ensure closing triggers `endCall()` if `isConnected` |
 
 ---
 
@@ -182,12 +168,10 @@ onError: (err: any, _msg: any) => {
 
 ## Rollout Order (OTA safe)
 
-All fixes are pure TypeScript, no native config changes required.
-
 1. Fix `callQueue.setActive` undefined  
-2. Token null acceptance  
+2. Token null acceptance (staff native)  
 3. Webhook filter  
 4. `onError` gate  
 5. Deploy to staff app (Expo OTA)  
 6. Deploy to web (Vercel preview → production)  
-7. Monitor for anomalies
+7. Monitor push webhook `Ignored` metric for any false negatives after filter fix
