@@ -133,7 +133,7 @@ export function GuestSettingsProvider({
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'hotels', filter: `id=eq.${id}` },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         (payload: { new: Partial<RawRow> }) => {
           if (!payload?.new) return
           applyRow(payload.new)

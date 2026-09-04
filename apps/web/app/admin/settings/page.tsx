@@ -53,7 +53,7 @@ export default function HotelSettingsPage() {
     async function loadHotelSettings() {
       setLoading(true)
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const [hotelRes, notifRes] = await Promise.all([
           (supabase as any)
             .from('hotels')
