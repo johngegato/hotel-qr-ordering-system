@@ -72,6 +72,15 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
 
         if (typeof engine.registerEventHandler === 'function') {
           engine.registerEventHandler({
+            onJoinChannelSuccess: (_connection: any, _elapsed: number) => {
+              console.log('[StaffVoiceCall:Native] Successfully joined channel')
+              setIsConnected(true)
+            },
+            onError: (err: any, _msg: any) => {
+              console.error('[StaffVoiceCall:Native] Engine error:', err, _msg)
+              setIsConnected(false)
+              onCallEnded?.()
+            },
             onUserJoined: (_connection: any, uid: number) => {
               console.log('[StaffVoiceCall:Native] Remote user joined:', uid)
               setIsConnected(true)
@@ -83,6 +92,10 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
             },
           })
         } else if (typeof engine.addListener === 'function') {
+          engine.addListener('JoinChannelSuccess', () => {
+            console.log('[StaffVoiceCall:Native] Successfully joined channel')
+            setIsConnected(true)
+          })
           engine.addListener('UserJoined', (uid: number) => {
             console.log('[StaffVoiceCall:Native] Remote user joined:', uid)
             setIsConnected(true)
@@ -101,10 +114,10 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
           engine.setClientRole((agoraMod as any).ClientRoleType?.ClientRoleBroadcaster ?? 1)
         }
 
-        // Staff always joins as UID=2. Use the correct native SDK signature
-        // joinChannel(token, channelId, info, uid, options)
+        // Staff always joins as UID=2. react-native-agora v4 signature:
+        // joinChannel(token, channelId, uid, options)
         if (typeof engine.joinChannel === 'function') {
-          engine.joinChannel(token ?? '', channel, '', 2, {
+          const joinResult = engine.joinChannel(token ?? '', channel, 2, {
             clientRoleType: (agoraMod as any).ClientRoleType?.ClientRoleBroadcaster ?? 1,
             channelProfile: (agoraMod as any).ChannelProfileType?.ChannelProfileCommunication ?? 0,
             publishMicrophoneTrack: true,
@@ -112,6 +125,9 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
             autoSubscribeAudio: true,
             autoSubscribeVideo: false,
           })
+          if (typeof joinResult === 'number' && joinResult < 0) {
+            throw new Error(`Agora joinChannel failed with code ${joinResult}`)
+          }
         }
 
         // Start in-call audio mode (proximity sensor, speaker routing)

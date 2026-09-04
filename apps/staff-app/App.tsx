@@ -331,6 +331,15 @@ function MainAppContent() {
     process.env.EXPO_PUBLIC_AGORA_APP_ID ||
     'c2e5d50d9273492d874b2a898f458334'
 
+  // Base URL of the deployed guest/admin web app (Next.js on Vercel).
+  // Native Android/iOS builds cannot use relative fetch paths, so all
+  // /api/* calls from the native app must be prefixed with this URL.
+  // Override via EXPO_PUBLIC_WEB_URL if the domain ever changes.
+  const WEB_APP_BASE_URL = (
+    process.env.EXPO_PUBLIC_WEB_URL ||
+    'https://hotel-qr-ordering-system-web.vercel.app'
+  ).replace(/\/+$/, '')
+
   const staffVoiceCall = useStaffVoiceCall({
     onCallEnded: () => {
       setActiveCallRoom(null)
@@ -357,7 +366,14 @@ function MainAppContent() {
           'Guest'
         setActiveCallRoom(String(roomNum))
 
-        const tokenRes = await fetch(`/api/agora/token?channel=${encodeURIComponent(channel)}&uid=2`)
+        // Native platforms cannot resolve relative URLs — always use the
+        // absolute deployed web URL there. Web builds keep the relative path
+        // so the staff PWA stays same-origin (no CORS needed).
+        const tokenUrl = Platform.OS === 'web'
+          ? `/api/agora/token?channel=${encodeURIComponent(channel)}&uid=2`
+          : `${WEB_APP_BASE_URL}/api/agora/token?channel=${encodeURIComponent(channel)}&uid=2`
+
+        const tokenRes = await fetch(tokenUrl)
         const tokenData = await tokenRes.json()
 
         if (!tokenRes.ok || !tokenData?.token) {
@@ -369,12 +385,12 @@ function MainAppContent() {
 
         // Mark request status as LIVE
         await supabase.from('requests').update({ status: 'LIVE' }).eq('id', reqId)
-      } catch (err) {
+      } catch (err: any) {
         console.error('[App] Answer live call error:', err)
-        Alert.alert('Call Failed', 'Could not connect to live voice call.')
+        Alert.alert('Call Failed', `Could not connect to live voice call.\n${err?.message || err || 'Unknown error'}`)
       }
     },
-    [AGORA_APP_ID, staffVoiceCall]
+    [AGORA_APP_ID, WEB_APP_BASE_URL, staffVoiceCall]
   )
 
   const handleDeclineLiveCall = useCallback(async (reqId: string) => {
