@@ -331,6 +331,7 @@ function MainAppContent() {
   } | null>(null)
   const [activeCallRoom, setActiveCallRoom] = useState<string | null>(null)
   const [activeCallRequestId, setActiveCallRequestId] = useState<string | null>(null)
+  const [activeCallAuditId, setActiveCallAuditId] = useState<string | null>(null)
 
   // ─── Call Queue State ────────────────────────────────────────────
   const [callQueueWaitingCount, setCallQueueWaitingCount] = useState(0)
@@ -423,6 +424,27 @@ function MainAppContent() {
         // Join Agora voice channel as staff (UID 2)
         await staffVoiceCall.joinChannel(channel, tokenData.token, AGORA_APP_ID)
 
+        // Insert call audit record (started)
+        try {
+          const { data: auditData, error: auditError } = await supabase
+            .from('call_audit_logs')
+            .insert({
+              request_id: reqId,
+              hotel_id: HOTEL_ID,
+              guest_uid: 1,
+              staff_uid: 2,
+              agora_channel: channel,
+            })
+            .select()
+            .single()
+
+          if (!auditError && auditData?.id) {
+            setActiveCallAuditId(String(auditData.id))
+          }
+        } catch (e) {
+          console.warn('[App] call audit insert error:', e)
+        }
+
         // Mark request status as LIVE
         await supabase.from('requests').update({ status: 'LIVE' }).eq('id', reqId)
       } catch (err: any) {
@@ -453,6 +475,20 @@ function MainAppContent() {
     setActiveCallRequestId(null)
     // Complete active call in queue (auto-advances to next)
     callQueue.completeActiveCall()
+    // Close audit log for this call (if created)
+    const auditId = activeCallAuditId
+    setActiveCallAuditId(null)
+    if (auditId) {
+      try {
+        await supabase.from('call_audit_logs').update({
+          ended_at: new Date().toISOString(),
+          duration_seconds: staffVoiceCall.callDurationSeconds ?? null,
+          end_reason: 'staff_ended',
+        }).eq('id', auditId)
+      } catch (err) {
+        console.warn('[App] update audit error:', err)
+      }
+    }
     if (reqId) {
       await supabase.from('requests').update({ status: 'RESOLVED' }).eq('id', reqId)
     }

@@ -27,9 +27,11 @@ export async function GET(req: NextRequest) {
   }
 
   // If no App Certificate is set, return a null token (Agora Testing Mode)
+  // Use short-lived per-call tokens: default 30 minutes + 5 minute buffer
   let token: string | null = null
   if (APP_CERTIFICATE) {
-    const expirySeconds = 86400 // 24 hours
+    const CALL_DURATION_LIMIT = 30 * 60 // 30 minutes
+    const expirySeconds = CALL_DURATION_LIMIT + 300 // +5 minute buffer
     const currentTimestamp = Math.floor(Date.now() / 1000)
     const privilegeExpiredTs = currentTimestamp + expirySeconds
 

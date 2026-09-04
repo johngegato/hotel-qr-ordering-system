@@ -55,6 +55,7 @@ export function useGuestVoiceCall({
         localTrackRef.current = micTrack
         await client.publish([micTrack])
 
+
         // Auto-play remote audio streams (staff speaking)
         client.on('user-published', async (user: any, mediaType: 'audio' | 'video') => {
           await client.subscribe(user, mediaType)
@@ -69,6 +70,49 @@ export function useGuestVoiceCall({
           }
         })
 
+        // --- Connection state observer + auto-reconnect (exponential backoff) ---
+        let reconnectAttempts = 0
+        const maxReconnectAttempts = 3
+
+        const attemptReconnect = async () => {
+          try {
+            if (!clientRef.current) return
+            if (reconnectAttempts >= maxReconnectAttempts) {
+              console.warn('[GuestVoiceCall] Max reconnect attempts reached')
+              return
+            }
+            reconnectAttempts += 1
+            const delay = Math.pow(2, reconnectAttempts) * 1000
+            console.log(`[GuestVoiceCall] Reconnect attempt ${reconnectAttempts}, waiting ${delay}ms`)
+            await new Promise((r) => setTimeout(r, delay))
+            // Try graceful leave then re-join
+            try { await clientRef.current.leave() } catch { /* ignore */ }
+            await clientRef.current.join(appId, channel, token ?? null, 1)
+            // Re-publish mic track if available
+            if (localTrackRef.current) {
+              try { await clientRef.current.publish([localTrackRef.current]) } catch { /* ignore */ }
+            }
+            reconnectAttempts = 0
+            setIsConnected(true)
+            console.log('[GuestVoiceCall] Rejoined channel successfully')
+          } catch (err) {
+            console.warn('[GuestVoiceCall] Reconnect failed:', err)
+            if (reconnectAttempts < maxReconnectAttempts) attemptReconnect()
+          }
+        }
+
+        const connectionStateHandler = (curState: string, prevState: string) => {
+          console.log('[GuestVoiceCall] connection-state-change', prevState, '->', curState)
+          if (curState === 'DISCONNECTED' || curState === 'FAILED') {
+            setIsConnected(false)
+            attemptReconnect().catch(() => {})
+          }
+        }
+
+        if (typeof client.on === 'function') {
+          client.on('connection-state-change', connectionStateHandler)
+        }
+
         if (isMounted) setIsConnected(true)
       } catch (err: any) {
         console.error('[GuestVoiceCall] Join error:', err)
@@ -80,6 +124,21 @@ export function useGuestVoiceCall({
 
     return () => {
       isMounted = false
+      try {
+        if (clientRef.current && typeof clientRef.current.off === 'function') {
+          clientRef.current.off('connection-state-change', connectionStateHandler)
+        }
+      } catch (e) {
+        /* ignore */
+      }
+      // Cleanup local track and leave channel
+      try {
+        localTrackRef.current?.stop()
+        localTrackRef.current?.close()
+      } catch { /* ignore */ }
+      try {
+        clientRef.current?.leave().catch(() => {})
+      } catch { /* ignore */ }
     }
   }, [appId, channel, token])
 
