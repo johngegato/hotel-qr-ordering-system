@@ -414,12 +414,11 @@ function MainAppContent() {
         const tokenRes = await fetch(tokenUrl)
         const tokenData = await tokenRes.json()
 
-        if (!tokenRes.ok || !tokenData?.token) {
-          throw new Error(tokenData?.error || 'Missing Agora token')
+        if (!tokenRes.ok) {
+          throw new Error(tokenData?.error || 'Token request failed')
         }
 
-        // Mark as active in queue BEFORE joining (prevents race conditions)
-        callQueue.setActive(reqId)
+        // token may be null in testing mode; Agora SDK handles null/empty tokens
 
         // Join Agora voice channel as staff (UID 2)
         await staffVoiceCall.joinChannel(channel, tokenData.token, AGORA_APP_ID)
