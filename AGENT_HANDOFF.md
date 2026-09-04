@@ -3,7 +3,7 @@
 Summary of recent changes implemented by the agent (staff-app focus)
 
 This document records the edits, fixes, and feature work performed during the current session. It is intended to help a human developer pick up where the agent left off.
-
+ tepmp": database pass: johngegato12
 ---
 
 ## ⚠️ Deploy Reminder — OTA Update vs. APK Rebuild
@@ -48,6 +48,9 @@ Key goals
 - Fix actor attribution bug in RequestHistory showing guest names with STAFF role badge.
 - Add admin toggle to hide/show the guest web Live Voice Call button (`notification_settings.enable_guest_live_call`, migration 23; admin settings switch; `CallFrontDeskModal.tsx` gating). ⚠️ Migration 23 must be applied manually on hosted Supabase.
 - Fix staff-app "Call Failed" on answering live voice calls: token fetch now uses absolute `https://hotel-qr-ordering-system-web.vercel.app` base (native can't use relative URLs) and `react-native-agora` v4 `joinChannel(token, channelId, uid, options)` signature with `onJoinChannelSuccess`/`onError` handlers. Deploy via OTA.
+- Build Dynamic Theme & Content CMS (migration 24): `theme_mode`, `theme_config`, `content_config` columns on `hotels`, admin branding page at `/admin/branding` with 4 tabs (Visual Theme, Welcome & Landing, Sections & Modules, Live Preview), guest web provider with realtime sync and WCAG contrast checks.
+- Fix guest web QR access crash: split room validation from theme fetch so missing migration 24 columns don't show "Invalid QR Code" error — graceful fallback to DARK_GOLD defaults.
+- **PENDING**: Supabase account migration — current project (`bsjnlawhdgfilcfejbji.supabase.co`) has exhausted egress limits. Guide in `chat-history/2026-09-04_supabase-account-migration-guide.md`. Migrations 23 + 24 not yet applied to production.
 
 Recent session additions:
 - 2-Way Live Voice Calling between Guest Web and Staff App (Agora RTC):
@@ -120,6 +123,30 @@ Recent session additions:
   - `apps/web/app/app/stay/components/GuestSessionKeeper.tsx` [NEW]: Automatically records active `guest_sessions` in Supabase upon scanning QR codes, sends initial presence connection pings to staff devices, maintains realtime channel presence, and runs a recurring 1-2 minute push escalation loop for unacknowledged pending requests.
   - `apps/web/app/app/stay/components/StayRootClientWrapper.tsx` & `layout.tsx` [NEW]: Wraps all guest sub-routes (`/app/stay`, `/app/stay/dining`, `/app/stay/spa`, `/app/stay/requests`) so escalation and presence are always running globally.
   - `apps/web/app/app/stay/spa/page.tsx` & `CallFrontDeskModal.tsx`: Added instant Web Push dispatching on spa bookings and front desk call requests.
+- Dynamic Theme & Content CMS (Migration 24):
+  - Database: `packages/supabase/migrations/24_guest_web_theme_content_cms.sql` & `apps/web/supabase/migrations/24_guest_web_theme_content_cms.sql` — Added `theme_mode` (TEXT, default `'DARK_GOLD'`), `theme_config` (JSONB hex palette), `content_config` (JSONB guest-facing copy dictionary) columns on `hotels` table.
+  - Types: `packages/supabase/types/index.ts` — Exported `GuestThemeMode`, `HotelThemeConfig`, `GuestWebContentConfig` (landing/dining/spa/requests/ai_chat/footer sections), and `GuestWebSettings` interfaces.
+  - Libraries:
+    - `apps/web/lib/guest-theme.ts` — 5 preset palettes (Dark Gold, Clean Light, Minimal White, Luxury Navy, Custom), `resolveGuestSurfaceTheme()` with per-field fallbacks, WCAG `contrastRatio()` helpers.
+    - `apps/web/lib/guest-content.ts` — `DEFAULT_CONTENT` fallback dictionary + `mergeGuestContent()` deep-merge that never throws on null/empty/malformed values.
+  - Guest Web Provider (`apps/web/app/app/stay/components/GuestSettingsProvider.tsx`):
+    - Fetches `theme_mode`/`theme_config`/`content_config` from `hotels` on mount.
+    - Supabase Realtime subscription on `hotels` table → admin publishes → guest UI updates live without refresh.
+    - Injects CSS custom properties (`--gw-bg`, `--gw-surface`, `--gw-text`, `--gw-text-2`, `--gw-accent`, `--gw-border`) via `GuestThemeProvider`.
+    - `useGuestContent()` hook supplies typed copy strings throughout the app.
+  - Guest Web Pages Wired:
+    - `stay/page.tsx` (landing hero) + `WelcomeCardClient.tsx` (welcome title, subtitle, room greeting, hero banner)
+    - `dining/page.tsx` + `FnBDiningFAB.tsx` (title, subtitle, call button label, notes placeholder)
+    - `spa/page.tsx` (title, subtitle)
+    - `requests/page.tsx` (title, subtitle)
+    - `dining/checkout/page.tsx` (instructions placeholder)
+    - `CallFrontDeskModal.tsx`, `PhoneCaptureModal.tsx` (theme tokens)
+  - Admin Branding Page (`apps/web/app/admin/branding/page.tsx` [NEW]):
+    - 4 tabs: Visual Theme (preset swatches + custom color pickers + WCAG contrast indicators), Welcome & Landing, Sections & Modules, Live Preview (phone-sized mockup + JSON payload inspector).
+    - Publish button commits JSON payloads to Supabase → triggers guest web realtime update.
+  - Guest QR Resilience Fix (`apps/web/app/app/stay/page.tsx`):
+    - Split room validation query from theme/content fetch so missing migration 24 columns don't crash QR flow with "Invalid QR Code" error.
+    - Theme fetch now in separate `try/catch` with graceful fallback to DARK_GOLD defaults.
 
 Files changed (high level)
 - apps/web/app/admin/users/page.tsx [NEW]

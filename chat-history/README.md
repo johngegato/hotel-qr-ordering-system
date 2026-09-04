@@ -40,6 +40,9 @@ Examples:
 | 2026-09-04 | [2026-09-04_admin-branding-function-room-finalization.md](./2026-09-04_admin-branding-function-room-finalization.md) | Dynamic hotel branding from admin settings, compact mobile admin header, and final function room multi-room booking + audit trail work |
 | 2026-09-04 | [2026-09-04_admin-toggle-guest-live-call-button.md](./2026-09-04_admin-toggle-guest-live-call-button.md) | Admin toggle to hide/show guest Live Voice Call button (migration 23 `enable_guest_live_call`, admin settings switch, guest modal gating) |
 | 2026-09-04 | [2026-09-04_fix-staff-live-call-answer-failure.md](./2026-09-04_fix-staff-live-call-answer-failure.md) | Fixed staff-app "Call Failed" on Answer: absolute Vercel token URL for native fetch + react-native-agora v4 joinChannel signature + join success/error handlers |
+| 2026-09-04 | [2026-09-04_dynamic-theme-content-cms.md](./2026-09-04_dynamic-theme-content-cms.md) | Dynamic Theme & Content CMS: migration 24 (`theme_mode`, `theme_config`, `content_config` on `hotels`), admin branding page (`/admin/branding`), guest web provider + realtime sync, WCAG contrast checks |
+| 2026-09-04 | [2026-09-04_guest-qr-resilience-fix.md](./2026-09-04_guest-qr-resilience-fix.md) | Fixed "Invalid QR Code" crash on guest web: split theme fetch from room validation so missing migration 24 columns don't break QR access |
+| 2026-09-04 | [2026-09-04_supabase-account-migration-guide.md](./2026-09-04_supabase-account-migration-guide.md) | **PENDING** — Step-by-step guide for migrating to a new Supabase account (egress limits reached). Includes data export, new project setup, code updates, and verification steps. |
 
 ---
 
