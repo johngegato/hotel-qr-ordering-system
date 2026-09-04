@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { GuestSettingsProvider } from './app/stay/components/GuestSettingsProvider'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -8,7 +9,8 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <main className="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <GuestSettingsProvider>
+      <main className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Animated background orbs */}
       <div className="bg-orb bg-orb-1" />
       <div className="bg-orb bg-orb-2" />
@@ -65,6 +67,7 @@ export default function HomePage() {
           </Link>
         </div>
       </div>
-    </main>
+      </main>
+    </GuestSettingsProvider>
   )
 }
