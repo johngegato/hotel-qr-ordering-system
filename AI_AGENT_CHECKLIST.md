@@ -398,4 +398,65 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 
 ### Chat History Entry
 Created `chat-history/2026-09-04_staff-voice-call-auto-reconnect-call-queue.md` with full session details.
+### Chat History Entry
+Created `chat-history/2026-09-04_staff-voice-call-auto-reconnect-call-queue.md` with full session details.
+
+---
+
+## Session 5 Completions — 2026-09-04 (Voice-Call P0 Cleanup, Branding P0 Wiring & EAS Build Plugin Fix)
+
+### Voice-Call P0 Fixes
+
+- [x] **Push webhook filter logic** (`apps/web/app/api/push/webhook/route.ts`):
+  - Replaced broken `&&` chain with `\|\|` so only `INSERT` events with `PENDING` / `PENDING_ON_CALL` status dispatch a push.
+  - Eliminates duplicate push fires on UPDATE events (acknowledged, escalated, completed).
+- [x] **Reconnection-safe `onError`** (`apps/staff-app/lib/useStaffVoiceCall.native.ts`):
+  - Gated `onCallEnded?.()` with `if (!isReconnecting)` so Agora transient errors don't dismiss the alert UI mid-reconnect.
+  - Combined with the existing `onConnectionLost` + exponential backoff path, brief network blips now auto-rejoin instead of failing the call.
+
+### Branding P0 Wiring (theme-driven guest surfaces)
+
+- [x] **Landing page** (`apps/web/app/page.tsx`):
+  - Converted to `'use client'`; wrapped in `GuestSettingsProvider`; extracted `DemoContent` to use `useGuestTheme()`.
+  - Logo border + glow, heading gradient, and the "Enter Room 302" demo button all use `theme.primaryHex` / `theme.secondaryHex` / `theme.glowRgba`.
+  - Removed hardcoded amber `#fbbf24` / `#d97706`.
+  - Removed the `metadata` export (client components can't export metadata).
+- [x] **FrontDeskFAB** (`apps/web/app/app/stay/components/FrontDeskFAB.tsx`):
+  - `useGuestTheme()` → gradient + border + glow box-shadow + phone-number badge.
+  - Removed hardcoded amber gradient + `border-amber-300/60`.
+- [x] **FnBDiningFAB** (`apps/web/app/app/stay/components/FnBDiningFAB.tsx`):
+  - Same theme-driven treatment (primaryHex, secondaryHex, glowRgba, badgeBg).
+  - Removed hardcoded emerald gradient + `border-emerald-300/70`.
+- [x] **Spa "Book Another Treatment" button** (`apps/web/app/app/stay/spa/page.tsx`):
+  - Imported `useGuestTheme`; background gradient + glow box-shadow now theme-driven.
+  - Removed hardcoded `#7c3aed` / `#9333ea` purple.
+- [x] **TypeScript check** (`apps/web`): `npx tsc --noEmit -p apps/web/tsconfig.json` exits with code 0.
+
+### EAS Build Fix
+
+- [x] **Diagnosed "Failed to resolve plugin for module 'expo-secure-store'"** on EAS Build:
+  - Root cause: `packageManager: pnpm@9.15.4` → EAS runs `pnpm install` → pnpm's default isolated `node_modules/.pnpm/...` layout hides `expo-secure-store` from the top-level `require()` that the prebuild step performs on the `plugins` array.
+  - Pre-existing `.npmrc` set `node-linker=hoisted` (npm-only); pnpm silently ignored it.
+- [x] **Updated `.npmrc`** to use pnpm-compatible hoist directives:
+  - `shamefully-hoist=true`
+  - `hoist-pattern[]=*`
+  - `public-hoist-pattern[]=*`
+- [x] **Removed `apps/staff-app/package-lock.json`** (stale npm lock file conflicting with the pnpm workspace).
+- [x] **Local verification**:
+  - `pnpm install --frozen-lockfile` → exit 0
+  - `expo-secure-store` now hoisted to `node_modules/expo-secure-store`, `app.plugin.js` resolvable.
+  - `npx expo config --type prebuild` → exit 0, plugin chain resolves.
+- [x] **Commit**: `8e622eb` — "fix: complete voice-call & branding P0 fixes; resolve EAS build plugin error"
+
+### Deploy Type
+✅ **OTA Update Only** — every code-level change is JS/TS. The EAS Build fix lives in `.npmrc` + the install step, so it changes the *next* build outcome but does not require a new native binary.
+
+### Testing Notes
+- **Voice call**: place a call, toggle airplane mode on the staff device, toggle back on → call should auto-rejoin within 6s without "Call Failed" or dismissing the alert.
+- **Branding**: open `/admin/branding`, change color scheme to "sapphire" or "amethyst", click Publish → landing page, FrontDesk FAB, F&B FAB, and spa "Book Another Treatment" should all re-skin within ~1s (realtime). No hardcoded amber/emerald/purple should remain visible.
+- **Push**: insert a row into `requests` with `status: 'PENDING'` → exactly one push fires. Update to `status: 'ACKNOWLEDGED'` → no push. (Previously both events would fire.)
+- **EAS**: re-run `eas build -p android --profile preview`; the prebuild step should now succeed.
+
+### Chat History Entry
+Created `chat-history/2026-09-04_voice-call-branding-p0-eas-build-fix.md` with full session details.
 

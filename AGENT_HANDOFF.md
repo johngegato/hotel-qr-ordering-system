@@ -987,4 +987,104 @@ This session implemented robust auto-reconnection for staff-app Agora voice call
 ### Chat History Entry
 Created `chat-history/2026-09-04_staff-voice-call-auto-reconnect-call-queue.md` with full session details.
 
+## Session Update — 2026-09-04 (Voice-Call P0 Cleanup, Branding P0 Wiring & EAS Build Plugin Fix)
+
+### Overview
+Final P0 cleanup pass for the staff voice-call engine and the dynamic theme/branding CMS, plus a critical EAS Build fix that was preventing the staff-app from compiling on `expo.dev` (the build server could not resolve `expo-secure-store` as a config plugin). All code changes are TypeScript → OTA eligible. The EAS Build fix changes `.npmrc` and removes a stale `package-lock.json`; it does **not** require a new native binary.
+
+**Commits in this session**
+- `8e622eb` — fix: complete voice-call & branding P0 fixes; resolve EAS build plugin error
+- `f48c0f9` — docs: agent handoff + checklist + chat history for P0/EAS fix session
+
+### 1. Voice-Call P0 Fixes
+
+**`apps/web/app/api/push/webhook/route.ts` — push webhook filter logic**
+The `requests` INSERT webhook had a broken boolean chain. The filter
+```ts
+if (eventType !== 'INSERT' && status !== 'PENDING' && status !== 'PENDING_ON_CALL')
+```
+was effectively always `true`, so it re-dispatched pushes on every UPDATE event. Fixed to:
+```ts
+### 2. Branding P0 Wiring (theme-driven guest surfaces)
+
+All hardcoded color/gradient values in the guest-facing surfaces have been replaced with tokens from `useGuestTheme()`, so the admin's Branding page (`/admin/branding`) now actually drives the look of every guest surface in realtime.
+
+| File | Before | After |
+|------|--------|-------|
+| `apps/web/app/page.tsx` (landing) | Hardcoded amber `#fbbf24`/`#d97706`, no `GuestSettingsProvider` wrapper | `'use client'`; wrapped in `GuestSettingsProvider`; `DemoContent` uses `useGuestTheme()` for logo border + glow, heading gradient, and the demo button background |
+| `apps/web/app/app/stay/components/FrontDeskFAB.tsx` | Hardcoded amber gradient + `border-amber-300/60` | `useGuestTheme()` → `primaryHex`/`secondaryHex`/`glowRgba`/`badgeBg` |
+| `apps/web/app/app/stay/components/FnBDiningFAB.tsx` | Hardcoded emerald gradient + `border-emerald-300/70` | Same theme-driven treatment (all 6 schemes flow through) |
+| `apps/web/app/app/stay/spa/page.tsx` | "Book Another Treatment" hardcoded purple gradient | Theme-driven gradient + glow box-shadow |
+
+`page.tsx` was converted to a client component (it now consumes `useGuestTheme`); the `metadata` export was removed (client components can't export metadata). TypeScript checks pass: `npx tsc --noEmit -p apps/web/tsconfig.json` exits with code 0.
+
+### 3. EAS Build Plugin Error — Root Cause + Fix
+
+**Error**
+```
+Failed to resolve plugin for module "expo-secure-store"
+relative to "/home/expo/workingdir/build/apps/staff-app".
+**Fix**
+1. `/.npmrc` — replaced `node-linker=hoisted` with pnpm-compatible hoist directives:
+   ```ini
+   shamefully-hoist=true
+   hoist-pattern[]=*
+   public-hoist-pattern[]=*
+   ```
+2. `/apps/staff-app/package-lock.json` — **deleted** (stale npm lock file conflicting with the pnpm workspace).
+
+**Local verification**
+- `pnpm install --frozen-lockfile` → exit 0
+- `expo-secure-store` now hoisted to `node_modules/expo-secure-store` and `app.plugin.js` is resolvable
+- `npx expo config --type prebuild` → exit 0, plugin chain (`expo-secure-store → app.plugin.js → plugin/build/withSecureStore`) resolves
+
+**Re-run the build**
+```bash
+cd apps/staff-app
+eas build -p android --profile preview
+```
+### Files Modified This Session
+| File | Change |
+|------|--------|
+| `.npmrc` | `node-linker=hoisted` → `shamefully-hoist=true` + `hoist-pattern[]=*` + `public-hoist-pattern[]=*` |
+| `apps/staff-app/package-lock.json` | **DELETED** (conflicted with pnpm workspace) |
+| `apps/staff-app/lib/useStaffVoiceCall.native.ts` | Gated `onError→onCallEnded` with `!isReconnecting` |
+| `apps/web/app/api/push/webhook/route.ts` | Fixed `&&` chain → `\|\|` for INSERT + PENDING filter |
+| `apps/web/app/page.tsx` | `'use client'`, wrapped in `GuestSettingsProvider`, `useGuestTheme` for logo/heading/button |
+| `apps/web/app/app/stay/components/FrontDeskFAB.tsx` | Theme-driven gradient + glow + badge |
+| `apps/web/app/app/stay/components/FnBDiningFAB.tsx` | Theme-driven gradient + glow + badge |
+| `apps/web/app/app/stay/spa/page.tsx` | "Book Another Treatment" → theme gradient + glow |
+| `AGENT_HANDOFF.md` | New session block appended (this section) |
+| `AI_AGENT_CHECKLIST.md` | New checkbox rows added |
+| `chat-history/README.md` | New row in Sessions Index |
+| `chat-history/2026-09-04_voice-call-branding-p0-eas-build-fix.md` | **NEW** chat history entry |
+
+### Deploy Type
+✅ **OTA Update Only** — every code-level change is JS/TS. The EAS Build fix changes `.npmrc` + the install step, so it affects the *next* build outcome without needing a new native binary.
+
+### Testing Notes
+- **Voice call**: place a call, toggle airplane mode on the staff device, toggle back on → call should auto-rejoin within 6s without showing "Call Failed" or dismissing the alert.
+- **Branding**: open `/admin/branding`, change color scheme to "sapphire" or "amethyst", click Publish → landing page, FrontDesk FAB, F&B FAB, and spa "Book Another Treatment" should re-skin within ~1s (realtime). No hardcoded amber/emerald/purple should remain visible.
+- **Push**: insert a row into `requests` with `status: 'PENDING'` → exactly one push fires. Update to `status: 'ACKNOWLEDGED'` → no push. (Previously both events would fire.)
+- **EAS**: re-run `eas build -p android --profile preview`; the prebuild step should now succeed.
+
+### Chat History Entry
+Created `chat-history/2026-09-04_voice-call-branding-p0-eas-build-fix.md` with full session details.
+
+
+Do you have node modules installed?
+```
+
+Fired during the EAS prebuild step when the Expo CLI tried to `require('expo-secure-store/app.plugin')` from the `plugins: ["expo-secure-store", ...]` array in `app.json`.
+
+**Root cause**
+Root `package.json` declares `"packageManager": "pnpm@9.15.4"`, so EAS Build runs `pnpm install`. By default pnpm uses an isolated `node_modules/.pnpm/...` structure. The repo's `.npmrc` was written for **npm** and used `node-linker=hoisted`, which pnpm silently ignores. Result: on the EAS worker the package was buried under `node_modules/.pnpm/expo-secure-store@15.0.8/.../` and not findable at the top level by the prebuild step.
+
+if (eventType !== 'INSERT' || (status !== 'PENDING' && status !== 'PENDING_ON_CALL'))
+```
+Now only INSERT events with `PENDING` / `PENDING_ON_CALL` fire a push.
+
+**`apps/staff-app/lib/useStaffVoiceCall.native.ts` — `onError` reconnection race**
+The `onError` handler was tearing down the call alert UI mid-reconnect whenever Agora reported a transient error. Gated with `if (!isReconnecting) onCallEnded?.()` so brief network blips are handled by the existing `onConnectionLost` → exponential backoff path instead of dismissing the alert.
+
 
