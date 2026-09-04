@@ -144,16 +144,23 @@ function GuestSpaContent() {
   }, [roomId, defaultHotelId])
 
   useEffect(() => {
-    loadSpaData()
+    // Call loadSpaData asynchronously to avoid synchronous setState inside effect
+    ;(async () => {
+      try {
+        await loadSpaData()
+      } catch (e) {
+        console.error('loadSpaData error:', e)
+      }
+    })()
 
     // Realtime channel for lock and time slot updates
     const channel = supabase
       .channel('guest_spa_data')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'spa_slot_locks' }, () => {
-        loadSpaData()
+        void loadSpaData()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'spa_time_slots' }, () => {
-        loadSpaData()
+        void loadSpaData()
       })
       .subscribe()
 
@@ -175,9 +182,15 @@ function GuestSpaContent() {
 
   useEffect(() => {
     if (step !== 3 || holdCountdown > 0 || !holdLockId) return
-    releaseHeldLock(holdLockId).catch((err) => console.error('Failed to expire spa hold:', err))
-    setHoldLockId(null)
-    setStep(2)
+    ;(async () => {
+      try {
+        await releaseHeldLock(holdLockId)
+      } catch (err) {
+        console.error('Failed to expire spa hold:', err)
+      }
+      setHoldLockId(null)
+      setStep(2)
+    })()
   }, [step, holdCountdown, holdLockId])
 
   useEffect(() => () => {
@@ -300,6 +313,7 @@ function GuestSpaContent() {
   const createHoldLock = async (slotTime: string) => {
     const durationMinutes = selectedService?.duration_mins || 60
     const { start, end } = getSlotWindow(slotTime, durationMinutes)
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
 
     const { data, error } = await (supabase.from('spa_slot_locks') as any)
       .insert([
@@ -308,7 +322,7 @@ function GuestSpaContent() {
           start_time: start.toISOString(),
           end_time: end.toISOString(),
           status: 'HELD',
-          expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+          expires_at: expiresAt,
         },
       ])
       .select('id')
