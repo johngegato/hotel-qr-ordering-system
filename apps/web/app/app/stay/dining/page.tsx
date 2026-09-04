@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import type { CatalogItem, CartItem, DietaryTag, MenuCategory } from '@hotel-qr/supabase/types'
 import FrontDeskFAB from '../components/FrontDeskFAB'
 import FnBDiningFAB from '../components/FnBDiningFAB'
+import { GuestSettingsProvider, useGuestContent } from '../components/GuestSettingsProvider'
 
 const CART_KEY = 'hotel_qr_cart'
 
@@ -51,6 +52,7 @@ function saveCart(cart: CartItem[]) {
 }
 
 function GuestDiningContent() {
+  const content = useGuestContent()
   const searchParams = useSearchParams()
   const router       = useRouter()
   const roomId       = searchParams.get('room') ?? ''
@@ -277,7 +279,7 @@ function GuestDiningContent() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: '#090a10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff', gap: 14 }}>
+      <div style={{ minHeight: '100vh', background: 'var(--gw-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff', gap: 14 }}>
         <div style={{ fontSize: 44, animation: 'pulse 1.5s infinite' }}>🍳</div>
         <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 16, fontWeight: 600 }}>Preparing Fresh Dining Menu…</div>
       </div>
@@ -309,11 +311,11 @@ function GuestDiningContent() {
 
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
             <div>
-              <h1 style={{ fontSize: 26, fontWeight: 900, color: '#ffffff', margin: 0, letterSpacing: '-0.6px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>🍽️</span> In-Room Dining &amp; Bar
+              <h1 style={{ fontSize: 26, fontWeight: 900, color: 'var(--gw-text)', margin: 0, letterSpacing: '-0.6px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span>🍽️</span> {content.dining.title}
               </h1>
-              <p style={{ color: 'rgba(255,255,255,0.5)', margin: '2px 0 0', fontSize: 13 }}>
-                Chef-crafted dishes delivered fresh to your room.
+              <p style={{ color: 'var(--gw-text-2)', margin: '2px 0 0', fontSize: 13 }}>
+                {content.dining.subtitle}
               </p>
             </div>
           </div>
@@ -377,7 +379,7 @@ function GuestDiningContent() {
                 borderRadius: 16,
                 border: `1px solid ${selectedTag === 'ALL' ? '#f97316' : 'rgba(255,255,255,0.1)'}`,
                 background: selectedTag === 'ALL' ? 'rgba(249,115,22,0.2)' : 'rgba(255,255,255,0.03)',
-                color: selectedTag === 'ALL' ? '#fed7aa' : 'rgba(255,255,255,0.5)',
+                color: selectedTag === 'ALL' ? '#fed7aa' : 'var(--gw-text-2)',
                 fontSize: 12,
                 fontWeight: 700,
                 cursor: 'pointer',
@@ -396,7 +398,7 @@ function GuestDiningContent() {
                   borderRadius: 16,
                   border: `1px solid ${selectedTag === tag ? TAG_COLORS[tag] : 'rgba(255,255,255,0.1)'}`,
                   background: selectedTag === tag ? `${TAG_COLORS[tag]}25` : 'rgba(255,255,255,0.03)',
-                  color: selectedTag === tag ? TAG_COLORS[tag] : 'rgba(255,255,255,0.5)',
+                  color: selectedTag === tag ? TAG_COLORS[tag] : 'var(--gw-text-2)',
                   fontSize: 12,
                   fontWeight: 700,
                   cursor: 'pointer',
@@ -559,7 +561,7 @@ function GuestDiningContent() {
                           </div>
 
                           {item.description && (
-                            <p style={{ color: 'rgba(255,255,255,0.5)', margin: '0 0 8px', fontSize: 13, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            <p style={{ color: 'var(--gw-text-2)', margin: '0 0 8px', fontSize: 13, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                               {item.description}
                             </p>
                           )}
@@ -715,7 +717,7 @@ function GuestDiningContent() {
 
             {/* Modal Bottom Action */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16 }}>
-              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>
+              <div style={{ color: 'var(--gw-text-2)', fontSize: 13 }}>
                 In cart: <strong style={{ color: '#fff' }}>{getQty(selectedDetailItem.id)}</strong>
               </div>
 
@@ -802,15 +804,17 @@ function GuestDiningContent() {
 
 export default function GuestDiningPage() {
   return (
-    <Suspense
-      fallback={
-        <div style={{ minHeight: '100vh', background: '#090a10', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
-          <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)' }}>Loading Dining…</div>
-        </div>
-      }
-    >
-      <GuestDiningContent />
-    </Suspense>
+    <GuestSettingsProvider>
+      <Suspense
+        fallback={
+          <div style={{ minHeight: '100vh', background: 'var(--gw-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+            <div style={{ fontSize: 16, color: 'var(--gw-text-2)' }}>Loading Dining…</div>
+          </div>
+        }
+      >
+        <GuestDiningContent />
+      </Suspense>
+    </GuestSettingsProvider>
   )
 }
 

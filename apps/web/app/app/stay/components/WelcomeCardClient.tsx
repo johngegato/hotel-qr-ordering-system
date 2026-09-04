@@ -6,6 +6,7 @@ import ActiveRequestsBanner from './ActiveRequestsBanner'
 import FrontDeskFAB from './FrontDeskFAB'
 import GuestSessionKeeper from './GuestSessionKeeper'
 import { useGuestTheme } from './GuestThemeProvider'
+import { useGuestContent } from './GuestSettingsProvider'
 
 interface WelcomeCardClientProps {
   roomId: string
@@ -33,6 +34,7 @@ export default function WelcomeCardClient({
 }: WelcomeCardClientProps) {
   const [isCallModalOpen, setIsCallModalOpen] = useState(false)
   const theme = useGuestTheme()
+  const content = useGuestContent()
 
   const roomTypeLabels: Record<string, string> = {
     STANDARD: 'Standard Room',
@@ -106,6 +108,11 @@ export default function WelcomeCardClient({
             {hotelName}
           </p>
 
+          {/* Admin-editable greeting prefix (CMS: landing.room_greeting_prefix) */}
+          <p className="animate-fade-up animate-fade-up-delay-2 text-slate-400 text-sm font-medium mb-1">
+            {content.landing.room_greeting_prefix}
+          </p>
+
           <h1 className="animate-fade-up animate-fade-up-delay-2 text-5xl sm:text-6xl font-extrabold mb-1 tracking-tight">
             <span
               style={{
@@ -149,10 +156,25 @@ export default function WelcomeCardClient({
             style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}
           />
 
-          {/* Welcome message */}
-          <p className="animate-fade-up animate-fade-up-delay-4 text-slate-200 text-base leading-relaxed mb-8 font-medium">
-            Welcome! Your personal concierge is ready. Select a service below or call the front desk anytime.
+          {/* Welcome message (CMS: landing.welcome_title / welcome_subtitle) */}
+          <h2 className="animate-fade-up animate-fade-up-delay-4 text-lg font-extrabold mb-2" style={{ color: 'var(--gw-text)' }}>
+            {content.landing.welcome_title}
+          </h2>
+          <p className="animate-fade-up animate-fade-up-delay-4 text-base leading-relaxed mb-5 font-medium" style={{ color: 'var(--gw-text-2)' }}>
+            {content.landing.welcome_subtitle}
           </p>
+
+          {/* Hero announcement banner (CMS: landing.hero_banner_text) */}
+          <div
+            className="animate-fade-up animate-fade-up-delay-4 mb-8 px-4 py-3 rounded-2xl text-xs leading-relaxed font-medium break-words"
+            style={{
+              background: theme.badgeBg,
+              border: `1px solid ${theme.badgeBorder}`,
+              color: 'var(--gw-text-2)',
+            }}
+          >
+            {content.landing.hero_banner_text}
+          </div>
 
           {/* Service quick-access buttons - Touch Optimized & Enlarged */}
           <div className="animate-fade-up animate-fade-up-delay-4 grid grid-cols-2 gap-4">
@@ -190,9 +212,12 @@ export default function WelcomeCardClient({
           </div>
         </div>
 
-        {/* Footer note */}
-        <p className="animate-fade-up animate-fade-up-delay-4 text-center text-slate-600 text-xs mt-6">
-          Need help? Dial <strong className="text-slate-500">0</strong> for front desk
+        {/* Footer notes (CMS: footer.*) */}
+        <p className="animate-fade-up animate-fade-up-delay-4 text-center text-xs mt-6" style={{ color: 'var(--gw-text-2)', opacity: 0.75 }}>
+          {content.footer.support_contact_text}
+        </p>
+        <p className="animate-fade-up animate-fade-up-delay-4 text-center text-[11px] mt-2" style={{ color: 'var(--gw-text-2)', opacity: 0.5 }}>
+          {content.footer.copyright_text}
         </p>
       </div>
 

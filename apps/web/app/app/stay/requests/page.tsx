@@ -7,6 +7,7 @@ import type { CatalogItem, TaskPayload, TaskPriority, TargetDepartment } from '@
 
 import PhoneCaptureModal, { getStoredGuestPhone } from '../components/PhoneCaptureModal'
 import FrontDeskFAB from '../components/FrontDeskFAB'
+import { GuestSettingsProvider, useGuestContent } from '../components/GuestSettingsProvider'
 
 const supabase = createSupabaseBrowserClient()
 
@@ -53,6 +54,7 @@ interface ActiveRequest {
 }
 
 function GuestRequestsContent() {
+  const content = useGuestContent()
   const searchParams = useSearchParams()
   const roomId = searchParams.get('room')
   const hash = searchParams.get('hash') ?? ''
@@ -262,9 +264,9 @@ function GuestRequestsContent() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 text-2xl shadow-inner mb-1">
             🛎️
           </div>
-          <h1 className="text-3xl font-black tracking-tight text-white">Room Services</h1>
-          <p className="text-slate-400 text-sm max-w-sm mx-auto leading-relaxed">
-            Need anything delivered or fixed? Choose a service below and our hotel team will attend to you promptly.
+          <h1 className="text-3xl font-black tracking-tight" style={{ color: 'var(--gw-text)' }}>{content.requests.title}</h1>
+          <p className="text-sm max-w-sm mx-auto leading-relaxed" style={{ color: 'var(--gw-text-2)' }}>
+            {content.requests.subtitle}
           </p>
         </div>
 
@@ -431,7 +433,7 @@ function GuestRequestsContent() {
           >
             <div
               className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border border-white/20 p-6 space-y-5 text-center animate-fade-up shadow-2xl my-auto"
-              style={{ background: '#0f172a' }}
+              style={{ background: 'var(--gw-bg)' }}
               onClick={e => e.stopPropagation()}
             >
               {/* Top-Right Quick Close Button */}
@@ -643,8 +645,10 @@ function GuestRequestsContent() {
 
 export default function GuestRequestsPage() {
   return (
-    <Suspense fallback={<div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>Loading Requests…</div>}>
-      <GuestRequestsContent />
-    </Suspense>
+    <GuestSettingsProvider>
+      <Suspense fallback={<div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>Loading Requests…</div>}>
+        <GuestRequestsContent />
+      </Suspense>
+    </GuestSettingsProvider>
   )
 }

@@ -106,3 +106,137 @@ export function getGuestTheme(colorScheme?: string | null): GuestThemeConfig {
   const schemeKey = (colorScheme?.toLowerCase() as GuestColorScheme) || 'gold'
   return GUEST_THEMES[schemeKey] || GUEST_THEMES.gold
 }
+
+// ── Theme Modes & Surface Color Presets (CMS) ───────────────
+// Surface palette presets selected via hotels.theme_mode.
+// 'CUSTOM' means hotels.theme_config holds the full palette.
+
+import type { GuestThemeMode, HotelThemeConfig } from '@hotel-qr/supabase/types'
+
+export interface GuestSurfaceTheme {
+  mode: GuestThemeMode
+  bg_primary: string
+  bg_surface: string
+  text_primary: string
+  text_secondary: string
+  accent_color: string
+  border_color: string
+}
+
+export const THEME_MODE_PRESETS: Record<
+  Exclude<GuestThemeMode, 'CUSTOM'>,
+  Omit<GuestSurfaceTheme, 'mode'>
+> = {
+  DARK_GOLD: {
+    bg_primary: '#0f172a',
+    bg_surface: '#1e293b',
+    text_primary: '#ffffff',
+    text_secondary: '#94a3b8',
+    accent_color: '#fbbf24',
+    border_color: 'rgba(255, 255, 255, 0.15)',
+  },
+  CLEAN_LIGHT: {
+    bg_primary: '#f8fafc',
+    bg_surface: '#ffffff',
+    text_primary: '#0f172a',
+    text_secondary: '#475569',
+    accent_color: '#b45309',
+    border_color: 'rgba(15, 23, 42, 0.12)',
+  },
+  MINIMAL_WHITE: {
+    bg_primary: '#ffffff',
+    bg_surface: '#fafafa',
+    text_primary: '#111827',
+    text_secondary: '#6b7280',
+    accent_color: '#111827',
+    border_color: 'rgba(17, 24, 39, 0.1)',
+  },
+  LUXURY_NAVY: {
+    bg_primary: '#0c1631',
+    bg_surface: '#16224a',
+    text_primary: '#f8fafc',
+    text_secondary: '#a5b4d4',
+    accent_color: '#e6c98a',
+    border_color: 'rgba(230, 201, 138, 0.25)',
+  },
+}
+
+export const THEME_MODE_LABELS: Record<GuestThemeMode, string> = {
+  DARK_GOLD: 'Dark Gold',
+  CLEAN_LIGHT: 'Clean Light',
+  MINIMAL_WHITE: 'Minimalist White',
+  LUXURY_NAVY: 'Luxury Navy',
+  CUSTOM: 'Custom Brand',
+}
+
+const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
+
+function normalizeHex(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && HEX_RE.test(value.trim())) return value.trim()
+  return fallback
+}
+
+/**
+ * Resolve the full surface theme from admin-controlled values.
+ * Safe fallbacks: unknown modes → DARK_GOLD; CUSTOM with missing
+ * colors → DARK_GOLD palette per-field; legacy accent color scheme
+ * overrides accent_color for non-custom palettes.
+ */
+export function resolveGuestSurfaceTheme(
+  themeMode?: string | null,
+  themeConfig?: Partial<HotelThemeConfig> | null,
+  colorScheme?: string | null
+): GuestSurfaceTheme {
+  const modeKey = (themeMode?.toUpperCase() as GuestThemeMode) || 'DARK_GOLD'
+  const base =
+    modeKey === 'CUSTOM'
+      ? THEME_MODE_PRESETS.DARK_GOLD
+      : THEME_MODE_PRESETS[modeKey] ?? THEME_MODE_PRESETS.DARK_GOLD
+
+  if (modeKey !== 'CUSTOM') {
+    // Accent follows the legacy color scheme picker (gold/emerald/...)
+    const accent = getGuestTheme(colorScheme).primaryHex
+    return { mode: modeKey, ...base, accent_color: accent }
+  }
+
+  return {
+    mode: 'CUSTOM',
+    bg_primary: normalizeHex(themeConfig?.bg_primary, base.bg_primary),
+    bg_surface: normalizeHex(themeConfig?.bg_surface, base.bg_surface),
+    text_primary: normalizeHex(themeConfig?.text_primary, base.text_primary),
+    text_secondary: normalizeHex(themeConfig?.text_secondary, base.text_secondary),
+    accent_color: normalizeHex(themeConfig?.accent_color, base.accent_color),
+    border_color:
+      typeof themeConfig?.border_color === 'string' && themeConfig.border_color
+        ? themeConfig.border_color
+        : base.border_color,
+  }
+}
+
+/** WCAG relative luminance + contrast ratio helpers (admin contrast safety). */
+export function hexToRgb(hex: string): [number, number, number] | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return null
+  const n = parseInt(m[1], 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+function channelLuminance(c: number): number {
+  const s = c / 255
+  return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+}
+
+export function relativeLuminance(hex: string): number {
+  const rgb = hexToRgb(hex)
+  if (!rgb) return 0
+  const [r, g, b] = rgb.map(channelLuminance)
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+export function contrastRatio(hexA: string, hexB: string): number {
+  const la = relativeLuminance(hexA)
+  const lb = relativeLuminance(hexB)
+  const lighter = Math.max(la, lb)
+  const darker = Math.min(la, lb)
+  return (lighter + 0.05) / (darker + 0.05)
+}

@@ -89,7 +89,7 @@ export default function PhoneCaptureModal({
     >
       <div
         className="w-full max-w-sm rounded-3xl p-6 space-y-5 text-center animate-fade-up"
-        style={{ background: '#0f172a', border: '1px solid rgba(255, 255, 255, 0.12)' }}
+        style={{ background: 'var(--gw-bg)', border: '1px solid rgba(255, 255, 255, 0.12)' }}
       >
         <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl"
              style={{ background: 'rgba(99, 102, 241, 0.15)', border: '1px solid rgba(99, 102, 241, 0.3)' }}>

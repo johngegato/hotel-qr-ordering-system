@@ -10,6 +10,63 @@ export type Json =
 // Core Entity Types
 // ============================================================
 
+// ── Guest Web Theme & Content CMS ───────────────────────────
+
+export type GuestThemeMode =
+  | 'DARK_GOLD'
+  | 'CLEAN_LIGHT'
+  | 'MINIMAL_WHITE'
+  | 'LUXURY_NAVY'
+  | 'CUSTOM'
+
+export interface HotelThemeConfig {
+  bg_primary: string
+  bg_surface: string
+  text_primary: string
+  text_secondary: string
+  accent_color: string
+  border_color: string
+}
+
+export interface GuestWebContentConfig {
+  landing: {
+    welcome_title: string
+    welcome_subtitle: string
+    room_greeting_prefix: string
+    hero_banner_text: string
+  }
+  dining: {
+    title: string
+    subtitle: string
+    fnb_call_button_text: string
+    special_instructions_placeholder: string
+  }
+  spa: {
+    title: string
+    subtitle: string
+  }
+  requests: {
+    title: string
+    subtitle: string
+  }
+  ai_chat: {
+    widget_title: string
+    welcome_message: string
+    quick_prompt_1: string
+    quick_prompt_2: string
+  }
+  footer: {
+    copyright_text: string
+    support_contact_text: string
+  }
+}
+
+export interface GuestWebSettings {
+  theme_mode: GuestThemeMode
+  theme_config: HotelThemeConfig | null
+  content_config: Partial<GuestWebContentConfig> | null
+}
+
 export interface Hotel {
   id: string
   name: string
@@ -20,6 +77,9 @@ export interface Hotel {
   color_scheme: string | null
   service_charge_enabled?: boolean
   service_charge_pct?: number
+  theme_mode?: GuestThemeMode | string | null
+  theme_config?: HotelThemeConfig | null
+  content_config?: Partial<GuestWebContentConfig> | null
   created_at: string
 }
 

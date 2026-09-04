@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import PhoneCaptureModal, { getStoredGuestPhone } from '../components/PhoneCaptureModal'
 import FrontDeskFAB from '../components/FrontDeskFAB'
+import { GuestSettingsProvider, useGuestContent } from '../components/GuestSettingsProvider'
 import { useSearchParams } from 'next/navigation'
 
 interface SpaService {
@@ -51,6 +52,7 @@ const FALLBACK_TIME_SLOTS = [
 ]
 
 function GuestSpaContent() {
+  const content = useGuestContent()
   const searchParams = useSearchParams()
   const roomId = searchParams.get('room') || '00000000-0000-0000-0000-000000000101'
   const hashParam = searchParams.get('hash') || 'secret-hash-302'
@@ -530,9 +532,9 @@ function GuestSpaContent() {
               <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-purple-500/15 border border-purple-500/30 text-2xl shadow-inner mx-auto mb-1">
                 💆
               </div>
-              <h1 className="text-3xl font-black text-white tracking-tight">Spa & Wellness</h1>
-              <p className="text-slate-400 text-sm max-w-sm mx-auto leading-relaxed">
-                Curated holistic therapies and relaxing treatments delivered in-room or at our spa sanctuary.
+              <h1 className="text-3xl font-black tracking-tight" style={{ color: 'var(--gw-text)' }}>{content.spa.title}</h1>
+              <p className="text-sm max-w-sm mx-auto leading-relaxed" style={{ color: 'var(--gw-text-2)' }}>
+                {content.spa.subtitle}
               </p>
             </div>
 
@@ -597,7 +599,7 @@ function GuestSpaContent() {
               </button>
             </div>
 
-            <div className="rounded-3xl border border-white/15 p-6 space-y-5 shadow-2xl" style={{ background: '#0f172a' }}>
+            <div className="rounded-3xl border border-white/15 p-6 space-y-5 shadow-2xl" style={{ background: 'var(--gw-bg)' }}>
               <div className="text-center space-y-1">
                 <h3 className="text-lg font-black text-white">Choose Appointment Date & Time</h3>
                 <p className="text-xs text-slate-400">Select your preferred slot for therapist assignment</p>
@@ -684,7 +686,7 @@ function GuestSpaContent() {
               </span>
             </div>
 
-            <div className="rounded-3xl border border-white/15 p-6 space-y-5 shadow-2xl" style={{ background: '#0f172a' }}>
+            <div className="rounded-3xl border border-white/15 p-6 space-y-5 shadow-2xl" style={{ background: 'var(--gw-bg)' }}>
               <h2 className="text-lg font-black text-white">Booking Summary</h2>
 
               <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2.5 text-xs">
@@ -767,7 +769,7 @@ function GuestSpaContent() {
 
         {/* Step 4: Live Status View */}
         {step === 4 && (
-          <div className="rounded-3xl border border-white/15 p-8 space-y-6 text-center shadow-2xl animate-fade-up" style={{ background: '#0f172a' }}>
+          <div className="rounded-3xl border border-white/15 p-8 space-y-6 text-center shadow-2xl animate-fade-up" style={{ background: 'var(--gw-bg)' }}>
             <div className="w-16 h-16 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-3xl mx-auto shadow-inner">
               {bookingStatus === 'CONFIRMED' ? '✅' : bookingStatus === 'DECLINED' ? '✕' : '⏳'}
             </div>
@@ -838,8 +840,10 @@ function GuestSpaContent() {
 
 export default function GuestSpaPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-sm">Loading Spa Treatments...</div>}>
-      <GuestSpaContent />
-    </Suspense>
+    <GuestSettingsProvider>
+      <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-sm">Loading Spa Treatments...</div>}>
+        <GuestSpaContent />
+      </Suspense>
+    </GuestSettingsProvider>
   )
 }

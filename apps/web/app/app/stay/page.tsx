@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: 'Your personal in-room concierge is ready.',
 }
 
-import { GuestThemeProvider } from './components/GuestThemeProvider'
+import { GuestSettingsProvider } from './components/GuestSettingsProvider'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ export default async function StayPage({ searchParams }: StayPageProps) {
 
   const { data, error } = await supabase
     .from('rooms')
-    .select('id, room_number, floor, room_type, is_active, hotel_id, hotels(name, phone, logo_url, color_scheme)')
+    .select('id, room_number, floor, room_type, is_active, hotel_id, hotels(name, phone, logo_url, color_scheme, theme_mode, theme_config, content_config)')
     .eq('id', roomId)
     .eq('qr_auth_hash', hash)
     .eq('is_active', true)
@@ -82,7 +82,7 @@ export default async function StayPage({ searchParams }: StayPageProps) {
     room_type: string;
     is_active: boolean;
     hotel_id: string;
-    hotels: { name: string; phone: string | null; logo_url: string | null; color_scheme: string | null } | { name: string; phone: string | null; logo_url: string | null; color_scheme: string | null }[] | null;
+    hotels: { name: string; phone: string | null; logo_url: string | null; color_scheme: string | null; theme_mode: string | null; theme_config: Record<string, unknown> | null; content_config: Record<string, unknown> | null } | { name: string; phone: string | null; logo_url: string | null; color_scheme: string | null; theme_mode: string | null; theme_config: Record<string, unknown> | null; content_config: Record<string, unknown> | null }[] | null;
   } | null
 
   if (error || !room) {
@@ -98,7 +98,15 @@ export default async function StayPage({ searchParams }: StayPageProps) {
   const colorScheme = hotelData?.color_scheme ?? 'gold'
 
   return (
-    <GuestThemeProvider colorScheme={colorScheme}>
+    <GuestSettingsProvider
+      hotelId={room.hotel_id}
+      initial={{
+        theme_mode: hotelData?.theme_mode ?? null,
+        color_scheme: colorScheme,
+        theme_config: hotelData?.theme_config as never,
+        content_config: hotelData?.content_config as never,
+      }}
+    >
       <WelcomeCardClient
         roomId={room.id}
         hotelId={room.hotel_id}
@@ -111,7 +119,7 @@ export default async function StayPage({ searchParams }: StayPageProps) {
         floor={room.floor}
         roomType={room.room_type}
       />
-    </GuestThemeProvider>
+    </GuestSettingsProvider>
   )
 }
 

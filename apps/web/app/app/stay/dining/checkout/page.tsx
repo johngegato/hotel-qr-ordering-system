@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { CartItem, FulfillmentType, DeliveryPreference, ArrivalTime, FoodOrderPayload } from '@hotel-qr/supabase/types'
 import PhoneCaptureModal, { getStoredGuestPhone } from '../../components/PhoneCaptureModal'
+import { GuestSettingsProvider, useGuestContent } from '../../components/GuestSettingsProvider'
 
 const CART_KEY = 'hotel_qr_cart'
 
@@ -20,6 +21,7 @@ const ARRIVAL_OPTIONS: { value: ArrivalTime; label: string }[] = [
 ]
 
 function CheckoutContent() {
+  const content = useGuestContent()
   const searchParams = useSearchParams()
   const router       = useRouter()
   const roomId       = searchParams.get('room') ?? ''
@@ -330,7 +332,7 @@ function CheckoutContent() {
                     key={type}
                     id={`fulfillment-${type}`}
                     onClick={() => setOrderType(type)}
-                    style={{ padding: '14px', borderRadius: 12, border: `2px solid ${orderType === type ? '#f97316' : 'rgba(255,255,255,0.1)'}`, background: orderType === type ? 'rgba(249,115,22,0.12)' : 'rgba(255,255,255,0.03)', color: orderType === type ? '#f97316' : 'rgba(255,255,255,0.5)', fontWeight: 700, cursor: 'pointer', fontSize: 14, transition: 'all 0.2s' }}>
+                    style={{ padding: '14px', borderRadius: 12, border: `2px solid ${orderType === type ? '#f97316' : 'rgba(255,255,255,0.1)'}`, background: orderType === type ? 'rgba(249,115,22,0.12)' : 'rgba(255,255,255,0.03)', color: orderType === type ? '#f97316' : 'var(--gw-text-2)', fontWeight: 700, cursor: 'pointer', fontSize: 14, transition: 'all 0.2s' }}>
                     {type === 'ROOM_SERVICE' ? '🛎️ Room Service' : '🍽️ Dine-In Pre-Order'}
                   </button>
                 ))}
@@ -359,7 +361,7 @@ function CheckoutContent() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {ARRIVAL_OPTIONS.map(opt => (
                     <button key={opt.value} id={`arrival-${opt.value}`} onClick={() => setArrival(opt.value)}
-                      style={{ padding: '12px 16px', borderRadius: 10, border: `1px solid ${arrival === opt.value ? '#f97316' : 'rgba(255,255,255,0.12)'}`, background: arrival === opt.value ? 'rgba(249,115,22,0.1)' : 'transparent', color: arrival === opt.value ? '#f97316' : 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: arrival === opt.value ? 700 : 500, cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
+                      style={{ padding: '12px 16px', borderRadius: 10, border: `1px solid ${arrival === opt.value ? '#f97316' : 'rgba(255,255,255,0.12)'}`, background: arrival === opt.value ? 'rgba(249,115,22,0.1)' : 'transparent', color: arrival === opt.value ? '#f97316' : 'var(--gw-text-2)', fontSize: 14, fontWeight: arrival === opt.value ? 700 : 500, cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
                       {opt.label}
                     </button>
                   ))}
@@ -375,7 +377,7 @@ function CheckoutContent() {
                 value={instructions}
                 onChange={e => setInstructions(e.target.value)}
                 rows={3}
-                placeholder="Allergies, preferences, or special requests…"
+                placeholder={content.dining.special_instructions_placeholder}
                 style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '12px 14px', color: '#fff', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }} />
             </div>
 
@@ -406,7 +408,7 @@ function CheckoutContent() {
 }
 
 const labelStyle: React.CSSProperties = {
-  display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: 700, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.08em',
+  display: 'block', color: 'var(--gw-text-2)', fontSize: 12, fontWeight: 700, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.08em',
 }
 const smallBtnStyle: React.CSSProperties = {
   width: 28, height: 28, borderRadius: '50%', border: '1px solid rgba(249,115,22,0.4)', background: 'rgba(249,115,22,0.08)', color: '#f97316', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -414,8 +416,10 @@ const smallBtnStyle: React.CSSProperties = {
 
 export default function CheckoutPage() {
   return (
-    <Suspense fallback={<div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>Loading Checkout…</div>}>
-      <CheckoutContent />
-    </Suspense>
+    <GuestSettingsProvider>
+      <Suspense fallback={<div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>Loading Checkout…</div>}>
+        <CheckoutContent />
+      </Suspense>
+    </GuestSettingsProvider>
   )
 }

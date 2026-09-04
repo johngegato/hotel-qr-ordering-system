@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
+import { useGuestContent } from './GuestSettingsProvider'
 
 const HOTEL_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -16,6 +17,7 @@ export default function FnBDiningFAB({
 }: FnBDiningFABProps) {
   const [fnbPhone, setFnbPhone] = useState<string>(initialPhone || '+1-800-555-0199')
   const [loading, setLoading] = useState(!initialPhone)
+  const content = useGuestContent()
 
   useEffect(() => {
     if (initialPhone) {
@@ -68,7 +70,7 @@ export default function FnBDiningFAB({
           📞
         </span>
         <span className="font-extrabold tracking-wide uppercase text-xs sm:text-sm text-slate-950">
-          Call Kitchen
+          {content.dining.fnb_call_button_text}
         </span>
         {fnbPhone && (
           <span className="text-[11px] font-mono font-bold opacity-90 hidden md:inline text-slate-900 bg-emerald-200/60 px-2 py-0.5 rounded-md">

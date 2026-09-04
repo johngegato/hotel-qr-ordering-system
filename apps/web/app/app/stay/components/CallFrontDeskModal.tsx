@@ -282,7 +282,7 @@ export default function CallFrontDeskModal({
                 className="w-full flex flex-col items-center justify-center gap-1 py-5 px-5 rounded-2xl font-extrabold text-base transition-all duration-200 hover:-translate-y-0.5 active:scale-95 shadow-xl min-h-[72px]"
                 style={{
                   background: theme.gradient,
-                  color: '#0f172a',
+                  color: 'var(--gw-bg)',
                   boxShadow: `0 8px 24px -4px ${theme.glowRgba}`,
                 }}
               >

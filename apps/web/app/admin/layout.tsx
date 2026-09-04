@@ -19,6 +19,7 @@ const NAV_LINKS = [
   { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
   { href: '/admin/rooms', label: 'Rooms & QR', icon: '🚪' },
   { href: '/admin/function-rooms', label: 'Function Rooms', icon: '🏛️' },
+  { href: '/admin/branding', label: 'Guest Branding', icon: '🎨' },
   { href: '/admin/settings', label: 'Settings', icon: '⚙️' },
   { href: '/admin/audit', label: 'Audit Trail', icon: '📜' },
 ]
