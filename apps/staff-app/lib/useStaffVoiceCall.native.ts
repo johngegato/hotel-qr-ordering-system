@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useOnReconnect } from './networkMonitor'
 
 export interface UseStaffVoiceCallOptions {
   onCallEnded?: () => void
+  channel?: string
+  token?: string | null
+  appId?: string
 }
 
 export interface StaffVoiceCallState {
@@ -9,6 +13,7 @@ export interface StaffVoiceCallState {
   isMuted: boolean
   isSpeakerOn: boolean
   callDurationSeconds: number
+  isReconnecting: boolean
   joinChannel: (channel: string, token: string | null, appId: string) => Promise<void>
   leaveChannel: () => Promise<void>
   toggleMute: () => void
@@ -19,15 +24,28 @@ export interface StaffVoiceCallState {
  * Native Android & iOS implementation of Agora voice calling for staff-app.
  * Uses `react-native-agora` + `react-native-incall-manager`.
  * Staff always joins as UID=2.
+ * Includes auto-reconnection on network recovery.
  */
-export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}): StaffVoiceCallState {
+export function useStaffVoiceCall({ onCallEnded, channel, token, appId }: UseStaffVoiceCallOptions = {}): StaffVoiceCallState {
   const engineRef = useRef<any>(null)
+  const channelRef = useRef(channel)
+  const tokenRef = useRef(token)
+  const appIdRef = useRef(appId)
+  const reconnectAttemptRef = useRef(0)
+  const maxReconnectAttempts = 3
+  const reconnectDelayMs = 2000
 
   const [isConnected, setIsConnected] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [isSpeakerOn, setIsSpeakerOn] = useState(true)
+  const [isReconnecting, setIsReconnecting] = useState(false)
   const [callDurationSeconds, setCallDurationSeconds] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Keep refs updated
+  useEffect(() => { channelRef.current = channel }, [channel])
+  useEffect(() => { tokenRef.current = token }, [token])
+  useEffect(() => { appIdRef.current = appId }, [appId])
 
   useEffect(() => {
     if (isConnected) {
@@ -43,39 +61,52 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
     }
   }, [isConnected])
 
-  const joinChannel = useCallback(
-    async (channel: string, token: string | null, appId: string) => {
+  // Auto-reconnect on network recovery
+  useOnReconnect(async () => {
+    if (channelRef.current && tokenRef.current && appIdRef.current && !isConnected && !isReconnecting) {
+      console.log('[StaffVoiceCall:Native] Network recovered, attempting to rejoin...')
       try {
-        const agoraMod = await import('react-native-agora')
-        const InCallManagerMod = await import('react-native-incall-manager')
-        const InCallManager = InCallManagerMod.default ?? InCallManagerMod
+        await doJoinChannel()
+      } catch (err) {
+        console.error('[StaffVoiceCall:Native] Rejoin failed:', err)
+      }
+    }
+  })
 
-        const createEngine = (agoraMod as any).default || (agoraMod as any).createAgoraRtcEngine
-        const engine = typeof createEngine === 'function' ? createEngine() : null
-        if (!engine) throw new Error('Could not create Agora RTC engine')
+  const doJoinChannel = useCallback(async () => {
+    try {
+      const agoraMod = await import('react-native-agora')
+      const InCallManagerMod = await import('react-native-incall-manager')
+      const InCallManager = InCallManagerMod.default ?? InCallManagerMod
 
-        engineRef.current = engine
+      const createEngine = (agoraMod as any).default || (agoraMod as any).createAgoraRtcEngine
+      const engine = typeof createEngine === 'function' ? createEngine() : null
+      if (!engine) throw new Error('Could not create Agora RTC engine')
 
-        if (typeof engine.initialize === 'function') {
-          engine.initialize({ appId })
-        }
+      engineRef.current = engine
 
-        if (typeof engine.enableAudio === 'function') {
-          engine.enableAudio()
-        }
-        if (typeof engine.disableVideo === 'function') {
-          engine.disableVideo()
-        }
-        if (typeof engine.setEnableSpeakerphone === 'function') {
-          engine.setEnableSpeakerphone(true)
-        }
+      if (typeof engine.initialize === 'function') {
+        engine.initialize({ appId: appIdRef.current })
+      }
 
-        if (typeof engine.registerEventHandler === 'function') {
-          engine.registerEventHandler({
-            onJoinChannelSuccess: (_connection: any, _elapsed: number) => {
-              console.log('[StaffVoiceCall:Native] Successfully joined channel')
-              setIsConnected(true)
-            },
+      if (typeof engine.enableAudio === 'function') {
+        engine.enableAudio()
+      }
+      if (typeof engine.disableVideo === 'function') {
+        engine.disableVideo()
+      }
+      if (typeof engine.setEnableSpeakerphone === 'function') {
+        engine.setEnableSpeakerphone(true)
+      }
+
+      if (typeof engine.registerEventHandler === 'function') {
+        engine.registerEventHandler({
+          onJoinChannelSuccess: (_connection: any, _elapsed: number) => {
+            console.log('[StaffVoiceCall:Native] Successfully joined channel')
+            setIsConnected(true)
+            setIsReconnecting(false)
+            reconnectAttemptRef.current = 0
+          },
             onError: (err: any, _msg: any) => {
               console.error('[StaffVoiceCall:Native] Engine error:', err, _msg)
               setIsConnected(false)
@@ -89,6 +120,17 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
               console.log('[StaffVoiceCall:Native] Remote user left:', uid)
               setIsConnected(false)
               onCallEnded?.()
+            },
+            onConnectionLost: () => {
+              console.warn('[StaffVoiceCall:Native] Connection lost')
+              setIsConnected(false)
+              setIsReconnecting(true)
+            },
+            onRejoinChannelSuccess: () => {
+              console.log('[StaffVoiceCall:Native] Rejoined channel successfully')
+              setIsConnected(true)
+              setIsReconnecting(false)
+              reconnectAttemptRef.current = 0
             },
           })
         } else if (typeof engine.addListener === 'function') {
@@ -104,6 +146,22 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
             console.log('[StaffVoiceCall:Native] Remote user left:', uid)
             setIsConnected(false)
             onCallEnded?.()
+          })
+          engine.addListener('Error', (err: any, _msg: any) => {
+            console.error('[StaffVoiceCall:Native] Engine error:', err, _msg)
+            setIsConnected(false)
+            if (!isReconnecting) onCallEnded?.()
+          })
+          engine.addListener('ConnectionLost', () => {
+            console.warn('[StaffVoiceCall:Native] Connection lost')
+            setIsConnected(false)
+            setIsReconnecting(true)
+          })
+          engine.addListener('RejoinChannelSuccess', () => {
+            console.log('[StaffVoiceCall:Native] Rejoined channel successfully')
+            setIsConnected(true)
+            setIsReconnecting(false)
+            reconnectAttemptRef.current = 0
           })
         }
 
@@ -147,6 +205,28 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
       }
     },
     [onCallEnded]
+  )
+
+  // Wrapper with retry logic for initial join
+  const joinChannel = useCallback(
+    async (channel: string, token: string | null, appId: string) => {
+      let lastError: Error | null = null
+      for (let attempt = 0; attempt <= maxReconnectAttempts; attempt++) {
+        try {
+          reconnectAttemptRef.current = attempt
+          await doJoinChannel()
+          return
+        } catch (err) {
+          lastError = err as Error
+          console.warn(`[StaffVoiceCall:Native] Join attempt ${attempt + 1} failed:`, err)
+          if (attempt < maxReconnectAttempts) {
+            await new Promise((r) => setTimeout(r, reconnectDelayMs * (attempt + 1)))
+          }
+        }
+      }
+      throw lastError ?? new Error('Failed to join channel after retries')
+    },
+    [doJoinChannel]
   )
 
   const leaveChannel = useCallback(async () => {
@@ -213,6 +293,7 @@ export function useStaffVoiceCall({ onCallEnded }: UseStaffVoiceCallOptions = {}
     isConnected,
     isMuted,
     isSpeakerOn,
+    isReconnecting,
     callDurationSeconds,
     joinChannel,
     leaveChannel,

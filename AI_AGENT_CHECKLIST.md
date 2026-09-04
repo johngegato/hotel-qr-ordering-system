@@ -353,3 +353,49 @@ Use this ordered plan to monitor SPA reliability improvements. Complete and vali
 - [ ] Test end-to-end push from Vercel `/admin/users` → real FCM delivery `status: ok`
 - [ ] Multi-hotel RLS isolation test (production)
 
+---
+
+## Session 4 Completions — 2026-09-04 (Staff Voice Call Auto-Reconnection & Call Queue)
+
+### Features Implemented
+
+- [x] **Auto-Reconnection for Agora Voice Calls** (`apps/staff-app/lib/useStaffVoiceCall.native.ts`):
+  - `isReconnecting` state exposed to UI
+  - `onConnectionLost` & `onRejoinChannelSuccess` handlers (both `registerEventHandler` and `addListener` branches)
+  - `useOnReconnect` hook integration for network recovery auto-rejoin
+  - `joinChannel` wrapper with exponential backoff (3 attempts, 2s/4s/6s)
+
+- [x] **Network Monitor** (`apps/staff-app/lib/networkMonitor.ts` — NEW):
+  - `@react-native-community/netinfo` integration
+  - Singleton `NetworkMonitor` with online/offline/reconnecting state
+  - `useNetworkMonitor()` and `useOnReconnect(callback, deps)` hooks
+
+- [x] **Call Queue System** (`apps/staff-app/lib/callQueue.ts` — NEW):
+  - `CallQueue` singleton managing `LIVE_CALL` requests
+  - FIFO with priority (high for FCM, normal for realtime)
+  - Staff busy detection, auto-advance on call end
+  - Subscription model, max size 10, duplicate prevention
+
+- [x] **App.tsx Integration**:
+  - Queue subscription effect for waiting count & auto-present next call
+  - FCM & Realtime `LIVE_CALL` enqueue instead of direct alert
+  - `callQueue.setActive(reqId)` before Agora join
+  - "Waiting Calls" stat card with red highlight
+  - `StatCard` enhanced with `highlight` prop
+
+- [x] **Package Updates**:
+  - Added `@react-native-community/netinfo`
+  - Added `typescript` to devDependencies
+
+### Deploy Type
+✅ **OTA Update Only** — All changes are TypeScript/React Native code. No native config changes.
+
+### Testing Notes
+- Verify `useOnReconnect` triggers on WiFi toggle / airplane mode
+- Test multiple simultaneous incoming calls queue correctly
+- Confirm "Waiting Calls" badge appears in dashboard
+- Test call end auto-advances to next queued call
+
+### Chat History Entry
+Created `chat-history/2026-09-04_staff-voice-call-auto-reconnect-call-queue.md` with full session details.
+

@@ -925,4 +925,66 @@ This session completed Firebase project initialization for the new `@johngegato`
 4. Test push from `/admin/users` on Vercel — should show `🟢 Real FCM Token` and delivery `status: ok`
 5. Multi-hotel RLS isolation test (still pending)
 
+---
+
+## Session Update — 2026-09-04 (Staff Voice Call Auto-Reconnection & Call Queue)
+
+### Overview
+This session implemented robust auto-reconnection for staff-app Agora voice calls and a call queue system to handle multiple simultaneous incoming live calls. All changes are TypeScript/React Native code — deployable via OTA update.
+
+### Key Additions
+
+1. **Auto-Reconnection in `useStaffVoiceCall.native.ts`**:
+   - New `isReconnecting` state exposed via `StaffVoiceCallState` interface
+   - Added `onConnectionLost` and `onRejoinChannelSuccess` handlers to both `registerEventHandler` (Agora v4) and `addListener` (legacy) branches
+   - Integrated `useOnReconnect` hook from `networkMonitor.ts` for automatic rejoin on network recovery
+   - New `joinChannel` wrapper with exponential backoff retry logic (3 attempts, 2s/4s/6s delays)
+   - Refs for channel/token/appId to preserve latest values for reconnection
+
+2. **Network Monitor (`apps/staff-app/lib/networkMonitor.ts` — NEW)**:
+   - `@react-native-community/netinfo` integration for real-time network state detection
+   - Singleton `NetworkMonitor` class tracking online/offline, reconnecting state, disconnect count, timestamps
+   - `useNetworkMonitor()` hook for React-friendly access
+   - `useOnReconnect(callback, deps)` hook triggering on offline→online transition
+
+3. **Call Queue System (`apps/staff-app/lib/callQueue.ts` — NEW)**:
+   - `CallQueue` singleton managing incoming `LIVE_CALL` requests
+   - FIFO queuing with priority (high for FCM, normal for realtime)
+   - Staff busy detection via `isStaffBusy()` prevents showing alert while on call
+   - Auto-advance: `completeActiveCall()` dequeues next call automatically
+   - Subscription model via `callQueue.subscribe()`
+   - Max queue size capped at 10, duplicate prevention
+
+4. **App.tsx Integration**:
+   - Call queue subscription effect updates waiting count, auto-presents next call when free
+   - FCM & Realtime `LIVE_CALL` events now enqueue instead of directly showing alert
+   - `callQueue.setActive(reqId)` called before joining Agora channel
+   - "Waiting Calls" stat card with red highlight when queue has items
+   - Enhanced `StatCard` with `highlight` prop for visual emphasis
+
+5. **Package Updates**:
+   - Added `@react-native-community/netinfo` dependency
+   - Added TypeScript to devDependencies
+
+### Files Modified This Session
+| File | Change |
+|------|--------|
+| `apps/staff-app/lib/useStaffVoiceCall.native.ts` | Auto-reconnection logic, retry wrapper, isReconnecting state |
+| `apps/staff-app/lib/networkMonitor.ts` | NEW: Network monitoring & reconnect hook |
+| `apps/staff-app/lib/callQueue.ts` | NEW: Call queue & concurrency management |
+| `apps/staff-app/App.tsx` | Queue integration, UI indicators, FCM/realtime enqueue |
+| `package.json` | Added `@react-native-community/netinfo`, `typescript` |
+
+### Deploy Type
+✅ **OTA Update Only** — All changes are TypeScript/React Native code. No native config changes.
+
+### Testing Notes
+- Verify `useOnReconnect` triggers on WiFi toggle / airplane mode
+- Test multiple simultaneous incoming calls queue correctly
+- Confirm "Waiting Calls" badge appears in dashboard
+- Test call end auto-advances to next queued call
+
+### Chat History Entry
+Created `chat-history/2026-09-04_staff-voice-call-auto-reconnect-call-queue.md` with full session details.
+
 

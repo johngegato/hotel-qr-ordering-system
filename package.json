@@ -14,11 +14,15 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "next": "16.3.0"
+    "next": "16.3.0",
+    "typescript": "^7.0.2"
   },
   "pnpm": {
     "allowedBuilds": [
       "unrs-resolver"
     ]
+  },
+  "dependencies": {
+    "@react-native-community/netinfo": "^12.0.1"
   }
 }

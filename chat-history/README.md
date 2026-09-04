@@ -43,6 +43,7 @@ Examples:
 | 2026-09-04 | [2026-09-04_dynamic-theme-content-cms.md](./2026-09-04_dynamic-theme-content-cms.md) | Dynamic Theme & Content CMS: migration 24 (`theme_mode`, `theme_config`, `content_config` on `hotels`), admin branding page (`/admin/branding`), guest web provider + realtime sync, WCAG contrast checks |
 | 2026-09-04 | [2026-09-04_guest-qr-resilience-fix.md](./2026-09-04_guest-qr-resilience-fix.md) | Fixed "Invalid QR Code" crash on guest web: split theme fetch from room validation so missing migration 24 columns don't break QR access |
 | 2026-09-04 | [2026-09-04_supabase-account-migration-guide.md](./2026-09-04_supabase-account-migration-guide.md) | **PENDING** — Step-by-step guide for migrating to a new Supabase account (egress limits reached). Includes data export, new project setup, code updates, and verification steps. |
+| 2026-09-04 | [2026-09-04_staff-voice-call-auto-reconnect-call-queue.md](./2026-09-04_staff-voice-call-auto-reconnect-call-queue.md) | Staff voice call auto-reconnection (Agora): `onConnectionLost`/`onRejoinChannelSuccess`, `useOnReconnect` hook, exponential backoff retry; Call queue system: FIFO with priority, staff busy detection, auto-advance, max 10 queue size; Network monitor with netinfo; UI waiting calls badge |
 
 ---
 

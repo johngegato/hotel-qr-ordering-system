@@ -29,6 +29,7 @@ import IncomingRequestAlert, { type IncomingRequest } from './components/Incomin
 import IncomingLiveCallAlert from './components/IncomingLiveCallAlert'
 import ActiveCallBar from './components/ActiveCallBar'
 import { useStaffVoiceCall } from './lib/useStaffVoiceCall'
+import { callQueue, type QueuedCall } from './lib/callQueue'
 import PendingRequestsReminderModal, { type PendingRequestItem } from './components/PendingRequestsReminderModal'
 import PushDiagnosticsModal, { type PushLogItem } from './components/PushDiagnosticsModal'
 import {
@@ -274,12 +275,19 @@ function StatusBadge({ status }: { status: ConnectionStatus }) {
 
 // ─── Stat Card ────────────────────────────────────────────────
 
-function StatCard({ icon, label, value }: { icon: string; label: string; value: string }) {
+interface StatCardProps {
+  icon: string
+  label: string
+  value: string
+  highlight?: boolean
+}
+
+function StatCard({ icon, label, value, highlight = false }: StatCardProps) {
   return (
-    <View style={styles.statCard}>
+    <View style={[styles.statCard, highlight && styles.statCardHighlight]}>
       <Text style={styles.statIcon}>{icon}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, highlight && styles.statValueHighlight]}>{value}</Text>
+      <Text style={[styles.statLabel, highlight && styles.statLabelHighlight]}>{label}</Text>
     </View>
   )
 }
@@ -324,6 +332,10 @@ function MainAppContent() {
   const [activeCallRoom, setActiveCallRoom] = useState<string | null>(null)
   const [activeCallRequestId, setActiveCallRequestId] = useState<string | null>(null)
 
+  // ─── Call Queue State ────────────────────────────────────────────
+  const [callQueueWaitingCount, setCallQueueWaitingCount] = useState(0)
+  const [callQueueActiveCall, setCallQueueActiveCall] = useState<QueuedCall | null>(null)
+
   // EXPO_PUBLIC_ vars are inlined at Metro/webpack build time.
   // On Vercel, set EXPO_PUBLIC_AGORA_APP_ID in the project env settings.
   // The hardcoded value here is the fallback so the web build never gets an empty string.
@@ -346,6 +358,31 @@ function MainAppContent() {
       setActiveCallRequestId(null)
     },
   })
+
+  // ─── Call Queue Subscription ──────────────────────────────────────
+  useEffect(() => {
+    const unsubscribe = callQueue.subscribe((queue, activeCallId) => {
+      setCallQueueWaitingCount(queue.length)
+      if (activeCallId) {
+        const active = queue.find(c => c.requestId === activeCallId) || null
+        setCallQueueActiveCall(active)
+      } else {
+        setCallQueueActiveCall(null)
+        // No active call - check if there's a waiting call to present
+        if (queue.length > 0 && !incomingLiveCall) {
+          const nextCall = callQueue.dequeue()
+          if (nextCall) {
+            setIncomingLiveCall({
+              requestId: nextCall.requestId,
+              roomNumber: nextCall.roomNumber,
+              channel: nextCall.channel,
+            })
+          }
+        }
+      }
+    })
+    return unsubscribe
+  }, [incomingLiveCall])
 
   const handleAnswerLiveCall = useCallback(
     async (channel: string, reqId: string) => {
@@ -380,6 +417,9 @@ function MainAppContent() {
           throw new Error(tokenData?.error || 'Missing Agora token')
         }
 
+        // Mark as active in queue BEFORE joining (prevents race conditions)
+        callQueue.setActive(reqId)
+
         // Join Agora voice channel as staff (UID 2)
         await staffVoiceCall.joinChannel(channel, tokenData.token, AGORA_APP_ID)
 
@@ -388,6 +428,8 @@ function MainAppContent() {
       } catch (err: any) {
         console.error('[App] Answer live call error:', err)
         Alert.alert('Call Failed', `Could not connect to live voice call.\n${err?.message || err || 'Unknown error'}`)
+        // On failure, remove from active call
+        callQueue.endActiveCall()
       }
     },
     [AGORA_APP_ID, WEB_APP_BASE_URL, staffVoiceCall]
@@ -395,6 +437,8 @@ function MainAppContent() {
 
   const handleDeclineLiveCall = useCallback(async (reqId: string) => {
     setIncomingLiveCall(null)
+    // Remove from queue if it was queued
+    callQueue.removeFromQueue(reqId)
     try {
       await supabase.from('requests').update({ status: 'DECLINED' }).eq('id', reqId)
     } catch (err) {
@@ -407,6 +451,8 @@ function MainAppContent() {
     await staffVoiceCall.leaveChannel()
     setActiveCallRoom(null)
     setActiveCallRequestId(null)
+    // Complete active call in queue (auto-advances to next)
+    callQueue.completeActiveCall()
     if (reqId) {
       await supabase.from('requests').update({ status: 'RESOLVED' }).eq('id', reqId)
     }
@@ -488,11 +534,27 @@ function MainAppContent() {
 
           const ch = req.agora_channel || req.payload?.channel || `room-${req.room_id}`
           const rN = req.payload?.room_number || 'Guest'
-          setIncomingLiveCall({
+          
+          // Enqueue the call instead of directly showing
+          const enqueued = callQueue.enqueue({
             requestId: req.id,
-            roomNumber: String(rN),
             channel: ch,
+            roomNumber: String(rN),
+            timestamp: Date.now(),
+            priority: 'normal',
           })
+          
+          if (enqueued && !callQueue.isStaffBusy()) {
+            // If staff is free, show immediately
+            const nextCall = callQueue.dequeue()
+            if (nextCall) {
+              setIncomingLiveCall({
+                requestId: nextCall.requestId,
+                roomNumber: nextCall.roomNumber,
+                channel: nextCall.channel,
+              })
+            }
+          }
           setRefreshKey((k) => k + 1)
         }
       )
@@ -888,11 +950,26 @@ function MainAppContent() {
             if (req.request_type === 'LIVE_CALL') {
               const ch = data?.agoraChannel || req.agora_channel || (req.payload as any)?.channel || `room-${req.room_id}`
               const rN = (req.rooms as any)?.room_number || (req.payload as any)?.room_number || 'Room'
-              setIncomingLiveCall({
+              
+              // Enqueue the call
+              const enqueued = callQueue.enqueue({
                 requestId: req.id,
-                roomNumber: String(rN),
                 channel: ch,
+                roomNumber: String(rN),
+                timestamp: Date.now(),
+                priority: 'high', // FCM taps are high priority
               })
+              
+              if (enqueued && !callQueue.isStaffBusy()) {
+                const nextCall = callQueue.dequeue()
+                if (nextCall) {
+                  setIncomingLiveCall({
+                    requestId: nextCall.requestId,
+                    roomNumber: nextCall.roomNumber,
+                    channel: nextCall.channel,
+                  })
+                }
+              }
               return
             }
             const nextReq = await hydrateIncomingAlert(req)
@@ -943,11 +1020,26 @@ function MainAppContent() {
             if (req.request_type === 'LIVE_CALL') {
               const ch = data?.agoraChannel || req.agora_channel || (req.payload as any)?.channel || `room-${req.room_id}`
               const rN = (req.rooms as any)?.room_number || (req.payload as any)?.room_number || 'Room'
-              setIncomingLiveCall({
+              
+              // Enqueue the call
+              const enqueued = callQueue.enqueue({
                 requestId: req.id,
-                roomNumber: String(rN),
                 channel: ch,
+                roomNumber: String(rN),
+                timestamp: Date.now(),
+                priority: 'high', // FCM received calls are high priority
               })
+              
+              if (enqueued && !callQueue.isStaffBusy()) {
+                const nextCall = callQueue.dequeue()
+                if (nextCall) {
+                  setIncomingLiveCall({
+                    requestId: nextCall.requestId,
+                    roomNumber: nextCall.roomNumber,
+                    channel: nextCall.channel,
+                  })
+                }
+              }
               return
             }
             const nextReq = await hydrateIncomingAlert(req)
@@ -1109,11 +1201,28 @@ function MainAppContent() {
           if (reqType === 'LIVE_CALL') {
             const ch = (payload.new as any)?.agora_channel || (payload.new as any)?.payload?.channel || `room-${(payload.new as any)?.room_id}`
             const rNum = (payload.new as any)?.payload?.room_number || 'Room'
-            setIncomingLiveCall({
+            
+            // Enqueue the call instead of directly showing
+            const enqueued = callQueue.enqueue({
               requestId: reqId,
-              roomNumber: String(rNum),
               channel: ch,
+              roomNumber: String(rNum),
+              timestamp: Date.now(),
+              priority: 'normal',
             })
+            
+            if (enqueued && !callQueue.isStaffBusy()) {
+              // If staff is free, show immediately
+              const nextCall = callQueue.dequeue()
+              if (nextCall) {
+                setIncomingLiveCall({
+                  requestId: nextCall.requestId,
+                  roomNumber: nextCall.roomNumber,
+                  channel: nextCall.channel,
+                })
+              }
+            }
+            
             if (notificationSettingsRef.current?.enable_sound_alert !== false) {
               triggerAlarmNotification({
                 title: '📞 Incoming Live Voice Call',
@@ -1372,6 +1481,17 @@ function MainAppContent() {
                     <StatCard icon="📋" label="Requests Today" value={String(totalRequests)} />
                     <View style={styles.statsDivider} />
                     <StatCard icon="✅" label="Resolved Today" value={String(resolvedToday)} />
+                    {callQueueWaitingCount > 0 && (
+                      <>
+                        <View style={styles.statsDivider} />
+                        <StatCard 
+                          icon="📞" 
+                          label="Waiting Calls" 
+                          value={String(callQueueWaitingCount)} 
+                          highlight={true}
+                        />
+                      </>
+                    )}
                   </>
                 )}
               </View>
@@ -1886,6 +2006,20 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  statCardHighlight: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    borderRadius: 12,
+    padding: 8,
+  },
+  statValueHighlight: {
+    color: '#ef4444',
+    fontSize: 24,
+  },
+  statLabelHighlight: {
+    color: '#ef4444',
   },
   statsDivider: {
     width: 1,
