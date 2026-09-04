@@ -64,12 +64,12 @@ export default async function StayPage({ searchParams }: StayPageProps) {
     )
   }
 
-  // Query Supabase to verify room and hash
+  // Query Supabase to verify room and hash (base columns only — theme columns may not exist yet)
   const supabase = await createSupabaseServerClient()
 
   const { data, error } = await supabase
     .from('rooms')
-    .select('id, room_number, floor, room_type, is_active, hotel_id, hotels(name, phone, logo_url, color_scheme, theme_mode, theme_config, content_config)')
+    .select('id, room_number, floor, room_type, is_active, hotel_id, hotels(name, phone, logo_url, color_scheme)')
     .eq('id', roomId)
     .eq('qr_auth_hash', hash)
     .eq('is_active', true)
@@ -82,13 +82,36 @@ export default async function StayPage({ searchParams }: StayPageProps) {
     room_type: string;
     is_active: boolean;
     hotel_id: string;
-    hotels: { name: string; phone: string | null; logo_url: string | null; color_scheme: string | null; theme_mode: string | null; theme_config: Record<string, unknown> | null; content_config: Record<string, unknown> | null } | { name: string; phone: string | null; logo_url: string | null; color_scheme: string | null; theme_mode: string | null; theme_config: Record<string, unknown> | null; content_config: Record<string, unknown> | null }[] | null;
+    hotels: { name: string; phone: string | null; logo_url: string | null; color_scheme: string | null } | { name: string; phone: string | null; logo_url: string | null; color_scheme: string | null }[] | null;
   } | null
 
   if (error || !room) {
+    console.error('[StayPage] Room validation failed:', error?.message)
     return (
       <ErrorCard message="This QR code is not recognised or has expired. Please contact the front desk." />
     )
+  }
+
+  // Fetch theme/content settings separately — graceful fallback if columns don't exist yet (pending migration)
+  let themeMode: string | null = null
+  let themeConfig: Record<string, unknown> | null = null
+  let contentConfig: Record<string, unknown> | null = null
+
+  try {
+    const { data: hotelTheme } = await supabase
+      .from('hotels')
+      .select('theme_mode, theme_config, content_config')
+      .eq('id', room.hotel_id)
+      .maybeSingle()
+
+    if (hotelTheme) {
+      themeMode = (hotelTheme as Record<string, unknown>).theme_mode as string | null
+      themeConfig = (hotelTheme as Record<string, unknown>).theme_config as Record<string, unknown> | null
+      contentConfig = (hotelTheme as Record<string, unknown>).content_config as Record<string, unknown> | null
+    }
+  } catch (e) {
+    // Columns may not exist yet (migration 24 not applied) — graceful fallback to defaults
+    console.warn('[StayPage] Theme columns not available, using defaults:', (e as Error)?.message)
   }
 
   const hotelData = room.hotels && !Array.isArray(room.hotels) ? room.hotels : null
@@ -101,10 +124,10 @@ export default async function StayPage({ searchParams }: StayPageProps) {
     <GuestSettingsProvider
       hotelId={room.hotel_id}
       initial={{
-        theme_mode: hotelData?.theme_mode ?? null,
+        theme_mode: themeMode,
         color_scheme: colorScheme,
-        theme_config: hotelData?.theme_config as never,
-        content_config: hotelData?.content_config as never,
+        theme_config: themeConfig as never,
+        content_config: contentConfig as never,
       }}
     >
       <WelcomeCardClient
