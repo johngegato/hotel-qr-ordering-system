@@ -38,6 +38,8 @@ export function useGuestVoiceCall({
 
     let isMounted = true
 
+    let connectionStateHandler: ((curState: string, prevState: string) => void) | undefined
+
     const join = async () => {
       try {
         // Dynamic import — avoids SSR errors since Agora requires browser APIs
@@ -101,7 +103,7 @@ export function useGuestVoiceCall({
           }
         }
 
-        const connectionStateHandler = (curState: string, prevState: string) => {
+        connectionStateHandler = (curState: string, prevState: string) => {
           console.log('[GuestVoiceCall] connection-state-change', prevState, '->', curState)
           if (curState === 'DISCONNECTED' || curState === 'FAILED') {
             setIsConnected(false)
@@ -109,7 +111,7 @@ export function useGuestVoiceCall({
           }
         }
 
-        if (typeof client.on === 'function') {
+        if (typeof client.on === 'function' && connectionStateHandler) {
           client.on('connection-state-change', connectionStateHandler)
         }
 
@@ -125,7 +127,7 @@ export function useGuestVoiceCall({
     return () => {
       isMounted = false
       try {
-        if (clientRef.current && typeof clientRef.current.off === 'function') {
+        if (clientRef.current && typeof clientRef.current.off === 'function' && connectionStateHandler) {
           clientRef.current.off('connection-state-change', connectionStateHandler)
         }
       } catch (e) {
